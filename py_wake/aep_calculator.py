@@ -101,7 +101,7 @@ class AEPCalculator():
         h_i, type_i, wd, ws = self._get_defaults(x_i, h_i, type_i, wd=wd, ws=ws)
 
         # Find local wind speed, wind direction, turbulence intensity and probability
-        self.WD_ilk, self.WS_ilk, self.TI_ilk, self.P_ilk = self.site.local_wind(x_i=x_i, y_i=y_i, wd=wd, ws=ws)
+        self.WD_ilk, self.WS_ilk, self.TI_ilk, self.P_ilk = self.site.local_wind(x_i=x_i, y_i=y_i, h_i=h_i, wd=wd, ws=ws)
 
         type_ilk = np.zeros(self.WS_ilk.shape, dtype=np.int) + type_i[:, np.newaxis, np.newaxis]
         self.power_ilk = self.windTurbines.power(self.WS_ilk, type_ilk)
@@ -131,7 +131,7 @@ class AEPCalculator():
         self._run_wake_model(x_i, y_i, h_i, type_i, wd, ws)
 
         h_j = np.zeros_like(x_j) + h
-        _, WS_jlk, TI_jlk, P_ilk = self.site.local_wind(x_i=x_j, y_i=y_j, wd=wd, ws=ws)
+        _, WS_jlk, TI_jlk, P_ilk = self.site.local_wind(x_i=x_j, y_i=y_j, h_i=h_j, wd=wd, ws=ws)
         dw_ijl, cw_ijl, dh_ijl, _ = self.site.distances(x_i, y_i, h_i, x_j, y_j, h_j, self.WD_ilk.mean(2))
 
         if type == 'WS':

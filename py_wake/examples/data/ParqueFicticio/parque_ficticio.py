@@ -5,6 +5,7 @@ import numpy as np
 
 def ParqueFicticioSite():
     site = WaspGridSite.from_wasp_grd(ParqueFicticio_path, speedup_using_pickle=False)
+    site.distance_type = 'terrain_following'
     site.initial_position = np.array([
         [263655.0, 6506601.0],
         [263891.1, 6506394.0],

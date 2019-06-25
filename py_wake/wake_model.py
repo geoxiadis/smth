@@ -125,8 +125,13 @@ class WakeModel(ABC):
 
 
         """
+        if hasattr(self, 'distance_type'):
+            if not self.distance_type == 'direct' and not hasattr(site, 'distance_type'):
+                raise NotImplementedError('A non-default distance calculation formulation was requested but not supported by site.')
+            else:
+                site.distance_type = self.distance_type
         # Find local wind speed, wind direction, turbulence intensity and probability
-        WD_ilk, WS_ilk, TI_ilk, P_ilk = site.local_wind(x_i=x_i, y_i=y_i, wd=wd, ws=ws)
+        WD_ilk, WS_ilk, TI_ilk, P_ilk = site.local_wind(x_i=x_i, y_i=y_i, h_i=h_i, wd=wd, ws=ws)
 
         # Calculate down-wind and cross-wind distances
         dw_iil, hcw_iil, dh_iil, dw_order_indices_dl = site.wt2wt_distances(x_i, y_i, h_i, WD_ilk.mean(2))

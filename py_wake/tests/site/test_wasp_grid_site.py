@@ -48,12 +48,65 @@ def test_local_wind(site):
 
 def test_distances(site):
     x, y = site.initial_position.T
-    dw_ijl, cw_ijl, dh_ijl, dwo = site.distances(src_x_i=[x[0]], src_y_i=[y[0]], src_h_i=[70],
-                                                 dst_x_j=[x[1]], dst_y_j=[y[1]], dst_h_j=[80],
-                                                 wd_il=[[0]])
-    npt.assert_almost_equal(dw_ijl[0, 0, 0], -(y[1] - y[0]))
-    npt.assert_almost_equal(cw_ijl[0, 0, 0], x[1] - x[0])
-    npt.assert_almost_equal(dh_ijl[0, 0, 0], 10)
+    dw_ijl, cw_ijl, dh_ijl, dwo = site.distances(src_x_i=x, src_y_i=y, src_h_i=np.array([70]),
+                                                 dst_x_j=x, dst_y_j=y, dst_h_j=np.array([70]),
+                                                 wd_il=np.array([[0]]))
+    npt.assert_almost_equal(dw_ijl[0, :, 0], np.array([0., 207.7973259, 484.8129285, 727.1261764, 1039.5612311, 1263.5467003, 1490.7972623, 1841.0639107]))
+    npt.assert_almost_equal(cw_ijl[:, 1, 0], np.array([236.1, 0., -131.1, -167.8, -204.5, -131.1, -131.1, -45.4]))
+    npt.assert_almost_equal(dh_ijl, np.zeros_like(dh_ijl))
+
+
+def test_distances_different_points(site):
+    x, y = site.initial_position.T
+    with pytest.raises(NotImplementedError):
+        dw_ijl, cw_ijl, dh_ijl, dwo = site.distances(src_x_i=x, src_y_i=y, src_h_i=np.array([70]),
+                                                     dst_x_j=x[1:], dst_y_j=y[1:], dst_h_j=np.array([70]),
+                                                     wd_il=np.array([[0]]))
+
+
+def test_distances_no_turning(site):
+    x, y = site.initial_position.T
+    site.turning = False
+    site.local_wind(x, y, np.array([70]))
+    dw_ijl, cw_ijl, dh_ijl, dwo = site.distances(src_x_i=x, src_y_i=y, src_h_i=np.array([70]),
+                                                 dst_x_j=x, dst_y_j=y, dst_h_j=np.array([70]),
+                                                 wd_il=np.array([[180]]))
+    npt.assert_almost_equal(dw_ijl[0, :, 0], np.array([-0., 207.7973259, 484.8129285, 727.1261764, 1039.5612311, 1263.5467003, 1490.7972623, 1841.0639107]))
+    npt.assert_almost_equal(cw_ijl[:, 1, 0], np.array([236.1, 0., -131.1, -167.8, -204.5, -131.1, -131.1, -45.4]))
+    npt.assert_almost_equal(dh_ijl, np.zeros_like(dh_ijl))
+
+
+def test_distances_ri(site):
+    x, y = site.initial_position.T
+    site.calc_all = False
+    site.r_i = np.ones(len(x)) * 90
+    dw_ijl, cw_ijl, dh_ijl, dwo = site.distances(src_x_i=x, src_y_i=y, src_h_i=np.array([70]),
+                                                 dst_x_j=x, dst_y_j=y, dst_h_j=np.array([70]),
+                                                 wd_il=np.array([[180]]))
+    npt.assert_almost_equal(dw_ijl[0, :, 0], np.array([0., -207., -477., -710., -1016., -1236., -1456., -1799.]))
+    npt.assert_almost_equal(cw_ijl[:, 1, 0], np.array([-236.1, 0., 131.1, 167.8, 204.5, 131.1, 131.1, 45.4]))
+    npt.assert_almost_equal(dh_ijl, np.zeros_like(dh_ijl))
+
+
+def test_distances_uniform(site):
+    x, y = site.initial_position.T
+    site.distance_type = None
+    dw_ijl, cw_ijl, dh_ijl, dwo = site.distances(src_x_i=x, src_y_i=y, src_h_i=np.array([70]),
+                                                 dst_x_j=x, dst_y_j=y, dst_h_j=np.array([70]),
+                                                 wd_il=np.array([[180]]))
+    npt.assert_almost_equal(dw_ijl[0, :, 0], np.array([0., -207., -477., -710., -1016., -1236., -1456., -1799.]))
+    npt.assert_almost_equal(cw_ijl[:, 1, 0], np.array([236.1, 0., 131.1, 167.8, 204.5, 131.1, 131.1, 45.4]))
+    npt.assert_almost_equal(dh_ijl, np.zeros_like(dh_ijl))
+
+
+def test_distances_wd_shape(site):
+    x, y = site.initial_position.T
+    dw_ijl, cw_ijl, dh_ijl, dwo = site.distances(src_x_i=x, src_y_i=y, src_h_i=np.array([70]),
+                                                 dst_x_j=x, dst_y_j=y, dst_h_j=np.array([70]),
+                                                 wd_il=np.ones((len(x), 1)) * 180)
+    npt.assert_almost_equal(dw_ijl[0, :, 0], np.array([0., -207., -477., -710., -1016., -1236., -1456., -1799.]))
+    npt.assert_almost_equal(cw_ijl[:, 1, 0], np.array([-236.1, 0., 131.1, 167.8, 204.5, 131.1, 131.1, 45.4]))
+    npt.assert_almost_equal(dh_ijl, np.zeros_like(dh_ijl))
 
 
 def test_speed_up_using_pickle():
