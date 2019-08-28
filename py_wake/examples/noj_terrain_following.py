@@ -26,8 +26,8 @@ def run_NOJ_terrain_following():
 
 
 def main():
-    if __name__ == '__main__':
-        run_NOJ_terrain_following()
+    run_NOJ_terrain_following()
 
 
-main()
+if __name__ == '__main__':
+    main()

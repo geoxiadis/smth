@@ -73,3 +73,15 @@ def test_wec():
          9.6877, 9.9068, 9.7497, 9.1127, 7.9505, 7.26, 7.9551, 9.2104, 9.7458,
          9.6637, 9.1425, 8.2403, 7.1034, 6.5109, 7.2764, 8.7653, 9.7139, 9.9718,
          10.01, 10.0252, 10.0357], 4)
+
+
+def test_complex_terrain():
+    _, _, freq = read_iea37_windrose(iea37_path + "iea37-windrose.yaml")
+    site = UniformSite(freq, ti=0.075)
+    windTurbines = IEA37_WindTurbines(iea37_path + 'iea37-335mw.yaml')
+    wake_model = NOJ(windTurbines)
+    wake_model.distance_type = 'terrain_following'
+    with pytest.raises(NotImplementedError):
+        wake_model.calc_wake([0, 100], [0, 100], [80, 80], [0, 0], np.arange(0, 360, 22.5), [9.8], site)
+    wake_model.distance_type = 'direct'
+    wake_model.calc_wake([0, 100], [0, 100], [80, 80], [0, 0], np.arange(0, 360, 22.5), [9.8], site)

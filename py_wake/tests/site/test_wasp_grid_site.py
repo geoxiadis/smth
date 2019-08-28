@@ -95,7 +95,7 @@ def test_distances_uniform(site):
                                                  dst_x_j=x, dst_y_j=y, dst_h_j=np.array([70]),
                                                  wd_il=np.array([[180]]))
     npt.assert_almost_equal(dw_ijl[0, :, 0], np.array([0., -207., -477., -710., -1016., -1236., -1456., -1799.]))
-    npt.assert_almost_equal(cw_ijl[:, 1, 0], np.array([236.1, 0., 131.1, 167.8, 204.5, 131.1, 131.1, 45.4]))
+    npt.assert_almost_equal(np.abs(cw_ijl[:, 1, 0]), np.array([236.1, -0., 131.1, 167.8, 204.5, 131.1, 131.1, 45.4]))
     npt.assert_almost_equal(dh_ijl, np.zeros_like(dh_ijl))
 
 
