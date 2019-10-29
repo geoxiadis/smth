@@ -1,7 +1,9 @@
 from py_wake.site._site import UniformWeibullSite, UniformSite
 import numpy as np
+from numpy import newaxis as na
 from py_wake.tests import npt
 import pytest
+from py_wake.site.shear import PowerShear
 
 f = [0.035972, 0.039487, 0.051674, 0.070002, 0.083645, 0.064348,
      0.086432, 0.117705, 0.151576, 0.147379, 0.10012, 0.05166]
@@ -14,7 +16,7 @@ ti = .1
 
 @pytest.fixture
 def site():
-    return UniformWeibullSite(f, A, k, ti, h_ref=50, alpha=.3)
+    return UniformWeibullSite(f, A, k, ti, shear=PowerShear(50, alpha=np.zeros_like(f) + .3))
 
 
 def test_local_wind(site):
@@ -30,15 +32,15 @@ def test_local_wind(site):
     # check probability local_wind()[-1]
     npt.assert_equal(site.local_wind(x_i=x_i, y_i=y_i, wd=[0], ws=[10], wd_bin_size=1)[-1],
                      site.local_wind(x_i=x_i, y_i=y_i, wd=[0], ws=[10], wd_bin_size=2)[-1] / 2)
-    npt.assert_almost_equal(site.local_wind(x_i=x_i, y_i=y_i, wd=[0], ws=[9, 10, 11])[-1].sum(),
-                            site.local_wind(x_i=x_i, y_i=y_i, wd=[0], ws=[10], ws_bin_size=3)[-1], 5)
+    npt.assert_almost_equal(site.local_wind(x_i=x_i, y_i=y_i, wd=[0], ws=[9, 10, 11])[-1].sum((1, 2)),
+                            site.local_wind(x_i=x_i, y_i=y_i, wd=[0], ws=[10], ws_bins=3)[-1][:, 0, 0], 5)
 
     z = np.arange(1, 100)
     zero = [0] * len(z)
 
     ws = site.local_wind(x_i=zero, y_i=zero, h_i=z, wd=[0], ws=[10])[1][:, 0, 0]
-    site.h_ref = 70
-    ws70 = site.local_wind(x_i=zero, y_i=zero, h_i=z, wd=[0], ws=[10])[1][:, 0, 0]
+    site2 = UniformWeibullSite(f, A, k, ti, shear=PowerShear(70, alpha=np.zeros_like(f) + .3))
+    ws70 = site2.local_wind(x_i=zero, y_i=zero, h_i=z, wd=[0], ws=[10])[1][:, 0, 0]
     if 0:
         import matplotlib.pyplot as plt
         plt.plot(ws, z)
@@ -167,7 +169,8 @@ def test_iea37_distances():
 def test_uniform_site_probability():
     """check that the uniform site recovers probability"""
     p_wd = np.array([0.1, 0.2, 0.1, 0.2, 0.1, 0.2, 0.1])
-    wd = np.linspace(0, 360, p_wd.size, endpoint=False)
+    wd_l = np.linspace(0, 360, p_wd.size, endpoint=False)
+    ws_k = np.array([12])
     site = UniformSite(p_wd, ti=1)
-    actual = site.probability(0, 0, 0, wd, 12, 360 / p_wd.size, 1)
+    actual = site.probability(0, 0, 0, wd_l[na, :, na], ws_k[na, na], 360 / p_wd.size, None)
     npt.assert_array_almost_equal(actual.squeeze(), p_wd)

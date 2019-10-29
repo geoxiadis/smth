@@ -1,4 +1,4 @@
-from py_wake.site._site import Site, UniformWeibullSite
+from py_wake.site._site import UniformWeibullSite
 import numpy as np
 import xarray as xr
 import pickle
@@ -13,21 +13,22 @@ from py_wake.site.distance import StraightDistance, TerrainFollowingDistance
 from builtins import AttributeError
 
 
-def WaspGridSite(ds, distance=TerrainFollowingDistance()):
+def WaspGridSite(ds, distance=TerrainFollowingDistance(), mode='valid'):
     if distance.__class__ == StraightDistance:
         cls = type("WaspGridSiteStraightDistance", (WaspGridSiteBase,), {})
-        wgs = cls(ds=ds)
+        wgs = cls(ds=ds, mode=mode)
     else:
         cls = type("WaspGridSite" + type(distance).__name__, (type(distance), WaspGridSiteBase), {})
-        wgs = cls(ds=ds)
+        wgs = cls(ds=ds, mode=mode)
         wgs.__dict__.update(distance.__dict__)
 
     return wgs
 
 
 class WaspGridSiteBase(UniformWeibullSite):
-    def __init__(self, ds):
+    def __init__(self, ds, mode='valid'):
         self._ds = ds
+        self.mode = mode
         self.interp_funcs = None
         self.interp_funcs_initialization()
         self.elevation_interpolator = EqDistRegGrid2DInterpolator(self._ds.coords['x'].data,
@@ -39,7 +40,7 @@ class WaspGridSiteBase(UniformWeibullSite):
                          k=np.nanmean(self._ds['k'].data, (0, 1, 2)),
                          ti=0)
 
-    def local_wind(self, x_i, y_i, h_i, wd=None, ws=None, wd_bin_size=None, ws_bin_size=None):
+    def local_wind(self, x_i, y_i, h_i, wd=None, ws=None, wd_bin_size=None, ws_bins=None):
         if wd is None:
             wd = self.default_wd
         if ws is None:
@@ -49,59 +50,40 @@ class WaspGridSiteBase(UniformWeibullSite):
         h_i = np.asarray(h_i)
         x_il, y_il, h_il = [np.repeat([v], len(wd), 0).T for v in [x_i, y_i, h_i]]
 
-        ws_bin_size = self.ws_bin_size(ws, ws_bin_size)
         wd_bin_size = self.wd_bin_size(wd, wd_bin_size)
 
         wd_il = np.repeat([wd], len(x_i), 0)
-        speed_up_il, turning_il, wind_shear_il = \
+        speed_up_il, turning_il = \
             [self.interp_funcs[n]((x_il, y_il, h_il, wd_il)) for n in
-             ['spd', 'orog_trn', 'wind_shear']]
+             ['spd', 'orog_trn']]
 
-        # TODO: if speed_up_il does not vary with height the below version of WS_ilk should be used. Else remove z0 and h_ref from the input.
-#        term_denominator = np.log(self.h_ref / self.z0)
-
-#        WS_ilk = (ws[na, na, :] * np.log(h_i / self.z0)[:, na, na] /
-#                  term_denominator) * speed_up_il[:, :, na]
         WS_ilk = ws[na, na, :] * speed_up_il[:, :, na]
 
-        WD_ilk = (wd_il + turning_il)[..., na]
+        WD_ilk = ((wd_il + turning_il) % 360)[:, :, na]
 
         if self.TI_data_exist:
             TI_il = self.interp_funcs['tke']((x_il, y_il, h_il, wd_il))
             TI_ilk = (TI_il[:, :, na] * (0.75 + 3.8 / WS_ilk))
-
-        WD_lk, WS_lk = np.meshgrid(wd, ws, indexing='ij')
-        P_ilk = self.probability(x_i, y_i, h_i, WD_lk, WS_lk, wd_bin_size, ws_bin_size)
-#        P_ilk = self.probability(x_i, y_i, h_i, WD_lk, WS_ilk, wd_bin_size, ws_bin_size)
+        P_ilk = self.probability(x_i, y_i, h_i, wd_il[:, :, na], WS_ilk,
+                                 wd_bin_size, ws_bins=self.ws_bins(WS_ilk, ws_bins))
         return WD_ilk, WS_ilk, TI_ilk, P_ilk
 
-#    def probability(self, x_i, y_i, h_i, WD_lk, WS_ilk, wd_bin_size, ws_bin_size):
-    def probability(self, x_i, y_i, h_i, WD_lk, WS_lk, wd_bin_size, ws_bin_size):
+    def probability(self, x_i, y_i, h_i, WD_ilk, WS_ilk, wd_bin_size, ws_bins):
         """See Site.probability
         """
-        x_il, y_il, h_il = [np.repeat([v], WD_lk.shape[0], 0).T for v in [x_i, y_i, h_i]]
-        wd_il = np.repeat([WD_lk.mean(1)], len(x_i), 0)
+        h_i = np.zeros_like(x_i) + h_i
+        x_i, y_i = [np.asarray(v) for v in [x_i, y_i]]
         Weibull_A_il, Weibull_k_il, freq_il = \
-            [self.interp_funcs[n]((x_il, y_il, h_il, wd_il)) for n in
+            [self.interp_funcs[n]((x_i[:, na], y_i[:, na], h_i[:, na], WD_ilk.mean(2))) for n in
              ['A', 'k', 'f']]
         P_wd_il = freq_il * wd_bin_size
-        WS_ilk = WS_lk[na]
-        # TODO: The below probability does not sum to 1 due to the speed ups. New
-        # calculation of the weibull weights are needed.
+
         P_ilk = self.weibull_weight(WS_ilk, Weibull_A_il[:, :, na],
-                                    Weibull_k_il[:, :, na], ws_bin_size) * P_wd_il[:, :, na]
-#        P_ilk = self.weibull_weight(WS_ilk, Weibull_A_il[:, :, na],
-#                                    Weibull_k_il[:, :, na], ws_bin_size) * P_wd_il[:, :, na]
-        self.freq_il = freq_il
-        self.pdf_ilk = self.weibull_weight(WS_ilk, Weibull_A_il[:, :, na],
-                                           Weibull_k_il[:, :, na], ws_bin_size)
-        self.Weibull_k = Weibull_k_il[:, :, na]
-        self.Weibull_A = Weibull_A_il[:, :, na]
-        self.Weibull_ws = WS_ilk
+                                    Weibull_k_il[:, :, na], ws_bins) * P_wd_il[:, :, na]
         return P_ilk
 
     def elevation(self, x_i, y_i):
-        return self.elevation_interpolator(x_i, y_i)
+        return self.elevation_interpolator(x_i, y_i, self.mode)
 
     @classmethod
     def from_pickle(cls, file_name, distance):
@@ -114,8 +96,7 @@ class WaspGridSiteBase(UniformWeibullSite):
             pickle.dump(self._ds, f, protocol=-1)
 
     def interp_funcs_initialization(self,
-                                    interp_keys=['A', 'k', 'f', 'tke', 'spd', 'orog_trn', 'elev',
-                                                 'wind_shear']):
+                                    interp_keys=['A', 'k', 'f', 'tke', 'spd', 'orog_trn', 'flow_inc', 'elev']):
         """ Initialize interpolating functions using RegularGridInterpolator
         for specified variables defined in interp_keys.
         """
@@ -151,6 +132,7 @@ class WaspGridSiteBase(UniformWeibullSite):
             interp_funcs[key] = RegularGridInterpolator(
                 coords,
                 data, bounds_error=False)
+
         self.interp_funcs = interp_funcs
 
     def plot_map(self, data_name, height=None, sector=None, xlim=[None, None], ylim=[None, None], ax=None):
@@ -174,7 +156,7 @@ class WaspGridSiteBase(UniformWeibullSite):
         ax.axis('equal')
 
     @classmethod
-    def from_wasp_grd(cls, path, globstr='*.grd', distance=TerrainFollowingDistance(), speedup_using_pickle=True):
+    def from_wasp_grd(cls, path, globstr='*.grd', distance=TerrainFollowingDistance(), speedup_using_pickle=True, mode='valid'):
         '''
         Reader for WAsP .grd resource grid files.
 
@@ -394,38 +376,11 @@ class WaspGridSiteBase(UniformWeibullSite):
         ds = ds.loc[{'z': sorted(ds.coords['z'].values)}]
 
         ######################################################################
-        # Adding wind shear coefficient based on speed-up factor at different
-        # height and a reference far field wind shear coefficient (alpha_far)
-        def _add_wind_shear(ds, alpha_far=0.143):
-            ds['wind_shear'] = copy.deepcopy(ds['spd'])
 
-            heights = ds['wind_shear'].coords['z'].data
+        if 'tke' in ds and np.mean(ds['tke']) > 1:
+            ds['tke'] *= 0.01
 
-            # if there is only one layer, assign default value
-            if len(heights) == 1:
-
-                ds['wind_shear'].data = (np.zeros_like(ds['wind_shear'].data) +
-                                         alpha_far)
-
-                print('Note there is only one layer of wind resource data, ' +
-                      'wind shear are assumed as uniform, i.e., {0}'.format(
-                          alpha_far))
-            else:
-                ds['wind_shear'].data[:, :, 0, :] = (alpha_far +
-                                                     np.log(ds['spd'].data[:, :, 0, :] / ds['spd'].data[:, :, 1, :]) /
-                                                     np.log(heights[0] / heights[1]))
-
-                for h in range(1, len(heights)):
-                    ds['wind_shear'].data[:, :, h, :] = (
-                        alpha_far +
-                        np.log(ds['spd'].data[:, :, h, :] / ds['spd'].data[:, :, h - 1, :]) /
-                        np.log(heights[h] / heights[h - 1]))
-
-            return ds
-
-        ds = _add_wind_shear(ds)
-
-        return WaspGridSite(ds, distance)
+        return WaspGridSite(ds, distance, mode)
 
 
 class EqDistRegGrid2DInterpolator():
@@ -436,20 +391,29 @@ class EqDistRegGrid2DInterpolator():
         self.dx, self.dy = [xy[1] - xy[0] for xy in [x, y]]
         self.x0 = x[0]
         self.y0 = y[0]
+        xi_valid = np.where(np.any(~np.isnan(self.Z), 1))[0]
+        yi_valid = np.where(np.any(~np.isnan(self.Z), 0))[0]
+        self.xi_valid_min, self.xi_valid_max = xi_valid[0], xi_valid[-1]
+        self.yi_valid_min, self.yi_valid_max = yi_valid[0], yi_valid[-1]
 
     def __call__(self, x, y, mode='valid'):
         xp, yp = x, y
-
         xi = (xp - self.x0) / self.dx
         xif, xi0 = np.modf(xi)
         xi0 = xi0.astype(np.int)
-        xi1 = xi0 + 1
 
         yi = (yp - self.y0) / self.dy
         yif, yi0 = np.modf(yi)
         yi0 = yi0.astype(np.int)
+        if mode == 'extrapolate':
+            xif[xi0 < self.xi_valid_min] = 0
+            xif[xi0 > self.xi_valid_max - 2] = 1
+            yif[yi0 < self.yi_valid_min] = 0
+            yif[yi0 > self.yi_valid_max - 2] = 1
+            xi0 = np.minimum(np.maximum(xi0, self.xi_valid_min), self.xi_valid_max - 2)
+            yi0 = np.minimum(np.maximum(yi0, self.yi_valid_min), self.yi_valid_max - 2)
+        xi1 = xi0 + 1
         yi1 = yi0 + 1
-
         valid = (xif >= 0) & (yif >= 0) & (xi1 < len(self.x)) & (yi1 < len(self.y))
         z = np.empty_like(xp) + np.nan
         xi0, xi1, xif, yi0, yi1, yif = [v[valid] for v in [xi0, xi1, xif, yi0, yi1, yif]]
@@ -460,16 +424,6 @@ class EqDistRegGrid2DInterpolator():
         z0 = z00 + (z10 - z00) * xif
         z1 = z01 + (z11 - z01) * xif
         z[valid] = z0 + (z1 - z0) * yif
-        if mode == 'extrapolate':
-            valid = valid & ~np.isnan(z)
-            if (valid[0] == False) | (valid[-1] == False):  # noqa
-                nonnan_index = np.where(~np.isnan(z))[0]
-                if valid[0] == False:  # noqa
-                    first_valid = nonnan_index[0]
-                    z[:first_valid] = z[first_valid]
-                if valid[-1] == False:  # noqa
-                    last_valid = nonnan_index[-1]
-                    z[last_valid + 1:] = z[last_valid]
         return z
 
 
