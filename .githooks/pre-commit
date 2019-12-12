@@ -1,0 +1,3 @@
+#!/bin/sh 
+exec pycodestyle --ignore=E501,W504  ./py_wake/ 
+exec python _notebooks\make_notebooks.py

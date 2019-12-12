@@ -96,5 +96,5 @@ if __name__ == '__main__':
                         'IEA37Site', 'Hornsrev1Site',
                         'noj', 'fuga', 'IEA37SimpleBastankhahGaussian', 'BastankhahGaussian',
                         'cmp_wakemodels',
-                        'noj_validation_exercise_solution', 'noj_validation_exercise', 'hornsrev_layout_optimization_exercise'])
+                        'noj_validation_exercise_solution', 'noj_validation_exercise', 'hornsrev_layout_optimization_exercise', 'hornsrev_layout_improve_layout_exercise'])
     print('Done')
