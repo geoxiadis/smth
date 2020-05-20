@@ -25,9 +25,9 @@ check_code_style:  # name the job what we like
 test_PyWake_windows:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
     test
-  script:  # runs on windows machine due to tag below
-  - c:/Anaconda3/scripts/conda init powershell
+  before_script:
   - c:/Anaconda3/scripts/activate pyTopfarm
+  script:  # runs on windows machine due to tag below
   - python -c "import sys; print (sys.executable)"
   #- c:/Anaconda3/scripts/conda  pyTopfarm pytest --cov-report term-missing:skip-covered --cov=py_wake --cov-config .coveragerc
   tags:  # tag for shared runner on windows machine
