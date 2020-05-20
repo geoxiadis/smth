@@ -28,10 +28,8 @@ test_PyWake_windows:  # name the job what we like
   script:  # runs on windows machine due to tag below
   - c:/Anaconda3/scripts/conda init 
   - "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
-  - c:/Anaconda3/scripts/activate pyTopfarm
   - python -c "import sys; print (sys.executable)"
-  #- c:/Anaconda3/scripts/activate pyTopfarm
-  #- python -c "import sys; print (sys.executable)"
+  - c:/Anaconda3/scripts/conda run -n pyTopfarm python -c "import sys; print (sys.executable)"
   #- c:/Anaconda3/scripts/conda  pyTopfarm pytest --cov-report term-missing:skip-covered --cov=py_wake --cov-config .coveragerc
   tags:  # tag for shared runner on windows machine
   - ANMH_old
