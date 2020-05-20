@@ -26,8 +26,7 @@ test_PyWake_windows:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
     test
   script:  # runs on windows machine due to tag below
-  - c:/Anaconda3/scripts/activate pyTopfarm && - python -c "import numpy"
-  - python -m pytest --cov-report term-missing:skip-covered --cov=py_wake --cov-config .coveragerc
+  - c:/Anaconda3/scripts/conda run -n pyTopfarm pytest --cov-report term-missing:skip-covered --cov=py_wake --cov-config .coveragerc
   tags:  # tag for shared runner on windows machine
   - ANMH_old
 
