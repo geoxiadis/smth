@@ -26,7 +26,7 @@ test_PyWake_windows:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
     test
   script:  # runs on windows machine due to tag below
-  - conda init powershell
+  - c:/Anaconda3/scripts/conda init powershell
   - "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
   - c:/Anaconda3/scripts/activate pyTopfarm
   - python -c "import sys; print (sys.executable)"
