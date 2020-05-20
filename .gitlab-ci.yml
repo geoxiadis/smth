@@ -26,12 +26,9 @@ test_PyWake_windows:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
     test
   script:  # runs on windows machine due to tag below
-  - c:/Anaconda3/scripts/conda init powershell
+  - c:/Anaconda3/scripts/conda -n pytopfarm init powershell
   - "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
-  - cmd 
-  - c:\anaconda3\scripts\activate pytopfarm
   - python -c "import sys; print (sys.executable)"
-  - C:\Anaconda3\Scripts\conda run -n pytopfarm python -c "import sys; print (sys.executable)"
   #- c:/Anaconda3/scripts/activate pyTopfarm
   #- python -c "import sys; print (sys.executable)"
   #- c:/Anaconda3/scripts/conda  pyTopfarm pytest --cov-report term-missing:skip-covered --cov=py_wake --cov-config .coveragerc
