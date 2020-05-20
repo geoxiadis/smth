@@ -28,7 +28,7 @@ test_PyWake_windows:  # name the job what we like
   script:  # runs on windows machine due to tag below
   - c:/Anaconda3/scripts/conda init powershell
   - "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
-  - cmd /k "c:\anaconda3\scripts\activate pytopfarm & powershell python -c "import sys; print (sys.executable)""
+  - cmd /k "c:\anaconda3\scripts\activate pytopfarm & powershell & python -c "import sys; print (sys.executable)""
   - C:\Anaconda3\Scripts\conda run -n pytopfarm python -c "import sys; print (sys.executable)"
   #- c:/Anaconda3/scripts/activate pyTopfarm
   #- python -c "import sys; print (sys.executable)"
