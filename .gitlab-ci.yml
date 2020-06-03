@@ -29,9 +29,7 @@ test_PyWake_windows:  # name the job what we like
   #- c:/Anaconda3/scripts/conda init 
   #- "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
   - echo here1
-  - c:/Anaconda3/scripts/activate pyTopfarm && echo here1a
-  - echo here2
-  - where python
+  - c:/Anaconda3/scripts/activate pyTopfarm && where python
   - echo here3
   - python -c "import sys; print (sys.executable)"
   - echo here4
