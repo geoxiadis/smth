@@ -82,6 +82,19 @@ def test_get_defaults():
     npt.assert_array_equal(np.array(v80.get_defaults(1, d_i=100))[:, 0], [0, 70, 100])
 
 
+def test_yaw():
+    v80 = V80()
+    yaw = np.deg2rad(np.arange(-30, 31))
+    ws = np.zeros_like(yaw) + 8
+    P0 = v80.power(ws[0])
+    if 0:
+        plt.plot(yaw, v80.power(ws, 0, yaw) / P0)
+        plt.plot(yaw, np.cos(yaw)**3)
+        plt.grid()
+        plt.show()
+    npt.assert_array_almost_equal(v80.power(ws, 0, yaw) / P0, np.cos(yaw)**3, 2)
+
+
 def test_gradients():
     wt = IEA37_WindTurbines()
     with use_autograd_in([WindTurbines, iea37_reader]):

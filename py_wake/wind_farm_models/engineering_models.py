@@ -421,7 +421,7 @@ class PropagateDownwind(EngineeringWindFarmModel):
                 if self.turbulenceModel:
                     TI_eff_mk.append(self.turbulenceModel.calc_effective_TI(TI_mk[m], add_turb_nk[n_uw]))
 
-            ct_lk, power_lk = self.windTurbines._ct_power(WS_eff_lk, type_i[i_wt_l])
+            ct_lk, power_lk = self.windTurbines._ct_power(WS_eff_lk, type_i[i_wt_l], yaw_ilk[i_wt_l, i_wd_l])
 
             power_jlk.append(power_lk)
             ct_jlk.append(ct_lk)
@@ -553,7 +553,7 @@ class All2AllIterative(EngineeringWindFarmModel):
         # Iterate until convergence
         for j in tqdm(range(I), disable=I <= 1 or not self.verbose, desc="Calculate flow interaction", unit="wt"):
 
-            ct_ilk, power_ilk = self.windTurbines._ct_power(WS_eff_ilk, type_i)
+            ct_ilk, power_ilk = self.windTurbines._ct_power(WS_eff_ilk, type_i, yaw_ilk)
             args['ct_ilk'] = ct_ilk
             args['WS_eff_ilk'] = WS_eff_ilk
             if self.deflectionModel:
