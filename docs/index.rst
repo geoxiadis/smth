@@ -47,6 +47,7 @@ Contents:
         notebooks/Optimization
         notebooks/exercises/CombineModels
         notebooks/exercises/Improve_layout
+        notebooks/exercises/WakeDeflection
         
         
    
