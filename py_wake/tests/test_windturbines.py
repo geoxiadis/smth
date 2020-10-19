@@ -3,7 +3,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from py_wake import NOJ
-from py_wake.examples.data import wtg_path
+from py_wake.examples.data import wtg_path, hornsrev1
 from py_wake.examples.data.hornsrev1 import V80, wt9_x, wt9_y, Hornsrev1Site
 from py_wake.examples.data.iea37 import iea37_reader
 from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines
@@ -51,13 +51,14 @@ def test_twotype_windturbines():
         power[types == 1] *= 1.1
         return power
 
+    power_curve = hornsrev1.power_curve
     wts = WindTurbines(names=['V80', 'V88'],
                        diameters=[80, 88],
                        hub_heights=[70, 77],
                        ct_funcs=[v80.ct_funcs[0],
                                  v80.ct_funcs[0]],
-                       power_funcs=[v80.power,
-                                    lambda ws:v80.power(ws) * 1.1],
+                       power_funcs=[lambda ws, yaw: np.interp(ws, power_curve[:, 0], power_curve[:, 1]),
+                                    lambda ws, yaw: np.interp(ws, power_curve[:, 0], power_curve[:, 1]) * 1.1],
                        power_unit='w'
                        )
 
