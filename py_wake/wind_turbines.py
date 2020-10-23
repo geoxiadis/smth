@@ -8,7 +8,7 @@ from inspect import signature
 class WindTurbines():
     """Set of multiple type wind turbines"""
 
-    def __init__(self, names, diameters, hub_heights, ct_funcs, power_funcs, power_unit):
+    def __init__(self, names, diameters, hub_heights, ct_funcs, power_funcs, power_unit, ct_power_yaw_models=None):
         """Initialize WindTurbines
 
         Parameters
@@ -25,6 +25,8 @@ class WindTurbines():
             Wind turbine power functions; func(ws) -> power
         power_unit : {'W', 'kW', 'MW', 'GW'}
             Unit of power_func output (case insensitive)
+        ct_power_yaw_models : {None, 'surrogate'}
+            Model used for determining power and ct values at yaw offsets
         """
         self._names = np.array(names)
         self._diameters = np.array(diameters)
@@ -32,15 +34,23 @@ class WindTurbines():
 
         def add_yaw_model(func_lst, yaw_model):
             return [(f, yaw_model(f))[len(signature(f).parameters) == 1] for f in func_lst]
-        self.ct_funcs = add_yaw_model(ct_funcs, CTYawModel)
-        power_funcs = add_yaw_model(power_funcs, YawModel)
 
-        assert len(names) == len(diameters) == len(hub_heights) == len(ct_funcs) == len(power_funcs)
         power_scale = {'w': 1, 'kw': 1e3, 'mw': 1e6, 'gw': 1e9}[power_unit.lower()]
-        if power_scale != 1:
+        if not ct_power_yaw_models:
+            self.ct_funcs = add_yaw_model(ct_funcs, CTYawModel)
+            power_funcs = add_yaw_model(power_funcs, YawModel)
+        elif ct_power_yaw_models == 'surrogate':
+            self.ct_funcs = add_yaw_model(ct_funcs, YawSurrogateModel)
+            power_funcs = add_yaw_model(power_funcs, YawSurrogateModel)
+           
+
+        if power_scale != 1 and not ct_power_yaw_models:
             self.power_funcs = list([PowerScaler(f, power_scale) for f in power_funcs])
+        elif power_scale != 1 and ct_power_yaw_models == 'surrogate':
+            self.power_funcs = list([PowerSurrogateScaler(f, power_scale) for f in power_funcs])
         else:
             self.power_funcs = power_funcs
+        assert len(names) == len(diameters) == len(hub_heights) == len(ct_funcs) == len(power_funcs)
 
     def _info(self, var, types):
         return var[np.asarray(types, int)]
@@ -60,7 +70,7 @@ class WindTurbines():
         """
         return self._info(self._names, types)
 
-    def power(self, ws_i, type_i=0, yaw_i=0):
+    def power(self, ws_i, type_i=0, yaw_i=0, ti_i=0):
         """Power in watt
 
         Parameters
@@ -76,9 +86,9 @@ class WindTurbines():
         power : array_like
             Power production for the specified wind turbine type(s) and wind speed
         """
-        return self._ct_power(np.atleast_1d(ws_i), type_i, yaw_i=yaw_i)[1]
+        return self._ct_power(np.atleast_1d(ws_i), type_i, yaw_i=yaw_i, ti_i=ti_i)[1]
 
-    def ct(self, ws_i, type_i=0, yaw_i=0):
+    def ct(self, ws_i, type_i=0, yaw_i=0, ti_i=0):
         """Thrust coefficient
 
         Parameters
@@ -93,7 +103,7 @@ class WindTurbines():
         ct : array_like
             Thrust coefficient for the specified wind turbine type(s) and wind speed
         """
-        return self._ct_power(ws_i, type_i, yaw_i=yaw_i)[0]
+        return self._ct_power(ws_i, type_i, yaw_i=yaw_i, ti_i=ti_i)[0]
 
     def types(self):
         return np.arange(len(self._names))
@@ -122,17 +132,17 @@ class WindTurbines():
             d_i = np.zeros(N) + d_i
         return np.asarray(type_i), np.asarray(h_i), np.asarray(d_i)
 
-    def _ct_power(self, ws_i, type_i=0, yaw_i=0):
+    def _ct_power(self, ws_i, type_i=0, yaw_i=0, ti_i=0):
         ws_i = np.asarray(ws_i)
         t = np.unique(type_i)  # .astype(int)
         if len(t) > 1:
             if type_i.shape != ws_i.shape:
                 type_i = (np.zeros(ws_i.shape[0]) + type_i).astype(int)
-            CT = np.array([self.ct_funcs[t](ws, yaw) for t, ws, yaw in zip(type_i, ws_i, yaw_i)])
-            P = np.array([self.power_funcs[t](ws, yaw) for t, ws, yaw in zip(type_i, ws_i, yaw_i)])
+            CT = np.array([self.ct_funcs[t](ws, yaw, ti) for t, ws, yaw, ti in zip(type_i, ws_i, yaw_i, ti_i)])
+            P = np.array([self.power_funcs[t](ws, yaw, ti) for t, ws, yaw, ti in zip(type_i, ws_i, yaw_i, ti_i)])
             return CT, P
         else:
-            return self.ct_funcs[t[0]](ws_i, yaw_i), self.power_funcs[t[0]](ws_i, yaw_i)
+            return self.ct_funcs[t[0]](ws_i, yaw_i, ti_i), self.power_funcs[t[0]](ws_i, yaw_i, ti_i)
 
     def set_gradient_funcs(self, power_grad_funcs, ct_grad_funcs):
         def add_grad(f_lst, df_lst):
@@ -383,7 +393,7 @@ class WindTurbines():
 class OneTypeWindTurbines(WindTurbines):
     """Set of wind turbines (one type, i.e. all wind turbines have same name, diameter, power curve etc"""
 
-    def __init__(self, name, diameter, hub_height, ct_func, power_func, power_unit):
+    def __init__(self, name, diameter, hub_height, ct_func, power_func, power_unit, ct_power_yaw_models=None):
         """Initialize OneTypeWindTurbine
 
         Parameters
@@ -404,7 +414,8 @@ class OneTypeWindTurbines(WindTurbines):
         WindTurbines.__init__(self, [name], [diameter], [hub_height],
                               [ct_func],
                               [power_func],
-                              power_unit)
+                              power_unit,
+                              ct_power_yaw_models)
 
     @staticmethod
     def from_tabular(name, diameter, hub_height, ws, power, ct, power_unit):
@@ -422,7 +433,7 @@ class PowerScaler():
         self.f = f
         self.power_scale = power_scale
 
-    def __call__(self, ws, yaw):
+    def __call__(self, ws, yaw, ti=None):
         return self.f(ws, yaw) * self.power_scale
 
 
@@ -430,16 +441,34 @@ class YawModel():
     def __init__(self, func):
         self.func = func
 
-    def __call__(self, ws, yaw):
+    def __call__(self, ws, yaw, ti=None):
         return self.func(np.cos(yaw) * ws)
 
 
 class CTYawModel(YawModel):
-    def __call__(self, ws, yaw):
+    def __call__(self, ws, yaw, ti=None):
         # ct_n = ct_curve(cos(yaw)*ws)*cos^2(yaw)
         # ct_x = ct_n*cos^2(yaw) = ct_curve(cos(yaw)*ws)*cos^3(yaw)
         co = np.cos(yaw)
-        return self.func(np.cos(yaw) * ws) * co**3
+        return self.func(co * ws) * co**3
+
+
+class PowerSurrogateScaler():
+    def __init__(self, f, power_scale):
+        self.f = f
+        self.power_scale = power_scale
+
+    def __call__(self, ws, yaw, ti):
+        return self.f(ws, yaw, ti) * self.power_scale
+
+
+class YawSurrogateModel():
+    def __init__(self, func):
+        self.func = func
+
+    def __call__(self, ws, yaw, ti):
+        return self.func(ws, yaw, ti)
+
 
 
 class Interp(object):

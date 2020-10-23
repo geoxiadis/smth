@@ -399,7 +399,7 @@ class PropagateDownwind(EngineeringWindFarmModel):
             # look up power and thrust coefficient
             if j == 0:  # Most upstream turbines (no wake)
                 WS_eff_lk = WS_mk[m]
-                WS_eff_mk.append(WS_eff_lk)
+                # WS_eff_mk.append(WS_eff_lk)
                 if self.turbulenceModel:
                     TI_eff_mk.append(TI_mk[m])
             else:  # 2..n most upstream turbines (wake)
@@ -417,11 +417,12 @@ class PropagateDownwind(EngineeringWindFarmModel):
                     deficit2WT = np.array([d_nk2[i] for d_nk2, i in zip(deficit_nk, range(j)[::-1])])
                     WS_eff_lk = self.superpositionModel.calc_effective_WS(WS_mk[m], deficit2WT)
 
-                WS_eff_mk.append(WS_eff_lk)
+                # WS_eff_mk.append(WS_eff_lk)
                 if self.turbulenceModel:
                     TI_eff_mk.append(self.turbulenceModel.calc_effective_TI(TI_mk[m], add_turb_nk[n_uw]))
 
-            ct_lk, power_lk = self.windTurbines._ct_power(WS_eff_lk, type_i[i_wt_l], yaw_ilk[i_wt_l, i_wd_l])
+            WS_eff_mk.append(WS_eff_lk)
+            ct_lk, power_lk = self.windTurbines._ct_power(WS_eff_lk, type_i[i_wt_l], yaw_ilk[i_wt_l, i_wd_l], TI_eff_mk[-1])
 
             power_jlk.append(power_lk)
             ct_jlk.append(ct_lk)
@@ -537,7 +538,7 @@ class All2AllIterative(EngineeringWindFarmModel):
         power_ilk = np.zeros((I, L, K))
         WS_eff_ilk_last = WS_eff_ilk.copy()
 
-        ct_ilk = self.windTurbines.ct(lw.WS.ilk((I, L, K)), type_i)
+        ct_ilk = self.windTurbines.ct(lw.WS.ilk((I, L, K)), type_i, yaw_ilk, lw.TI.ilk((I, L, K)))
         D_src_il = D_i[:, na]
         args = {'WS_ilk': lw.WS.ilk((I, L, K)),
                 'TI_ilk': lw.TI.ilk((I, L, K)),
@@ -553,7 +554,7 @@ class All2AllIterative(EngineeringWindFarmModel):
         # Iterate until convergence
         for j in tqdm(range(I), disable=I <= 1 or not self.verbose, desc="Calculate flow interaction", unit="wt"):
 
-            ct_ilk, power_ilk = self.windTurbines._ct_power(WS_eff_ilk, type_i, yaw_ilk)
+            ct_ilk, power_ilk = self.windTurbines._ct_power(WS_eff_ilk, type_i, yaw_ilk, lw.TI.ilk((I, L, K)))
             args['ct_ilk'] = ct_ilk
             args['WS_eff_ilk'] = WS_eff_ilk
             if self.deflectionModel:

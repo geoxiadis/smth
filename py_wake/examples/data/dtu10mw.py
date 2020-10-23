@@ -84,6 +84,8 @@ def main():
     import matplotlib.pyplot as plt
     plt.plot(ws, wt.power(ws), '.-')
     plt.show()
+    plt.plot(ws, wt.ct(ws), '.-')
+    plt.show()
 
 
 if __name__ == '__main__':
