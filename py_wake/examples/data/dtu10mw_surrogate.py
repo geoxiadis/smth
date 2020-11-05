@@ -4,13 +4,15 @@ import numpy as np
 import tensorflow as tf
 
 from py_wake.wind_turbines import OneTypeWindTurbines
+from py_wake.utils.surrogate_utils import Frandsen_TI_ik, Frandsen_WS_ik, Frandsen_pdf_ik
+from py_wake.examples.data.dtu10mw import ct_curve
 from topfarm.constraint_components.load import (
         SurrogateModel, predict_output)
 
 class DTU10MWSurrogate(OneTypeWindTurbines):
     '''
     '''
-    def __init__(self):
+    def __init__(self, load_signals):
         OneTypeWindTurbines.__init__(
             self,
             'DTU10MW',
@@ -19,8 +21,8 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
             ct_func=self._ct,
             power_func=self._power,
             power_unit='kW',
-            ct_power_yaw_models='surrogate')
-        path = r'.\surrogates'
+            power_yaw_model='surrogate')
+        path = os.path.join(os.path.dirname(__file__), 'surrogates')
         file_list = [x[0] for x in os.walk(path)]
         file_list.pop(0)
         load_types = dict.fromkeys([os.path.basename(x) for x in file_list])
@@ -29,7 +31,9 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
             with open(os.path.join(f, 'save_dic.pkl'), 'rb') as g:
                 save_dic = pickle.load(g)
             load_types[l] = SurrogateModel(model, **save_dic)
+        self.loads = True
         self.load_types = load_types
+        self.load_signals = load_signals
 
 
     def get_output(self, key, u, yaw, ti, alpha):
@@ -52,24 +56,63 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
                 )
         return output
 
-    def _ct(self, u, yaw, ti, alpha=0.2):
-        return self.get_output('Ct', u, yaw, ti, alpha)
+    # def _ct(self, u, yaw, ti, alpha=0.2):
+    #     return self.get_output('Ct', u, yaw, ti, alpha)
+    def _ct(self, u):
+        return np.interp(u, ct_curve[:, 0], ct_curve[:, 1])
 
     def _power(self, u, yaw, ti, alpha=0.2):
         return self.get_output('Power', u, yaw, ti, alpha)
+    
+    def get_loads(self, WS_eff_ilk, TI_eff_ilk, yaw_ilk, pdf_ilk, alpha):
+        shape_ilk = WS_eff_ilk.shape
+        alpha = np.broadcast_to(alpha, shape_ilk)
+        loads = {}
+        for (ls, m) in zip(self.load_signals, self.m_list):
+            surrogate = self.load_types[ls]
+            DEL_ilk, _ = predict_output(
+                    model=surrogate.model,
+                    input={
+                        'TI': TI_eff_ilk.ravel(),
+                        'Alpha': alpha.ravel(),
+                        'U': WS_eff_ilk.ravel(),
+                        'Yaw': yaw_ilk.ravel(),
+                        },
+                    model_in_keys=surrogate.input_channel_names,
+                    input_scaler=surrogate.input_scaler,
+                    output_scaler=surrogate.output_scaler)
+            LDEL = ((pdf_ilk * DEL_ilk ** m).sum((1, 2)) * self.lifetime_on_f1zh ** (1/m))
+
+            loads['DEL' + ls] = {
+                'values': DEL_ilk.reshape(shape_ilk),
+                'dims': ['wt', 'wd', 'ws'],
+                'descr': 'Damage Equivalent Load',}
+
+            loads['LDEL' + ls] = {
+                'values': LDEL.ravel(),
+                'dims': ['wt'],
+                'descr': 'Lifetime Damage Equivalent Load',}
+        return loads
+        
 
 
 def main():
-    wt = DTU10MWSurrogate()
+    wt = DTU10MWSurrogate(load_signals=['Blade_root_flapwise_M_x'])
     print('Diameter', wt.diameter())
     print('Hub height', wt.hub_height())
     ws = np.arange(3, 25)
     import matplotlib.pyplot as plt
     for yaw in np.arange(-40, 50, 10):
-        plt.plot(ws, wt.power(ws, yaw_i=yaw), '.-')
+        plt.plot(ws, wt.power(ws, yaw_i=yaw), '.-',label='yaw'+str(yaw))
+    plt.legend()
+    plt.ylabel('Power')
+    plt.xlabel('Wsp')
     plt.show()
     for yaw in np.arange(-40, 50, 10):
-        plt.plot(ws, wt.ct(ws, yaw_i=yaw), '.-')
+        plt.plot(ws, wt.ct(ws, yaw_i=np.radians(yaw)), '.-',label='yaw'+str(yaw))
+    plt.legend()
+    plt.ylabel('Ct')
+    plt.xlabel('Wsp')
     plt.show()
 
 if __name__ == '__main__':

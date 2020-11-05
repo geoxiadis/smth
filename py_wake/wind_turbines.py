@@ -8,7 +8,8 @@ from inspect import signature
 class WindTurbines():
     """Set of multiple type wind turbines"""
 
-    def __init__(self, names, diameters, hub_heights, ct_funcs, power_funcs, power_unit, ct_power_yaw_models=None):
+    def __init__(self, names, diameters, hub_heights, ct_funcs, power_funcs, power_unit,
+                 ct_yaw_model=None, power_yaw_model=None):#, surrogate_models=None):
         """Initialize WindTurbines
 
         Parameters
@@ -25,8 +26,12 @@ class WindTurbines():
             Wind turbine power functions; func(ws) -> power
         power_unit : {'W', 'kW', 'MW', 'GW'}
             Unit of power_func output (case insensitive)
-        ct_power_yaw_models : {None, 'surrogate'}
-            Model used for determining power and ct values at yaw offsets
+        ct_yaw_model : {None, 'surrogate'}
+            Model used for determining ct values at yaw offsets
+        power_yaw_model : {None, 'surrogate'}
+            Model used for determining power values at yaw offsets
+        surrogate_models : list of Topfarm Surrogate Models
+            List of Topfarm Surrogate Models
         """
         self._names = np.array(names)
         self._diameters = np.array(diameters)
@@ -36,21 +41,30 @@ class WindTurbines():
             return [(f, yaw_model(f))[len(signature(f).parameters) == 1] for f in func_lst]
 
         power_scale = {'w': 1, 'kw': 1e3, 'mw': 1e6, 'gw': 1e9}[power_unit.lower()]
-        if not ct_power_yaw_models:
-            self.ct_funcs = add_yaw_model(ct_funcs, CTYawModel)
+
+        if not power_yaw_model:
             power_funcs = add_yaw_model(power_funcs, YawModel)
-        elif ct_power_yaw_models == 'surrogate':
-            self.ct_funcs = add_yaw_model(ct_funcs, YawSurrogateModel)
+        elif power_yaw_model == 'surrogate':
             power_funcs = add_yaw_model(power_funcs, YawSurrogateModel)
+
+        if not ct_yaw_model:
+            self.ct_funcs = add_yaw_model(ct_funcs, CTYawModel)
+        elif ct_yaw_model == 'surrogate':
+            self.ct_funcs = add_yaw_model(ct_funcs, YawSurrogateModel)
            
 
-        if power_scale != 1 and not ct_power_yaw_models:
+        if power_scale != 1 and not power_yaw_model:
             self.power_funcs = list([PowerScaler(f, power_scale) for f in power_funcs])
-        elif power_scale != 1 and ct_power_yaw_models == 'surrogate':
+        elif power_scale != 1 and power_yaw_model == 'surrogate':
             self.power_funcs = list([PowerSurrogateScaler(f, power_scale) for f in power_funcs])
         else:
             self.power_funcs = power_funcs
         assert len(names) == len(diameters) == len(hub_heights) == len(ct_funcs) == len(power_funcs)
+        
+        # if surrogate_models is not None:
+        #     self.loads = True
+        # else:
+        #     self.loads = None
 
     def _info(self, var, types):
         return var[np.asarray(types, int)]
@@ -388,12 +402,32 @@ class WindTurbines():
         return WindTurbines(names=names, diameters=diameters,
                             hub_heights=hub_heights, ct_funcs=ct_funcs,
                             power_funcs=power_funcs, power_unit=power_unit)
+    
+    # def get_loads(WS_eff_ilk, TI_eff_ilk, yaw_ilk, alpha):
+    #     # u = np.asarray(u)
+    #     # yaw = np.broadcast_to(yaw, u.shape)
+    #     # ti = np.broadcast_to(ti, u.shape)
+        
+    #     alpha_ilk = np.broadcast_to(alpha, u.shape)
+    #     surrogate = self.load_types[key]
+    #     output, _ = predict_output(
+    #             model=surrogate.model,
+    #             input={
+    #                 'TI': TI_eff_ilk.ravel(),
+    #                 'Alpha': alpha_ilk.ravel(),
+    #                 'U': WS_eff_ilk.ravel(),
+    #                 'Yaw': yaw_ilk.ravel(),
+    #                 },
+    #             model_in_keys=surrogate.input_channel_names,
+    #             input_scaler=surrogate.input_scaler,
+    #             output_scaler=surrogate.output_scaler
+    #             )
 
 
 class OneTypeWindTurbines(WindTurbines):
     """Set of wind turbines (one type, i.e. all wind turbines have same name, diameter, power curve etc"""
 
-    def __init__(self, name, diameter, hub_height, ct_func, power_func, power_unit, ct_power_yaw_models=None):
+    def __init__(self, name, diameter, hub_height, ct_func, power_func, power_unit, ct_yaw_model=None, power_yaw_model=None):
         """Initialize OneTypeWindTurbine
 
         Parameters
@@ -415,7 +449,8 @@ class OneTypeWindTurbines(WindTurbines):
                               [ct_func],
                               [power_func],
                               power_unit,
-                              ct_power_yaw_models)
+                              ct_yaw_model,
+                              power_yaw_model)
 
     @staticmethod
     def from_tabular(name, diameter, hub_height, ws, power, ct, power_unit):

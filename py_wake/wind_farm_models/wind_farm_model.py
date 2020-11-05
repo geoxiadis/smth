@@ -50,11 +50,18 @@ class WindFarmModel(ABC):
             return SimulationResult(self, lw, [0], yaw_ilk, z, z, z, z)
         res = self.calc_wt_interaction(x_i=x, y_i=y, h_i=h, type_i=type, yaw_ilk=yaw_ilk, wd=wd, ws=ws)
         WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, localWind = res
+        kwargs = {}
+        if self.windTurbines.loads is not None:
+            if hasattr(self.site.shear, 'alpha'):
+                alpha = self.site.shear.alpha.values
+            else:
+                alpha = None
+            kwargs.update(self.windTurbines.get_loads(WS_eff_ilk, TI_eff_ilk, yaw_ilk, alpha))
         return SimulationResult(self, localWind=localWind,
                                 type_i=type, yaw_ilk=yaw_ilk,
 
                                 WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk,
-                                power_ilk=power_ilk, ct_ilk=ct_ilk)
+                                power_ilk=power_ilk, ct_ilk=ct_ilk, **kwargs)
 
     def aep(self, x, y, h=None, type=0, wd=None, ws=None, yaw_ilk=None,  # @ReservedAssignment
             normalize_probabilities=False, with_wake_loss=True):
@@ -130,7 +137,7 @@ class SimulationResult(xr.Dataset):
     __slots__ = ('windFarmModel', )
 
     def __init__(self, windFarmModel, localWind, type_i, yaw_ilk,
-                 WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk):
+                 WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, **kwargs):
         self.windFarmModel = windFarmModel
         lw = localWind
         n_wt = len(lw.i)
@@ -162,6 +169,13 @@ class SimulationResult(xr.Dataset):
         else:
             self['Yaw'] = xr.DataArray(yaw_ilk, dims=['wt', 'wd', 'ws'])
         self['Yaw'].attrs['Description'] = 'Yaw misalignment [deg]'
+        
+        # add other quantities to the data array
+        if kwargs is not None:
+            for key in kwargs.keys():
+                self[key] = xr.DataArray(kwargs[key]['values'], dims=kwargs[key]['dims'])
+                self[key].attrs['Description'] = kwargs[key]['descr']
+           
 
         # for backward compatibility
         for k in ['WD', 'WS', 'TI', 'P', 'WS_eff', 'TI_eff']:
