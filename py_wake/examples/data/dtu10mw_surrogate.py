@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 from py_wake.wind_turbines import OneTypeWindTurbines
-from py_wake.utils.surrogate_utils import Frandsen_TI_ik, Frandsen_WS_ik, Frandsen_pdf_ik
+# from py_wake.utils.surrogate_utils import Frandsen_TI_ik, Frandsen_WS_ik, Frandsen_pdf_ik
 from py_wake.examples.data.dtu10mw import ct_curve
 from topfarm.constraint_components.load import (
         SurrogateModel, predict_output)
@@ -12,7 +12,7 @@ from topfarm.constraint_components.load import (
 class DTU10MWSurrogate(OneTypeWindTurbines):
     '''
     '''
-    def __init__(self, load_signals):
+    def __init__(self, load_signals, m_list):
         OneTypeWindTurbines.__init__(
             self,
             'DTU10MW',
@@ -34,6 +34,11 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
         self.loads = True
         self.load_types = load_types
         self.load_signals = load_signals
+        self.m_list = m_list
+        lifetime = float(60 * 60 * 24 * 365 * 20)
+        f1zh = 10.0 ** 7.0
+        self.lifetime_on_f1zh = lifetime / f1zh
+
 
 
     def get_output(self, key, u, yaw, ti, alpha):
@@ -67,6 +72,7 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
     def get_loads(self, WS_eff_ilk, TI_eff_ilk, yaw_ilk, pdf_ilk, alpha):
         shape_ilk = WS_eff_ilk.shape
         alpha = np.broadcast_to(alpha, shape_ilk)
+        pdf_ilk = np.broadcast_to(pdf_ilk, shape_ilk)
         loads = {}
         for (ls, m) in zip(self.load_signals, self.m_list):
             surrogate = self.load_types[ls]
@@ -81,14 +87,16 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
                     model_in_keys=surrogate.input_channel_names,
                     input_scaler=surrogate.input_scaler,
                     output_scaler=surrogate.output_scaler)
-            LDEL = ((pdf_ilk * DEL_ilk ** m).sum((1, 2)) * self.lifetime_on_f1zh ** (1/m))
+            print(pdf_ilk.sum((1,2)))
+            print(m, 1/m)
+            LDEL = ((pdf_ilk * DEL_ilk.reshape(shape_ilk) ** m).sum((1, 2)) * self.lifetime_on_f1zh) ** (1/m)
 
-            loads['DEL' + ls] = {
+            loads['DEL_' + ls] = {
                 'values': DEL_ilk.reshape(shape_ilk),
                 'dims': ['wt', 'wd', 'ws'],
                 'descr': 'Damage Equivalent Load',}
 
-            loads['LDEL' + ls] = {
+            loads['LDEL_' + ls] = {
                 'values': LDEL.ravel(),
                 'dims': ['wt'],
                 'descr': 'Lifetime Damage Equivalent Load',}

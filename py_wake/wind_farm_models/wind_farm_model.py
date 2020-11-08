@@ -56,7 +56,7 @@ class WindFarmModel(ABC):
                 alpha = self.site.shear.alpha.values
             else:
                 alpha = None
-            kwargs.update(self.windTurbines.get_loads(WS_eff_ilk, TI_eff_ilk, yaw_ilk, alpha))
+            kwargs.update(self.windTurbines.get_loads(WS_eff_ilk, TI_eff_ilk, yaw_ilk, localWind.P_ilk, alpha))
         return SimulationResult(self, localWind=localWind,
                                 type_i=type, yaw_ilk=yaw_ilk,
 
