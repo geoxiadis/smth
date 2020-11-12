@@ -87,9 +87,10 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
                     model_in_keys=surrogate.input_channel_names,
                     input_scaler=surrogate.input_scaler,
                     output_scaler=surrogate.output_scaler)
-            print(pdf_ilk.sum((1,2)))
-            print(m, 1/m)
-            LDEL = ((pdf_ilk * DEL_ilk.reshape(shape_ilk) ** m).sum((1, 2)) * self.lifetime_on_f1zh) ** (1/m)
+            # print(pdf_ilk.sum((1,2)))
+            # print(m, 1/m)
+            # LDEL = ((pdf_ilk * DEL_ilk.reshape(shape_ilk) ** m).sum((1, 2)) * self.lifetime_on_f1zh) ** (1/m)
+            LDEL = (((pdf_ilk * (DEL_ilk.reshape(shape_ilk)/DEL_ilk.mean()) ** m).sum((1, 2)) * self.lifetime_on_f1zh) ** (1/m))*DEL_ilk.mean()
 
             loads['DEL_' + ls] = {
                 'values': DEL_ilk.reshape(shape_ilk),
