@@ -1,7 +1,9 @@
 import os
 import pickle
-import numpy as np
 import tensorflow as tf
+
+import numpy as np
+from numpy import newaxis as na
 
 from py_wake.wind_turbines import OneTypeWindTurbines
 # from py_wake.utils.surrogate_utils import Frandsen_TI_ik, Frandsen_WS_ik, Frandsen_pdf_ik
@@ -67,10 +69,15 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
     def _power(self, u, yaw, ti, alpha=0.2):
         return self.get_output('Power', u, yaw, ti, alpha)
     
-    def get_loads(self, WS_eff_ilk, TI_eff_ilk, yaw_ilk, pdf_ilk, alpha):
+    def get_loads(self, WS_eff_ilk, TI_eff_ilk, yaw_ilk, pdf_ilk, alpha, normalize_probabilities):
+        if normalize_probabilities:
+            norm = pdf_ilk.sum((1, 2))[:, na, na]
+        else:
+            norm = 1
+        print(alpha)
         shape_ilk = WS_eff_ilk.shape
         alpha = np.broadcast_to(alpha, shape_ilk)
-        pdf_ilk = np.broadcast_to(pdf_ilk, shape_ilk) # check that this sums to 1
+        pdf_ilk = np.broadcast_to((pdf_ilk / norm), shape_ilk) # check that this sums to 1
         loads = {}
         for (ls, m) in zip(self.load_signals, self.m_list):
             surrogate = self.load_types[ls]

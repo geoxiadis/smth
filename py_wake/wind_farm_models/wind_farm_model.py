@@ -18,7 +18,7 @@ class WindFarmModel(ABC):
         self.site = site
         self.windTurbines = windTurbines
 
-    def __call__(self, x, y, h=None, type=0, wd=None, ws=None, yaw_ilk=None, verbose=False):
+    def __call__(self, x, y, h=None, type=0, wd=None, ws=None, yaw_ilk=None, verbose=False, normalize_probabilities=False):
         """Run the wind farm simulation
 
         Parameters
@@ -56,10 +56,9 @@ class WindFarmModel(ABC):
                 alpha = self.site.shear.alpha.values
             else:
                 alpha = None
-            kwargs.update(self.windTurbines.get_loads(WS_eff_ilk, TI_eff_ilk, yaw_ilk, localWind.P_ilk, alpha))
+            kwargs.update(self.windTurbines.get_loads(WS_eff_ilk, TI_eff_ilk, yaw_ilk, localWind.P_ilk, alpha, normalize_probabilities))
         return SimulationResult(self, localWind=localWind,
                                 type_i=type, yaw_ilk=yaw_ilk,
-
                                 WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk,
                                 power_ilk=power_ilk, ct_ilk=ct_ilk, **kwargs)
 
