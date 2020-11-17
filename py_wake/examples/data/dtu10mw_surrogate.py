@@ -50,10 +50,10 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
         output, _ = predict_output(
                 model=surrogate.model,
                 input={
-                    'TI': ti.ravel(),
+                    'TI': ti.ravel() * 100, # surrogate is in %, pywake is in decimal
                     'Alpha': alpha.ravel(),
                     'U': u.ravel(),
-                    'Yaw': yaw.ravel(),
+                    'Yaw': np.degrees(yaw).ravel(), # surrogate is in deg, pywake-windturbines is in radians
                     },
                 model_in_keys=surrogate.input_channel_names,
                 input_scaler=surrogate.input_scaler,
@@ -61,8 +61,6 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
                 )
         return output
 
-    # def _ct(self, u, yaw, ti, alpha=0.2):
-    #     return self.get_output('Ct', u, yaw, ti, alpha)
     def _ct(self, u):
         return np.interp(u, ct_curve[:, 0], ct_curve[:, 1])
 
@@ -72,24 +70,21 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
     def get_loads(self, WS_eff_ilk, TI_eff_ilk, yaw_ilk, pdf_ilk, alpha):
         shape_ilk = WS_eff_ilk.shape
         alpha = np.broadcast_to(alpha, shape_ilk)
-        pdf_ilk = np.broadcast_to(pdf_ilk, shape_ilk)
+        pdf_ilk = np.broadcast_to(pdf_ilk, shape_ilk) # check that this sums to 1
         loads = {}
         for (ls, m) in zip(self.load_signals, self.m_list):
             surrogate = self.load_types[ls]
             DEL_ilk, _ = predict_output(
                     model=surrogate.model,
                     input={
-                        'TI': TI_eff_ilk.ravel(),
+                        'TI': (TI_eff_ilk.ravel()) * 100,# surrogate is in %, pywake is in decimal
                         'Alpha': alpha.ravel(),
                         'U': WS_eff_ilk.ravel(),
-                        'Yaw': yaw_ilk.ravel(),
+                        'Yaw': yaw_ilk.ravel(),# surrogate is in deg, pywake-site is in deg
                         },
                     model_in_keys=surrogate.input_channel_names,
                     input_scaler=surrogate.input_scaler,
                     output_scaler=surrogate.output_scaler)
-            # print(pdf_ilk.sum((1,2)))
-            # print(m, 1/m)
-            # LDEL = ((pdf_ilk * DEL_ilk.reshape(shape_ilk) ** m).sum((1, 2)) * self.lifetime_on_f1zh) ** (1/m)
             LDEL = (((pdf_ilk * (DEL_ilk.reshape(shape_ilk)/DEL_ilk.mean()) ** m).sum((1, 2)) * self.lifetime_on_f1zh) ** (1/m))*DEL_ilk.mean()
 
             loads['DEL_' + ls] = {

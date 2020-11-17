@@ -420,7 +420,8 @@ class PropagateDownwind(EngineeringWindFarmModel):
                 # WS_eff_mk.append(WS_eff_lk)
                 if self.turbulenceModel:
                     TI_eff_mk.append(self.turbulenceModel.calc_effective_TI(TI_mk[m], add_turb_nk[n_uw]))
-
+            if not self.turbulenceModel:
+                TI_eff_mk = TI_mk
             WS_eff_mk.append(WS_eff_lk)
             ct_lk, power_lk = self.windTurbines._ct_power(WS_eff_lk, type_i[i_wt_l], yaw_ilk[i_wt_l, i_wd_l], TI_eff_mk[-1])
 
