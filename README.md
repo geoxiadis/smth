@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/pypi/l/py_wake)](https://gitlab.windenergy.dtu.dk/TOPFARM/PyWake/blob/master/LICENSE)
 
 PyWakePark: 
-[![pipeline status](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/pywake_park/badges/pywake_2/pipeline.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/pywake_park/-/commits/pywake_2)
+[![pipeline status](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/pywake_park/badges/master/pipeline.svg)](https://gitlab.windenergy.dtu.dk/TOPFARM/cuttingedge/pywake/pywake_park/-/commits/master)
 
 ![PyWake](https://gitlab.windenergy.dtu.dk/TOPFARM/PyWake/raw/master/docs/logo.svg)
 
