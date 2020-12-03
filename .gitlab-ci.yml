@@ -39,14 +39,6 @@ trigger_build:
   tags:  # only runners with this tag can do the job [3]
   - python
   
-# ===== Trigger PyWakePark pipeline =====
-trigger_build_pywake_2_branch:
-  stage: test
-  script:
-    - "curl -X POST -F token=873f41e7914664e3b2359b40890265 -F ref=pywake_2 https://gitlab.windenergy.dtu.dk/api/v4/projects/1145/trigger/pipeline"
-  tags:  # only runners with this tag can do the job [3]
-  - python
-
 
 # ===== build documentation =====
 pages:  # "pages" is a job specifically for GitLab pages [1]
