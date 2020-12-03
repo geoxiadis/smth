@@ -74,7 +74,7 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
             norm = pdf_ilk.sum((1, 2))[:, na, na]
         else:
             norm = 1
-        print(alpha)
+        # print(alpha)
         shape_ilk = WS_eff_ilk.shape
         alpha = np.broadcast_to(alpha, shape_ilk)
         pdf_ilk = np.broadcast_to((pdf_ilk / norm), shape_ilk) # check that this sums to 1

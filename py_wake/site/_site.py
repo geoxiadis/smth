@@ -451,7 +451,7 @@ class UniformWeibullSite(UniformSite):
     weibull distributed wind speed
     """
 
-    def __init__(self, p_wd, a, k, ti, interp_method='nearest', shear=None):
+    def __init__(self, p_wd, a, k, ti, interp_method='nearest', shear=None, normalize_probabilities=False):
         """Initialize UniformWeibullSite
 
         Parameters
@@ -480,6 +480,7 @@ class UniformWeibullSite(UniformSite):
         self.default_ws = np.arange(3, 26)
         self.a = get_sector_xr(a, 'Weibull A')
         self.k = get_sector_xr(k, 'Weibull k')
+        self.normalize_probabilities = normalize_probabilities
 
     def weibull_weight(self, localWind, A, k):
         def cdf(ws, A=A, k=k):
@@ -496,7 +497,11 @@ class UniformWeibullSite(UniformSite):
         P_ilk = p_wd_ilk * self.weibull_weight(lw,
                                                self.a.interp(wd=lw.WD, method=self.interp_method),
                                                self.k.interp(wd=lw.WD, method=self.interp_method))
-        return P_ilk
+        if self.normalize_probabilities:
+            norm = (P_ilk.values).sum((0, 1))[np.newaxis, np.newaxis]
+        else:
+            norm = 1
+        return P_ilk / norm
 
 
 def get_sector_xr(v, name):
