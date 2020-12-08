@@ -51,12 +51,13 @@ class WindFarmModel(ABC):
         res = self.calc_wt_interaction(x_i=x, y_i=y, h_i=h, type_i=type, yaw_ilk=yaw_ilk, wd=wd, ws=ws)
         WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, localWind = res
         kwargs = {}
-        if self.windTurbines.loads is not None:
-            if hasattr(self.site.shear, 'alpha'):
-                alpha = self.site.shear.alpha.values
-            else:
-                alpha = None
-            kwargs.update(self.windTurbines.get_loads(WS_eff_ilk, TI_eff_ilk, yaw_ilk, localWind.P_ilk, alpha, normalize_probabilities))
+        if hasattr(self.windTurbines, 'loads'):
+            if self.windTurbines.loads is not None:
+                if hasattr(self.site.shear, 'alpha'):
+                    alpha = self.site.shear.alpha.values
+                else:
+                    alpha = None
+                kwargs.update(self.windTurbines.get_loads(WS_eff_ilk, TI_eff_ilk, yaw_ilk, localWind.P_ilk, alpha, normalize_probabilities))
         return SimulationResult(self, localWind=localWind,
                                 type_i=type, yaw_ilk=yaw_ilk,
                                 WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk,
