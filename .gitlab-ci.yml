@@ -1,4 +1,3 @@
-i
 # ===== TEST PyWake on Windows =====
 test_PyWake_windows:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
