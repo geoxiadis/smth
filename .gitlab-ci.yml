@@ -5,7 +5,7 @@ test_PyWake_windows:  # name the job what we like
     test
   script:  # runs on windows machine due to tag below
   - hostname
-!  - source activate pyTopfarm
-!  - pytest --cov-report term-missing:skip-covered --cov=py_wake --cov-config .coveragerc
+#  - source activate pyTopfarm
+#  - pytest --cov-report term-missing:skip-covered --cov=py_wake --cov-config .coveragerc
   tags:  # tag for shared runner on windows machine
   - ANMH_old
