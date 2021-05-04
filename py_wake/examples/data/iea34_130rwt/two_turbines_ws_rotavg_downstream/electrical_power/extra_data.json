@@ -1,0 +1,87 @@
+{
+    "input_channel_names": [
+        "ws",
+        "ti",
+        "shear",
+        "wdir",
+        "dist"
+    ],
+    "output_channel_name": "generator_servo inpvec   2  2: pelec [w]",
+    "wind_speed_cut_in": 4.0,
+    "wind_speed_cut_out": 25.0,
+    "wohler_exponent": NaN,
+    "input_scalers": {
+        "operating": {
+            "feature_range": [
+                -4.0,
+                4.0
+            ],
+            "copy": true,
+            "clip": false,
+            "n_features_in_": 5,
+            "n_samples_seen_": 31229,
+            "scale_": [
+                0.38109906402036964,
+                15.277965481111076,
+                13.340671569840397,
+                0.044444444444444446,
+                0.01609657947686117
+            ],
+            "min_": [
+                -5.524720854655894,
+                -4.0008155118248405,
+                -2.667707551220829,
+                0.0,
+                -4.048289738430584
+            ],
+            "data_min_": [
+                4.0008517433,
+                5.33783e-05,
+                -0.0998669701,
+                -90.0,
+                3.0
+            ],
+            "data_max_": [
+                24.9927689514,
+                0.5236833086,
+                0.4998029909,
+                90.0,
+                500.0
+            ],
+            "data_range_": [
+                20.9919172081,
+                0.5236299303,
+                0.599669961,
+                180.0,
+                497.0
+            ]
+        }
+    },
+    "output_scalers": {
+        "operating": {
+            "feature_range": [
+                -1.0,
+                1.0
+            ],
+            "copy": true,
+            "clip": false,
+            "n_features_in_": 1,
+            "n_samples_seen_": 31229,
+            "scale_": [
+                6.029639660147184e-07
+            ],
+            "min_": [
+                -1.0500778174175283
+            ],
+            "data_min_": [
+                83052.75313302207
+            ],
+            "data_max_": [
+                3400000.552217885
+            ],
+            "data_range_": [
+                3316947.7990848627
+            ]
+        }
+    }
+}

@@ -71,7 +71,30 @@ class add_ijlk():
     def __call__(self, name, value):
         dims = self.dataset.dims
         if 'time' in dims:
-            allowed_dims = ['i', 'wt'], ['i', 'wt'], ['time'], ['ws']
+            allowed_dims = ['i', 'wt'], ['time'], ['ws']
+        else:
+            allowed_dims = ['i', 'wt'], ['wd'], ['ws']
+
+        d = []
+        i = 0
+
+        for ad in allowed_dims:
+            for k in ad:
+                if i < len(np.shape(value)) and np.shape(value)[i] == dims.get(k, None):
+                    d.append(k)
+                    i += 1
+                    break
+        self.dataset[name] = (d, value)
+
+
+class add_ijlk():
+    def __init__(self, dataset):
+        self.dataset = dataset
+
+    def __call__(self, name, value):
+        dims = self.dataset.dims
+        if 'time' in dims:
+            allowed_dims = ['i', 'wt'], ['i', 'wt'], ['time']
         else:
             allowed_dims = ['i', 'wt'], ['i', 'wt'], ['wd'], ['ws']
 

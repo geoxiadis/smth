@@ -10,6 +10,7 @@ from py_wake.utils.model_utils import check_model, fix_shape
 from py_wake.utils.xarray_utils import da2py
 import multiprocessing
 from py_wake.utils.parallelization import get_pool
+from py_wake.wind_turbines.wind_turbine_functions import TwoWTLoadSurrogates
 
 
 class WindFarmModel(ABC):
@@ -402,7 +403,7 @@ class SimulationResult(xr.Dataset):
             self[n] = localWind[n]
         self.attrs.update(localWind.attrs)
         for n in set(wt_inputs) - {'type', 'TI_eff', 'yaw'}:
-            if '_ijl' in n:
+            if '_ijlk' in n:
                 self.add_ijlk(n, wt_inputs[n])
             else:
                 self.add_ilk(n, wt_inputs[n])
@@ -489,8 +490,8 @@ class SimulationResult(xr.Dataset):
                             name='AEP [GWh]',
                             attrs={'Description': 'Annual energy production [GWh]'})
 
-    def loads(self, method, lifetime_years=20, n_eq_lifetime=1e7, normalize_probabilities=False, softmax_base=None):
-        assert method in ['TwoWT', 'OneWT_WDAvg', 'OneWT']
+    def loads(self, lifetime_years=20, n_eq_lifetime=1e7,
+              normalize_probabilities=False, average_ti=False):
         wt = self.windFarmModel.windTurbines
 
         P_ilk = self.P_ilk
@@ -499,9 +500,10 @@ class SimulationResult(xr.Dataset):
         WS_eff_ilk = self.WS_eff_ilk
         TI_eff_ilk = self.TI_eff_ilk
 
-        kwargs = self.wt_inputs
+        kwargs = {k: v for k, v in self.wt_inputs.items()
+                  if k in wt.loadFunction.required_inputs + wt.loadFunction.optional_inputs}
 
-        if method == 'OneWT_WDAvg':  # average over wd
+        if average_ti:  # average over wd
             p_wd_ilk = P_ilk.sum((0, 2))[na, :, na]
             ws_ik = (WS_eff_ilk * p_wd_ilk).sum(1)
             kwargs_ik = {k: (fix_shape(v, WS_eff_ilk) * p_wd_ilk).sum(1) for k, v in kwargs.items()
@@ -531,15 +533,26 @@ class SimulationResult(xr.Dataset):
             ds['LDEL'] = ((t_flowcase * (ds.DEL / f)**ds.m).sum('ws') / n_eq_lifetime)**(1 / ds.m) * f
             ds.LDEL.attrs['description'] = "Lifetime (%d years) equivalent loads, n_eq_L=%d" % (
                 lifetime_years, n_eq_lifetime)
-        elif method == 'OneWT' or method == 'TwoWT':
-            if method == 'OneWT':
-                loads_silk = wt.loads(WS_eff_ilk, **kwargs)
-            else:  # method == 'TwoWT':
+        else:
+                # Calculate loads of all pairs of WT and find the maximum loads
                 I, L, K = WS_eff_ilk.shape
-                ws_iilk = np.broadcast_to(WS_eff_ilk[na], (I, I, L, K))
+
+                inflow_input = wt.loadFunction.inflow_input
+                assert inflow_input in ['uw', 'uw_eff', 'dw_eff'], inflow_input
+                if inflow_input == 'uw':
+                    ws_iilk = np.broadcast_to(self.WS_ilk[:, na], (I, I, L, K))
+                    kwargs['TI'] = np.broadcast_to(self.TI_ilk[:, na], (I, I, L, K))
+                elif inflow_input == 'uw_eff':
+                    ws_iilk = np.broadcast_to(self.WS_eff_ilk[:, na], (I, I, L, K))
+                    kwargs['TI_eff'] = np.broadcast_to(self.TI_eff_ilk[:, na], (I, I, L, K))
+                elif inflow_input == 'dw_eff':
+                    ws_iilk = np.broadcast_to(self.WS_eff_ilk[na], (I, I, L, K))
+                    kwargs['TI_eff'] = np.broadcast_to(self.TI_eff_ilk[na], (I, I, L, K))
 
                 def _fix_shape(k, v):
-                    if k[-3:] == 'ijl':
+                    if hasattr(v, 'shape') and v.shape == (I, I, L, K):
+                        return v
+                    if k[-4:] == 'ijlk':
                         return fix_shape(v, ws_iilk)
                     else:
                         return np.broadcast_to(fix_shape(v, WS_eff_ilk)[na], (I, I, L, K))
@@ -548,39 +561,21 @@ class SimulationResult(xr.Dataset):
                                if k in wt.loadFunction.required_inputs + wt.loadFunction.optional_inputs}
 
                 loads_siilk = np.array(wt.loads(ws_iilk, **kwargs_iilk))
-                if softmax_base is None:
-                    loads_silk = loads_siilk.max(1)
-                else:
-                    # factor used to reduce numerical errors in power
-                    f = loads_siilk.mean((1, 2, 3, 4)) / 10
-                    loads_silk = (np.log((softmax_base**(loads_siilk / f[:, na, na, na, na])).sum(1)) /
-                                  np.log(softmax_base) * f[:, na, na, na])
+                loads_silk = wt.loadFunction.max(loads_siilk)
+            else:  # OneWT
+                loads_silk = wt.loads(WS_eff_ilk, **kwargs)
 
-            if 'time' in self.dims:
-                ds = xr.DataArray(
-                    np.array(loads_silk)[..., 0],
-                    dims=['sensor', 'wt', 'time'],
-                    coords={'sensor': wt.loadFunction.output_keys,
-                            'm': ('sensor', wt.loadFunction.wohler_exponents, {'description': 'Wohler exponents'}),
-                            'wt': self.wt, 'time': self.time, 'wd': self.wd, 'ws': self.ws},
-                    attrs={'description': '1Hz Damage Equivalent Load'}).to_dataset(name='DEL')
-            else:
-                ds = xr.DataArray(
-                    loads_silk,
-                    dims=['sensor', 'wt', 'wd', 'ws'],
-                    coords={'sensor': wt.loadFunction.output_keys,
-                            'm': ('sensor', wt.loadFunction.wohler_exponents, {'description': 'Wohler exponents'}),
-                            'wt': self.wt, 'wd': self.wd, 'ws': self.ws},
-                    attrs={'description': '1Hz Damage Equivalent Load'}).to_dataset(name='DEL')
+            ds = xr.DataArray(
+                loads_silk,
+                dims=['sensor', 'wt', 'wd', 'ws'],
+                coords={'sensor': wt.loadFunction.output_keys,
+                        'm': ('sensor', wt.loadFunction.wohler_exponents, {'description': 'Wohler exponents'}),
+                        'wt': self.wt, 'wd': self.wd, 'ws': self.ws},
+                attrs={'description': '1Hz Damage Equivalent Load'}).to_dataset(name='DEL')
+            ds['P'] = self.P
+            t_flowcase = ds.P * lifetime_years * 365 * 24 * 3600
             f = ds.DEL.mean()   # factor used to reduce numerical errors in power
-            if 'time' in self.dims:
-                assert 'duration' in self, "Simulation must contain a dataarray 'duration' with length of time steps in seconds"
-                t_flowcase = self.duration
-                ds['LDEL'] = ((t_flowcase * (ds.DEL / f)**ds.m).sum(('time')) / n_eq_lifetime)**(1 / ds.m) * f
-            else:
-                ds['P'] = self.P
-                t_flowcase = ds.P * 3600 * 24 * 365 * lifetime_years
-                ds['LDEL'] = ((t_flowcase * (ds.DEL / f)**ds.m).sum(('wd', 'ws')) / n_eq_lifetime)**(1 / ds.m) * f
+            ds['LDEL'] = ((t_flowcase * (ds.DEL / f)**ds.m).sum(('wd', 'ws')) / n_eq_lifetime)**(1 / ds.m) * f
             ds.LDEL.attrs['description'] = "Lifetime (%d years) equivalent loads, n_eq_L=%d" % (
                 lifetime_years, n_eq_lifetime)
 

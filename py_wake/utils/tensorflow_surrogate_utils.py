@@ -1,6 +1,5 @@
 import os
 import json
-from sklearn.preprocessing import MinMaxScaler
 
 import pickle
 from pathlib import Path
@@ -38,8 +37,15 @@ def extra_data_pkl2json(path):  # pragma: no cover
 
 class TensorflowSurrogate():
 
-    def __init__(self, path, set_name):
+    def __init__(self, model, input_scaler, output_scaler, input_channel_names, output_channel_name):
+        self.model = model
+        self.input_scaler = input_scaler
+        self.output_scaler = output_scaler
+        self.input_channel_names = input_channel_names
+        self.output_channel_name = output_channel_name
 
+    @staticmethod
+    def from_h5_json(path, set_name):
         # Load extra data.
         path = Path(path)
         with open(path / 'extra_data.json') as fid:
@@ -49,15 +55,24 @@ class TensorflowSurrogate():
 
         # Create the MinMaxScaler scaler objects.
         def json2scaler(d):
+            from sklearn.preprocessing import MinMaxScaler
             scaler = MinMaxScaler()
             for k, v in d.items():
                 setattr(scaler, k, v)
             return scaler
 
-        self.input_scaler = json2scaler(self.input_scalers[set_name])
-        self.output_scaler = json2scaler(self.output_scalers[set_name])
-        import tensorflow as tf
-        self.model = tf.keras.models.load_model(path / f'model_set_{set_name}.h5')
+        surrogate = TensorflowSurrogate(
+            model=tf.keras.models.load_model(path / f'model_set_{set_name}.h5'),
+            input_scaler=json2scaler(extra_data['input_scalers'][set_name]),
+            output_scaler=json2scaler(extra_data['output_scalers'][set_name]),
+            input_channel_names=extra_data['input_channel_names'],
+            output_channel_name=extra_data['output_channel_name'],
+        )
+        surrogate.wind_speed_cut_in = extra_data['wind_speed_cut_in']
+        surrogate.wind_speed_cut_out = extra_data['wind_speed_cut_out']
+        if 'wohler_exponent' in extra_data:
+            surrogate.wohler_exponent = extra_data['wohler_exponent']
+        return surrogate
 
     def predict_output_gradients_scaled(self, x_scaled):
         import tensorflow as tf
@@ -97,7 +112,6 @@ class TensorflowSurrogate():
         Warning: if some points are outside of the boundary.
 
         """
-
         # Scale the input.
         if np.iscomplexobj(x):
             x_scaled = self.input_scaler.transform(x.real)

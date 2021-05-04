@@ -1,30 +1,36 @@
 from py_wake.wind_turbines import WindTurbine
 from py_wake import np
+from numpy import newaxis as na
 from pathlib import Path
 from py_wake.utils.tensorflow_surrogate_utils import TensorflowSurrogate
-import inspect
 from py_wake.wind_turbines.power_ct_functions import PowerCtSurrogate
-from py_wake.wind_turbines.wind_turbine_functions import FunctionSurrogates
+from py_wake.wind_turbines.wind_turbine_functions import FunctionSurrogates, TwoWTLoadSurrogates
 from py_wake.examples.data import example_data_path
+from py_wake.turbulence_models.crespo import CrespoHernandez
+from py_wake.deficit_models.deficit_model import WakeDeficitModel
+from py_wake.turbulence_models.turbulence_model import TurbulenceModel
+from py_wake.superposition_models import LinearSum
+from py_wake.utils.max_functions import SoftMax
 from py_wake.utils.model_utils import fix_shape
 from py_wake.utils.gradients import hypot
 from autograd.numpy.numpy_boxes import ArrayBox
+
+iea34_130rwt_path = Path(example_data_path) / 'iea34_130rwt'
 
 
 class IEA34_130_PowerCtSurrogate(PowerCtSurrogate):
     def __init__(self, surrogate_path, input_parser):
         PowerCtSurrogate.__init__(
             self,
-            power_surrogate=TensorflowSurrogate(surrogate_path / "electrical_power", 'operating'),
+            power_surrogate=TensorflowSurrogate.from_h5_json(surrogate_path / "electrical_power", 'operating'),
             power_unit='W',
-            ct_surrogate=TensorflowSurrogate(surrogate_path / 'thrust', 'operating'),
+            ct_surrogate=TensorflowSurrogate.from_h5_json(surrogate_path / 'thrust', 'operating'),
             input_parser=input_parser)
 
         ws_idx = self.function_surrogate_lst[0].input_channel_names.index('ws')
         self.ws_cutin = self.function_surrogate_lst[0].input_scaler.data_min_[ws_idx]  # .wind_speed_cut_in
         self.ws_cutout = self.function_surrogate_lst[0].input_scaler.data_max_[ws_idx]  # .wind_speed_cut_out
-        ti_key = [k for k in list(inspect.signature(input_parser).parameters) if k[:2] == 'TI'][0]
-        thrust_idle = PowerCtSurrogate._power_ct(self, np.array([self.ws_cutout]), run_only=1, **{ti_key: .1}) * 1000
+        thrust_idle = PowerCtSurrogate._power_ct(self, np.array([self.ws_cutout]), run_only=1) * 1000
         self.ct_idle = thrust_idle / (1 / 2 * 1.225 * (65**2 * np.pi) * self.ws_cutout**2)
 
     def _power_ct(self, ws, run_only, **kwargs):
@@ -50,6 +56,73 @@ class IEA34_130_PowerCtSurrogate(PowerCtSurrogate):
                 ct_m = arr_m * 1000 / (1 / 2 * 1.225 * (65**2 * np.pi) * ws[m]**2)
                 ct[m] = ct_m
                 return ct
+
+
+class IEA34_130_ModelBase():
+    def __init__(self, sensors, inflow_input, shear_alpha):
+        assert inflow_input in ['uw', 'uw_eff']
+        self.inflow_input = inflow_input
+        self.shear_alpha = shear_alpha
+        set_names = ['below_cut_in', 'operating', 'above_cut_out']
+        self.wake_surrogate = ThreeRegionLoadSurrogates(
+            [[TensorflowSurrogate.from_h5_json(iea34_130rwt_path / 'two_turbines_ws_upstream' / s, n)
+              for n in set_names] for s in sensors],
+            input_parser=(self.get_input))
+        self.max_dist = self.wake_surrogate.function_surrogate_lst[0][0].input_scaler.data_max_[4]
+        self.max_angle = self.wake_surrogate.function_surrogate_lst[0][0].input_scaler.data_max_[3]
+
+    def get_input(self, ws, ti, dw_ijlk, hcw_ijlk):
+        # ['ws','ti', 'shear', 'wdir', 'dist']
+        dist = np.atleast_1d((np.hypot(dw_ijlk, hcw_ijlk) / 130))
+        wd = np.atleast_1d(np.rad2deg(np.arctan2(hcw_ijlk, dw_ijlk)))
+        unwaked = (dist == 0) | (dist >= self.max_dist) | (np.abs(wd) >= self.max_angle)
+        dist[unwaked] = 10
+        wd[unwaked] = -90
+        return [ws, ti, self.shear_alpha, wd, dist]
+
+    def call_surrogate(self, WS_ilk, WS_eff_ilk, dw_ijlk, hcw_ijlk, TI_ilk, TI_eff_ilk, **_):
+        I, L, K = WS_eff_ilk.shape[:3]
+        J = dw_ijlk.shape[1]
+        if self.inflow_input == 'uw':
+            ws_ijlk = np.broadcast_to(WS_ilk[:, na], (I, J, L, K))
+            ti_ijlk = np.broadcast_to(TI_ilk[:, na], (I, J, L, K))
+        elif self.inflow_input == 'uw_eff':
+            ws_ijlk = np.broadcast_to(WS_eff_ilk[:, na], (I, J, L, K))
+            ti_ijlk = np.broadcast_to(TI_eff_ilk[:, na], (I, J, L, K))
+        return self.wake_surrogate(ws_ijlk, dw_ijlk=dw_ijlk, hcw_ijlk=hcw_ijlk, ti=ti_ijlk)
+
+
+class IEA34_130_DeficitModel(IEA34_130_ModelBase, WakeDeficitModel):
+    args4deficit = ['WS_ilk', 'WS_eff_ilk', 'dw_ijlk', 'hcw_ijlk', 'TI_ilk', 'TI_eff_ilk']
+
+    def __init__(self, inflow_input, shear_alpha, rotor_avg=True):
+        sensors = [['wind_speed_mean_downstream_turbine', 'wind_speed_rotavg_mean_downstream_turbine'][rotor_avg]]
+        IEA34_130_ModelBase.__init__(self, sensors, inflow_input, shear_alpha)
+
+    def calc_deficit(self, WS_ilk, WS_eff_ilk, dw_ijlk, hcw_ijlk, TI_ilk, TI_eff_ilk, **_):
+        ws = self.call_surrogate(WS_ilk, WS_eff_ilk, dw_ijlk, hcw_ijlk, TI_ilk, TI_eff_ilk)[0]
+        if self.inflow_input == 'uw':
+            ws_ijlk = WS_ilk[:, na]
+        elif self.inflow_input == 'uw_eff':
+            ws_ijlk = WS_eff_ilk[:, na]
+        return ws_ijlk - ws
+
+
+class IEA34_130_TurbulenceModel(IEA34_130_ModelBase, TurbulenceModel):
+    args4addturb = ['WS_ilk', 'WS_eff_ilk', 'dw_ijlk', 'hcw_ijlk', 'TI_ilk', 'TI_eff_ilk']
+
+    def __init__(self, inflow_input, shear_alpha, addedTurbulenceSuperpositionModel=LinearSum()):
+        sensors = ['wind_speed_mean_downstream_turbine', 'wind_speed_std_downstream_turbine']
+        IEA34_130_ModelBase.__init__(self, sensors, inflow_input, shear_alpha)
+        TurbulenceModel.__init__(self, addedTurbulenceSuperpositionModel=addedTurbulenceSuperpositionModel)
+
+    def calc_added_turbulence(self, WS_ilk, WS_eff_ilk, dw_ijlk, hcw_ijlk, TI_ilk, TI_eff_ilk, **_):
+        if self.inflow_input == 'uw':
+            ti_ijlk = TI_ilk[:, na]
+        elif self.inflow_input == 'uw_eff':
+            ti_ijlk = TI_eff_ilk[:, na]
+        mean, std = self.call_surrogate(WS_ilk, WS_eff_ilk, dw_ijlk, hcw_ijlk, TI_ilk, TI_eff_ilk)
+        return std / mean - ti_ijlk
 
 
 class ThreeRegionLoadSurrogates(FunctionSurrogates):
@@ -79,6 +152,12 @@ class ThreeRegionLoadSurrogates(FunctionSurrogates):
         return [fs[0].wohler_exponent for fs in self.function_surrogate_lst]
 
 
+class TwoWTThreeRegionLoadSurrogates(TwoWTLoadSurrogates, ThreeRegionLoadSurrogates):
+    def __init__(self, inflow_input, function_surrogate_lst, input_parser, max_function=SoftMax()):
+        TwoWTLoadSurrogates.__init__(self, inflow_input, max_function=max_function)
+        ThreeRegionLoadSurrogates.__init__(self, function_surrogate_lst, input_parser)
+
+
 class IEA34_130_Base(WindTurbine):
     load_sensors = ['del_blade_flap', 'del_blade_edge', 'del_tower_bottom_fa', 'del_tower_bottom_ss',
                     'del_tower_top_torsion']
@@ -94,39 +173,50 @@ class IEA34_130_Base(WindTurbine):
 class IEA34_130_1WT_Surrogate(IEA34_130_Base):
 
     def __init__(self):
-        surrogate_path = Path(example_data_path) / 'iea34_130rwt' / 'one_turbine'
+        surrogate_path = iea34_130rwt_path / 'one_turbine'
         loadFunction = ThreeRegionLoadSurrogates(
-            [[TensorflowSurrogate(surrogate_path / s, n) for n in self.set_names] for s in self.load_sensors],
+            [[TensorflowSurrogate.from_h5_json(surrogate_path / s, n)
+              for n in self.set_names] for s in self.load_sensors],
             input_parser=lambda ws, TI_eff=.1, Alpha=0: [ws, TI_eff, Alpha])
         powerCtFunction = IEA34_130_PowerCtSurrogate(
             surrogate_path,
-            input_parser=lambda ws, TI_eff, Alpha=0: [ws, TI_eff, Alpha])
+            input_parser=lambda ws, TI_eff=.1, Alpha=0: [ws, TI_eff, Alpha])
         IEA34_130_Base.__init__(self, powerCtFunction=powerCtFunction, loadFunction=loadFunction)
 
 
 class IEA34_130_2WT_Surrogate(IEA34_130_Base):
-    def __init__(self):
-        surrogate_path = Path(example_data_path) / 'iea34_130rwt' / 'two_turbines'
-        loadFunction = ThreeRegionLoadSurrogates(
-            [[TensorflowSurrogate(surrogate_path / s, n) for n in self.set_names] for s in self.load_sensors],
-            input_parser=self.get_input)
+    def __init__(self, inflow_input, max_function=SoftMax(), iea34_130rwt_path=iea34_130rwt_path, folder=None):
+        assert inflow_input in ['uw_eff', 'uw', 'dw_eff']
+        if folder is None:
+            folder = ('two_turbines_ws_upstream', 'two_turbines_ws_downstream')['dw' in inflow_input]
+
+        loadFunction = TwoWTThreeRegionLoadSurrogates(
+            inflow_input,
+            [[TensorflowSurrogate.from_h5_json(iea34_130rwt_path / folder / s, n)
+              for n in self.set_names] for s in self.load_sensors],
+            input_parser=(self.get_input, self.get_input_eff)['eff' in inflow_input],
+            max_function=max_function)
         self.max_dist = loadFunction.function_surrogate_lst[0][0].input_scaler.data_max_[4]
         self.max_angle = loadFunction.function_surrogate_lst[0][0].input_scaler.data_max_[3]
 
         powerCtFunction = IEA34_130_PowerCtSurrogate(
-            surrogate_path,
-            input_parser=(lambda ws, TI=.1, Alpha=0, get_input=self.get_input:
-                          get_input(ws, TI=TI, Alpha=Alpha, dw_ijl=np.array([0]), hcw_ijl=0)))
+            iea34_130rwt_path / 'one_turbine',
+            input_parser=lambda ws, TI_eff=.1, Alpha=0: [ws, TI_eff, Alpha])
         IEA34_130_Base.__init__(self, powerCtFunction=powerCtFunction, loadFunction=loadFunction)
+        # self.unwake_wt = IEA34_130_1WT_Surrogate()
+        # IEA34_130_Base.__init__(self, powerCtFunction=self.unwake_wt.powerCtFunction, loadFunction=loadFunction)
 
-    def get_input(self, ws, dw_ijl, hcw_ijl, TI, Alpha=0):
+    def get_input(self, ws, dw_ijlk, hcw_ijlk, TI, Alpha=0):
+        return self.get_input_eff(ws, dw_ijlk, hcw_ijlk, TI, Alpha)
+
+    def get_input_eff(self, ws, dw_ijlk, hcw_ijlk, TI_eff, Alpha=0):
         # ['ws','ti', 'shear', 'wdir', 'dist']
-        dist = np.atleast_1d((hypot(dw_ijl, hcw_ijl) / 130))
-        wd = np.atleast_1d(np.rad2deg(np.arctan2(hcw_ijl, dw_ijl)))
-        unwaked = (dist == 0) | (dist > self.max_dist) | (np.abs(wd) > self.max_angle)
-        dist[unwaked] = 20
-        wd[unwaked] = 20
-        return [ws, TI, Alpha, wd, dist]
+        dist = np.atleast_1d((np.hypot(dw_ijlk, hcw_ijlk) / 130))
+        wd = np.atleast_1d(np.rad2deg(np.arctan2(hcw_ijlk, dw_ijlk)))
+        unwaked = (dist == 0) | (dist >= self.max_dist) | (np.abs(wd) >= self.max_angle)
+        dist[unwaked] = 10
+        wd[unwaked] = -90
+        return [ws, TI_eff, Alpha, wd, dist]
 
 
 def main():
@@ -183,9 +273,9 @@ def main():
         plt.figure()
         site = Hornsrev1Site()
         x, y = [0, 1000], [0, 0]
-        sim_res = NOJ(site, wt, turbulenceModel=STF2017TurbulenceModel())(x, y, ws=np.arange(3, 28), Alpha=.12)
-        load_wd_averaged = sim_res.loads(normalize_probabilities=True, method='OneWT_WDAvg')
-        loads = sim_res.loads(normalize_probabilities=True, method='OneWT')
+        sim_res = NOJ(site, wt, turbulenceModel=CrespoHernandez())(x, y, ws=np.arange(3, 28), Alpha=.12)
+        load_wd_averaged = sim_res.loads(normalize_probabilities=True, average_ti=True)
+        loads = sim_res.loads(normalize_probabilities=True)
         loads.DEL.isel(sensor=0, wt=0).plot()
 
         for s in load_wd_averaged.sensor:
@@ -195,13 +285,13 @@ def main():
         # =======================================================================================================================
         # IEA34_130_2WTSurrogate
         # =======================================================================================================================
-        wt = IEA34_130_2WT_Surrogate()
+        wt = IEA34_130_2WT_Surrogate(inflow_input='uw')
         # plot power/ct curves
         plt.figure()
         ax1 = plt.gca()
         ax2 = plt.twinx()
         for ti in [0.01, .05, .1, .3]:
-            power, ct = wt.power_ct(u, TI=ti)
+            power, ct = wt.power_ct(u, TI_eff=ti)
             ax1.plot(u, power, label=f'TI={ti}')
             ax2.plot(u, ct, '--')
         ax1.legend()
@@ -212,7 +302,7 @@ def main():
         ax1 = plt.gca()
         ax2 = plt.twinx()
         for alpha in [-0.09, .1, .3, .49]:
-            power, ct = wt.power_ct(u, TI=.1, Alpha=alpha)
+            power, ct = wt.power_ct(u, TI_eff=.1, Alpha=alpha)
             ax1.plot(u, power / 1000, label=f'Alpha={alpha}')
             ax2.plot(u, ct, '--')
         ax1.set_ylabel('Power [kW]')
@@ -223,11 +313,11 @@ def main():
         sensors = wt.loadFunction.output_keys
         axes = [plt.figure().gca() for _ in sensors]
         for ti in [0.01, .05, .1, .3]:
-            loads = wt.loads(u, TI=ti, Alpha=.12, dw_ijl=0, hcw_ijl=0)
+            loads = wt.loads(u, TI=ti, Alpha=.12, dw_ijlk=0, hcw_ijlk=0)
             for ax, l in zip(axes, loads):
                 ax.plot(u, l, label=f'TI={ti}')
         for alpha in [-0.09, .1, .3, .49]:
-            loads = wt.loads(u, TI=.1, Alpha=alpha, dw_ijl=np.array([1000]), hcw_ijl=0)
+            loads = wt.loads(u, TI=.1, Alpha=alpha, dw_ijlk=np.array([1000]), hcw_ijlk=0)
             for ax, l in zip(axes, loads):
                 ax.plot(u, l, '--', label=f'Alpha={alpha}')
         for ax, s in zip(axes, sensors):
@@ -238,8 +328,8 @@ def main():
         plt.figure()
         site = Hornsrev1Site()
         x, y = [0, 1000], [0, 0]
-        sim_res = NOJ(site, wt, turbulenceModel=STF2017TurbulenceModel())(x, y, ws=np.arange(3, 28), Alpha=.12)
-        loads = sim_res.loads(normalize_probabilities=True, method='TwoWT')
+        sim_res = NOJ(site, wt, turbulenceModel=CrespoHernandez())(x, y, ws=np.arange(3, 28), Alpha=.12)
+        loads = sim_res.loads(normalize_probabilities=True)
         loads.DEL.isel(sensor=0, wt=0).plot()
 
         for s in loads.sensor:
