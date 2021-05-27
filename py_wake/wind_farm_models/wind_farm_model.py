@@ -215,7 +215,7 @@ class SimulationResult(xr.Dataset):
             power_ilk = self.Power.ilk()
 
         else:
-            power_ilk = self.windFarmModel.windTurbines.power(self.WS.ilk(self.Power.shape), self.type)
+            power_ilk = self.windFarmModel.windTurbines.power(ws_i=self.WS.ilk(self.Power.shape), type_i=self.type, ti_i=self.TI.ilk()).reshape(self.Power.ilk().shape)
 
         return xr.DataArray(power_ilk * self.P.ilk() / norm * 24 * 365 * 1e-9,
                             self.Power.coords,
