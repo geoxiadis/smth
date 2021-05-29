@@ -14,7 +14,7 @@ from topfarm.constraint_components.load import (
 class DTU10MWSurrogate(OneTypeWindTurbines):
     '''
     '''
-    def __init__(self, load_signals, m_list):
+    def __init__(self, load_signals, m_list, path=None):
         OneTypeWindTurbines.__init__(
             self,
             'DTU10MW',
@@ -24,7 +24,8 @@ class DTU10MWSurrogate(OneTypeWindTurbines):
             power_func=self._power,
             power_unit='kW',
             power_yaw_model='surrogate')
-        path = os.path.join(os.path.dirname(__file__), 'surrogates')
+        if not path:
+            path = os.path.join(os.path.dirname(__file__), 'surrogates')
         file_list = [x[0] for x in os.walk(path)]
         file_list.pop(0)
         load_types = dict.fromkeys([os.path.basename(x) for x in file_list])
