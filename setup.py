@@ -30,7 +30,13 @@ setup(name='py_wake',
       packages=find_packages(),
           package_data={
           'py_wake': ['examples/data/iea37/*.yaml',
-                      'tests/test_files/fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+0/*.*'],
+                      'tests/test_files/fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+0/*.*',
+                      'examples\data\surrogates\Blade_root_edgewise_M_y/*.*',
+                      'examples\data\surrogates\Blade_root_flapwise_M_x/*.*',
+                      'examples\data\surrogates\Power/*.*',
+                      'examples\data\surrogates\Tower_top_tilt_M_x/*.*',
+                      'examples\data\surrogates\Tower_top_yaw_M_z/*.*',
+                      ],
       },
       install_requires=[
           'matplotlib',  # for plotting
