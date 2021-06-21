@@ -163,6 +163,32 @@ class FunctionSurrogates(WindTurbineFunction, ABC):
         else:
             return [fs.predict_output(x).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
 
+# Like FunctionSurrogates but for using CT Tabular data with the power surrogate
+class FunctionSurrogates_onlypower(WindTurbineFunction, ABC):
+    def __init__(self, function_surrogate_lst, input_parser, output_keys=None):
+        self.function_surrogate_lst = np.asarray(function_surrogate_lst)
+        self.get_input = input_parser
+        input_keys = inspect.getfullargspec(self.get_input).args
+        if input_keys[0] == 'self':
+            input_keys = input_keys[1:]
+        defaults = inspect.getfullargspec(self.get_input).defaults
+        optional_inputs = input_keys[1:] if defaults is None else input_keys[::-1][:len(defaults)]
+
+        if output_keys is None:
+            output_keys = [fs.output_channel_name for fs in self.function_surrogate_lst]
+        WindTurbineFunction.__init__(self, input_keys, optional_inputs, output_keys=output_keys)
+
+    def __call__(self, ws, run_only=slice(None), **kwargs):
+        x = self.get_input(ws=ws, **kwargs)
+        x = np.array([fix_shape(v, ws).ravel() for v in x]).T
+        
+        if isinstance(run_only, int): 
+            # The function surrogate lst = 0 because using only the electric power surrogate
+            return self.function_surrogate_lst[0].predict_output(x).reshape(ws.shape)
+        else:
+            return [fs.predict_output(x).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
+
+
 #     Commented out as no tests or examples currently uses this class directly
 #     @property
 #     def output_keys(self):

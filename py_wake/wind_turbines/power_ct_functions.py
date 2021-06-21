@@ -6,7 +6,7 @@ from autograd.core import defvjp, primitive
 from py_wake.utils.gradients import fd
 from scipy.interpolate.fitpack2 import UnivariateSpline
 from autograd.numpy.numpy_boxes import ArrayBox
-from py_wake.wind_turbines.wind_turbine_functions import WindTurbineFunction, FunctionSurrogates,\
+from py_wake.wind_turbines.wind_turbine_functions import WindTurbineFunction, FunctionSurrogates, FunctionSurrogates_onlypower,\
     WindTurbineFunctionList
 from py_wake.utils.check_input import check_input
 from py_wake.utils.model_utils import check_model, fix_shape
@@ -508,3 +508,21 @@ class PowerCtSurrogate(PowerCtFunction, FunctionSurrogates):
 
     def _power_ct(self, ws, run_only=slice(None), **kwargs):
         return FunctionSurrogates.__call__(self, ws, run_only, **kwargs)
+
+
+class PowerSurrogate(PowerCtFunction, FunctionSurrogates_onlypower):
+    def __init__(self, power_surrogate, power_unit, ct_surrogate, input_parser, additional_models=[]):
+        assert power_surrogate.input_channel_names == ct_surrogate.input_channel_names
+
+        PowerCtFunction.__init__(
+            self,
+            input_keys=['ws'],  # dummy, overriden below
+            power_ct_func=self._power_only,
+            power_unit=power_unit,
+            optional_inputs=[],  # dummy, overriden below
+            additional_models=additional_models)
+        FunctionSurrogates_onlypower.__init__(self, [power_surrogate], input_parser, output_keys=['power'])
+
+    def _power_only(self, ws, run_only=slice(None), **kwargs):
+        return FunctionSurrogates_onlypower.__call__(self, ws, run_only, **kwargs)
+    
