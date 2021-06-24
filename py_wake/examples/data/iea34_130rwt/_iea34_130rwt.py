@@ -201,7 +201,8 @@ class IEA34_130_2WT_Surrogate(IEA34_130_Base):
 
         powerCtFunction = IEA34_130_PowerCtSurrogate(
             iea34_130rwt_path / 'one_turbine',
-            input_parser=lambda ws, TI_eff=.1, Alpha=0: [ws, TI_eff, Alpha])
+            input_parser=((lambda ws, TI=.1, Alpha=0: [ws, TI, Alpha]),
+                          (lambda ws, TI_eff=.1, Alpha=0: [ws, TI_eff, Alpha]))['eff' in inflow_input])
         IEA34_130_Base.__init__(self, powerCtFunction=powerCtFunction, loadFunction=loadFunction)
         # self.unwake_wt = IEA34_130_1WT_Surrogate()
         # IEA34_130_Base.__init__(self, powerCtFunction=self.unwake_wt.powerCtFunction, loadFunction=loadFunction)
@@ -291,7 +292,7 @@ def main():
         ax1 = plt.gca()
         ax2 = plt.twinx()
         for ti in [0.01, .05, .1, .3]:
-            power, ct = wt.power_ct(u, TI_eff=ti)
+            power, ct = wt.power_ct(u, TI=ti)
             ax1.plot(u, power, label=f'TI={ti}')
             ax2.plot(u, ct, '--')
         ax1.legend()
@@ -302,7 +303,7 @@ def main():
         ax1 = plt.gca()
         ax2 = plt.twinx()
         for alpha in [-0.09, .1, .3, .49]:
-            power, ct = wt.power_ct(u, TI_eff=.1, Alpha=alpha)
+            power, ct = wt.power_ct(u, TI=.1, Alpha=alpha)
             ax1.plot(u, power / 1000, label=f'Alpha={alpha}')
             ax2.plot(u, ct, '--')
         ax1.set_ylabel('Power [kW]')
