@@ -164,7 +164,7 @@ class FunctionSurrogates(WindTurbineFunction, ABC):
             return [fs.predict_output(x).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
 
 # Like FunctionSurrogates but for using CT Tabular data with the power surrogate
-class FunctionSurrogates_onlypower(WindTurbineFunction, ABC):
+class FunctionSurrogates_DTU10MW(WindTurbineFunction, ABC):
     def __init__(self, function_surrogate_lst, input_parser, output_keys=None):
         self.function_surrogate_lst = np.asarray(function_surrogate_lst)
         self.get_input = input_parser
@@ -183,8 +183,13 @@ class FunctionSurrogates_onlypower(WindTurbineFunction, ABC):
         x = np.array([fix_shape(v, ws).ravel() for v in x]).T
         
         if isinstance(run_only, int): 
-            # The function surrogate lst = 0 because using only the electric power surrogate
-            return self.function_surrogate_lst[0].predict_output(x).reshape(ws.shape)
+            if run_only == 0:
+                # For the power, surrogate tensorflow
+                ans = self.function_surrogate_lst[0].predict_output(x).reshape(ws.shape)
+            if run_only == 1:
+                # For the ct, tabular data
+                ans = self.function_surrogate_lst[1].predict_output(np.array([x.flatten()[2], x.flatten()[0]]), self.function_surrogate_lst[1].powerCtFunction)
+            return ans
         else:
             return [fs.predict_output(x).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
 
