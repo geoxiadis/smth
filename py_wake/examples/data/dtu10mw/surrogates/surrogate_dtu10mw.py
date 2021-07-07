@@ -13,7 +13,7 @@ import os
 
 
 class DTU10MWCTTabularSurrogate():
-    """Dummy surrogate using DTU10MW CT tabular. Needed as thrust is not available in aeroelastic simulation database"""
+    """DTU10MW CT tabular surrogate. Needed as thrust is not available in aeroelastic simulation database"""
     input_channel_names = ['ws', 'psp', 'ti', 'Alpha', 'Air_density']
     
     ws_lst = np.arange(0, 26)
@@ -45,8 +45,7 @@ class DTU10MWCTTabularSurrogate():
                         [0.04, 0.05, 0.06, 0.08, 0.08, 0.08],
                         [0.03, 0.05, 0.06, 0.07, 0.07, 0.07],
                         [0.03, 0.05, 0.06, 0.07, 0.07, 0.07]])
-        
-    '''Although power is included to generate the tabular object, it is not used in the output'''
+    
     power_array = np.array([[0, 0, 0, 0, 0, 0],
                             [0, 0, 0, 0, 0, 0],
                             [0, 0, 0, 0, 0, 0],
@@ -79,10 +78,9 @@ class DTU10MWCTTabularSurrogate():
                      power_arr=power_array, power_unit='kW', 
                      ct_arr=ct_array)
     
+    # The only output is CT (run_only = 1)
     def predict_output(self, input_parser, powerCtFunction):
-        ct = powerCtFunction(ws=input_parser[0], psp=input_parser[1], run_only=1)
-        return ct
-
+        return powerCtFunction(ws=input_parser[0], psp=input_parser[1], run_only=1)
 
 class DTU10MWSurrogateWindTurbine(WindTurbine):
 
@@ -93,6 +91,7 @@ class DTU10MWSurrogateWindTurbine(WindTurbine):
                                           DTU10MWCTTabularSurrogate(), 
                                           input_parser= lambda  ws, psp, ti, Alpha, Air_density: [psp, ti, ws, Alpha, Air_density])
         
+        # Surrogates for every load channel
         sensors = ["\DEL_Q50_EdgeM_model",
                     "\DEL_Q50_FlapM_model", 
                     "\DEL_Q50_PitchM_model", 
@@ -101,6 +100,7 @@ class DTU10MWSurrogateWindTurbine(WindTurbine):
                     "\DEL_Q50_TBFA_model",
                     "\DEL_Q50_TBSS_model"]
         
+        # Name of every channel
         output_s = ["EdgeM",
                     "FlapM",
                     "PitchM", 

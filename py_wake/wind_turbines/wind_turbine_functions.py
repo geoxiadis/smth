@@ -188,7 +188,7 @@ class FunctionSurrogates_DTU10MW(WindTurbineFunction, ABC):
                 ans = self.function_surrogate_lst[0].predict_output(x).reshape(ws.shape)
             if run_only == 1:
                 # For the ct, tabular data
-                ans = self.function_surrogate_lst[1].predict_output(np.array([x.flatten()[2], x.flatten()[0]]), self.function_surrogate_lst[1].powerCtFunction)
+                ans = self.function_surrogate_lst[1].predict_output(x[:,(2,0)].T, self.function_surrogate_lst[1].powerCtFunction).reshape(ws.shape)
             return ans
         else:
             return [fs.predict_output(x).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
