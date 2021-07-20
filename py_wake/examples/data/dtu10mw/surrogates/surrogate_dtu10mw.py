@@ -3,7 +3,7 @@ from py_wake.wind_turbines._wind_turbines import WindTurbine
 from pathlib import Path
 from py_wake.wind_turbines.power_ct_functions import PowerCtSurrogate, PowerSurrogate, PowerCtNDTabular
 from py_wake.utils.tensorflow_surrogate_utils import TensorflowSurrogate, TensorflowSurrogate_DTU10MW
-from py_wake.wind_turbines.wind_turbine_functions import FunctionSurrogates
+from py_wake.wind_turbines.wind_turbine_functions import FunctionSurrogates, FunctionSurrogates_DTU10MW_loads
 from py_wake.examples.data.dtu10mw import DTU10MW
 from py_wake.examples.data.dtu10mw.surrogates.all_models import Power_Q50_model, DEL_Q50_FlapM_model, DEL_Q50_EdgeM_model, DEL_Q50_PitchM_model, DEL_Q50_ShaftMx_model, DEL_Q50_ShaftMz_model, DEL_Q50_TBFA_model, DEL_Q50_TBSS_model 
 from py_wake.examples.data.hornsrev1 import Hornsrev1Site
@@ -109,7 +109,7 @@ class DTU10MWSurrogateWindTurbine(WindTurbine):
                     "TBFA", 
                     "TBSS"]
                   
-        loadFunction = FunctionSurrogates([TensorflowSurrogate_DTU10MW(aersur_path + s, n) for s, n in zip(sensors, output_s)] , 
+        loadFunction = FunctionSurrogates_DTU10MW_loads([TensorflowSurrogate_DTU10MW(aersur_path + s, n) for s, n in zip(sensors, output_s)] , 
                                           input_parser= lambda ws, psp, ti, Alpha, Air_density: [psp, ti, ws, Alpha, Air_density],
                                           output_keys=output_s)
         
