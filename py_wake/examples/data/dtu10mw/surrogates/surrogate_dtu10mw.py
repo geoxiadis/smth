@@ -92,13 +92,13 @@ class DTU10MWSurrogateWindTurbine(WindTurbine):
                                           input_parser= lambda  ws, psp, ti, Alpha, Air_density: [psp, ti, ws, Alpha, Air_density])
         
         # Surrogates for every load channel
-        sensors = ["\DEL_Q50_EdgeM_model",
-                    "\DEL_Q50_FlapM_model", 
-                    "\DEL_Q50_PitchM_model", 
-                    "\DEL_Q50_ShaftMx_model",
-                    "\DEL_Q50_ShaftMz_model",
-                    "\DEL_Q50_TBFA_model",
-                    "\DEL_Q50_TBSS_model"]
+        sensors = ["DEL_Q50_EdgeM_model",
+                    "DEL_Q50_FlapM_model", 
+                    "DEL_Q50_PitchM_model", 
+                    "DEL_Q50_ShaftMx_model",
+                    "DEL_Q50_ShaftMz_model",
+                    "DEL_Q50_TBFA_model",
+                    "DEL_Q50_TBSS_model"]
         
         # Name of every channel
         output_s = ["EdgeM",
@@ -151,7 +151,7 @@ def main():
 
     print('Diameter', wt_surrogate.diameter())
     print('Hub height', wt_surrogate.hub_height())
-    wt = DTU10MW(method='pchip')
+    
 
     # ws = np.arange(5.5, 25, .1)
     # plt.plot(ws, wt.power(ws) / 1e3, label='DTU10MW tabular')
