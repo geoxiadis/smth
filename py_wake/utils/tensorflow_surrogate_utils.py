@@ -37,12 +37,16 @@ def extra_data_pkl2json(path):  # pragma: no cover
 
 class TensorflowSurrogate():
 
-    def __init__(self, model, input_scaler, output_scaler, input_channel_names, output_channel_name):
+    def __init__(self, model, input_scaler, output_scaler, input_channel_names, output_channel_name,
+                 input_transformer=None, max_dist=None, max_angle=None):
         self.model = model
         self.input_scaler = input_scaler
+        self.input_transformer = input_transformer
         self.output_scaler = output_scaler
         self.input_channel_names = input_channel_names
         self.output_channel_name = output_channel_name
+        self.max_dist = max_dist
+        self.max_angle = max_angle
 
     @staticmethod
     def from_h5_json(path, set_name):
@@ -61,6 +65,19 @@ class TensorflowSurrogate():
                 setattr(scaler, k, v)
             return scaler
 
+        # Create the PowerTransformer objects.
+        def json2powertransformer(d):
+            from sklearn.preprocessing import PowerTransformer, StandardScaler
+            transformer = PowerTransformer()
+            for k, v in d.items():
+                if k != '_scaler':
+                    setattr(transformer, k, v)
+                else:
+                    transformer._scaler = StandardScaler()
+                    for k2, v2 in v.items():
+                        setattr(transformer._scaler, k2, v2)
+            return transformer
+
         surrogate = TensorflowSurrogate(
             model=tf.keras.models.load_model(path / f'model_set_{set_name}.h5'),
             input_scaler=json2scaler(extra_data['input_scalers'][set_name]),
@@ -68,6 +85,12 @@ class TensorflowSurrogate():
             input_channel_names=extra_data['input_channel_names'],
             output_channel_name=extra_data['output_channel_name'],
         )
+        if 'input_transformers' in extra_data:
+            surrogate.input_transformer = json2powertransformer(extra_data['input_transformers'][set_name])
+        if 'max_dist' in extra_data:
+            surrogate.max_dist = extra_data['max_dist']
+        if 'max_angle' in extra_data:
+            surrogate.max_angle = extra_data['max_angle']
         surrogate.wind_speed_cut_in = extra_data['wind_speed_cut_in']
         surrogate.wind_speed_cut_out = extra_data['wind_speed_cut_out']
         if 'wohler_exponent' in extra_data:
@@ -112,6 +135,11 @@ class TensorflowSurrogate():
         Warning: if some points are outside of the boundary.
 
         """
+        # If possible transform the input.
+        if self.input_transformer is not None:
+            x_scaled = self.input_transformer.transform(x)
+        else:
+            x_scaled = x
         # Scale the input.
         if np.iscomplexobj(x):
             x_scaled = self.input_scaler.transform(x.real)
