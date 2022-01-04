@@ -67,6 +67,8 @@ class FugaUtils():
         self.nx0 = self.nx // 4
         self.ny0 = self.ny // 2
 
+        self.invL = self.zeta0 / self.z0
+
         self.x = np.arange(-self.nx0, self.nx * 3 / 4) * self.dx  # rotor is located 1/4 downstream
         self.y = np.arange(self.ny // 2) * self.dy
         self.zlevels = np.arange(self.low_level, self.high_level + 1)
