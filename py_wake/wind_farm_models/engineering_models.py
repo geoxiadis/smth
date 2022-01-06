@@ -119,7 +119,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         self.wake_deficitModel.deficit_initalized = True
         if self.blockage_deficitModel:
             if self.blockage_deficitModel != self.wake_deficitModel:
-                self.blockage_deficitModel._calc_layout_terms(**kwargs)
+                self.rotorAvgModel._calc_layout_terms(self.blockage_deficitModel, **kwargs)
             self.blockage_deficitModel.deficit_initalized = True
 
     def _reset_deficit(self):
@@ -610,7 +610,7 @@ class All2AllIterative(EngineeringWindFarmModel):
     def __init__(self, site, windTurbines, wake_deficitModel,
                  rotorAvgModel=RotorCenter(), superpositionModel=LinearSum(),
                  blockage_deficitModel=None, deflectionModel=None, turbulenceModel=None,
-                 convergence_tolerance=1e-6):
+                 convergence_tolerance=1e-6, stop_if_not_improving=True):
         """Initialize flow model
 
         Parameters
@@ -640,6 +640,7 @@ class All2AllIterative(EngineeringWindFarmModel):
                                           blockage_deficitModel=blockage_deficitModel, deflectionModel=deflectionModel,
                                           turbulenceModel=turbulenceModel)
         self.convergence_tolerance = convergence_tolerance
+        self.stop_if_not_improving = stop_if_not_improving
 
     def _calc_wt_interaction(self, localWind,
                              WS_eff_ilk, TI_eff_ilk,
@@ -647,6 +648,7 @@ class All2AllIterative(EngineeringWindFarmModel):
                              I, L, K, **kwargs):
         lw = localWind
         WS_eff_ilk_last = WS_eff_ilk.copy()
+        max_diff_last = 1e99
         dw_iil, hcw_iil, dh_iil = self.site.distance(wd_l=lw.wd.values, WD_il=mean_deg(lw.WD_ilk, 2))
 
         ct_ilk = self.windTurbines.ct(lw.WS.ilk((I, L, K)), **kwargs)
@@ -666,7 +668,8 @@ class All2AllIterative(EngineeringWindFarmModel):
                 }
 
         # Iterate until convergence
-        for j in tqdm(range(I), disable=I <= 1 or not self.verbose, desc="Calculate flow interaction", unit="wt"):
+        for j in tqdm(range(I), disable=I <= 1 or not self.verbose,
+                      desc="Calculate flow interaction", unit="Iteration"):
 
             ct_ilk = self.windTurbines.ct(np.maximum(WS_eff_ilk, 0), **kwargs)
             args['ct_ilk'] = ct_ilk
@@ -716,12 +719,15 @@ class All2AllIterative(EngineeringWindFarmModel):
             # Check if converged
             diff = np.abs(WS_eff_ilk_last - WS_eff_ilk)
             max_diff = np.max(diff)
-            if self.convergence_tolerance and max_diff < self.convergence_tolerance:
+            if ((self.convergence_tolerance and max_diff < self.convergence_tolerance) or
+                    (self.stop_if_not_improving and (max_diff > max_diff_last))):
                 # print("All2AllIterative converge after %d iterations" % j)
                 break
             # i_, l_, k_ = list(zip(*np.where(diff == max_diff)))[0]
-            # print("Iteration: %d, max diff: %f, WT: %d, WD: %d, WS: %d" % (j, max_diff, i_, l_, WS_ilk[i_, l_, k_]))
+            # print("Iteration: %d, max diff: %f, WT: %d, WD: %d, WS: %d" % (j, max_diff, i_, l_, WS_eff_ilk[i_, l_, k_]))
             WS_eff_ilk_last = WS_eff_ilk.copy()
+            max_diff_last = max_diff
+
         self._reset_deficit()
         return WS_eff_ilk, TI_eff_ilk, ct_ilk
 
