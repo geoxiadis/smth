@@ -610,7 +610,7 @@ class All2AllIterative(EngineeringWindFarmModel):
     def __init__(self, site, windTurbines, wake_deficitModel,
                  rotorAvgModel=RotorCenter(), superpositionModel=LinearSum(),
                  blockage_deficitModel=None, deflectionModel=None, turbulenceModel=None,
-                 convergence_tolerance=1e-6, stop_if_not_improving=True):
+                 convergence_tolerance=1e-6):
         """Initialize flow model
 
         Parameters
@@ -640,7 +640,6 @@ class All2AllIterative(EngineeringWindFarmModel):
                                           blockage_deficitModel=blockage_deficitModel, deflectionModel=deflectionModel,
                                           turbulenceModel=turbulenceModel)
         self.convergence_tolerance = convergence_tolerance
-        self.stop_if_not_improving = stop_if_not_improving
 
     def _calc_wt_interaction(self, localWind,
                              WS_eff_ilk, TI_eff_ilk,
@@ -652,6 +651,7 @@ class All2AllIterative(EngineeringWindFarmModel):
         dw_iil, hcw_iil, dh_iil = self.site.distance(wd_l=lw.wd.values, WD_il=mean_deg(lw.WD_ilk, 2))
 
         ct_ilk = self.windTurbines.ct(lw.WS.ilk((I, L, K)), **kwargs)
+        ct_ilk_idle = self.windTurbines.ct(0.1 * np.ones_like(lw.WS.ilk((I, L, K))), **kwargs)
         D_src_il = D_i[:, na]
         args = {'WS_ilk': lw.WS.ilk((I, L, K)),
                 'TI_ilk': lw.TI.ilk(),
@@ -672,6 +672,11 @@ class All2AllIterative(EngineeringWindFarmModel):
                       desc="Calculate flow interaction", unit="Iteration"):
 
             ct_ilk = self.windTurbines.ct(np.maximum(WS_eff_ilk, 0), **kwargs)
+            if j == 1:
+                ioff = ct_ilk <= ct_ilk_idle
+            if j >= 1:
+                ct_ilk[ioff] = ct_ilk_idle[ioff]
+
             args['ct_ilk'] = ct_ilk
             args['WS_eff_ilk'] = WS_eff_ilk
             if self.deflectionModel:
@@ -702,12 +707,12 @@ class All2AllIterative(EngineeringWindFarmModel):
                                                                  args['hcw_ijlk'],
                                                                  dh_iil[..., na])
                 # Add blockage as linear effect
-                if self.blockage_deficitModel:
+                if self.blockage_deficitModel and j > 0:
                     WS_eff_ilk -= (self.blockage_deficitModel.superpositionModel or LinearSum())(blockage_iilk)
             else:
                 WS_eff_ilk = lw.WS_ilk.astype(
                     float) - self.superpositionModel(deficit_iilk)
-                if self.blockage_deficitModel:
+                if self.blockage_deficitModel and j > 0:
                     WS_eff_ilk -= (self.blockage_deficitModel.superpositionModel or self.superpositionModel)(blockage_iilk)
 
             if self.turbulenceModel:
@@ -719,12 +724,11 @@ class All2AllIterative(EngineeringWindFarmModel):
             # Check if converged
             diff = np.abs(WS_eff_ilk_last - WS_eff_ilk)
             max_diff = np.max(diff)
-            if ((self.convergence_tolerance and max_diff < self.convergence_tolerance) or
-                    (self.stop_if_not_improving and (max_diff > max_diff_last))):
+            if (self.convergence_tolerance and max_diff < self.convergence_tolerance):
                 # print("All2AllIterative converge after %d iterations" % j)
                 break
-            # i_, l_, k_ = list(zip(*np.where(diff == max_diff)))[0]
-            # print("Iteration: %d, max diff: %f, WT: %d, WD: %d, WS: %d" % (j, max_diff, i_, l_, WS_eff_ilk[i_, l_, k_]))
+            i_, l_, k_ = list(zip(*np.where(diff == max_diff)))[0]
+            print("Iteration: %d, max diff: %f, WT: %d, WD: %d, WS: %d" % (j, max_diff, i_, l_, WS_eff_ilk[i_, l_, k_]))
             WS_eff_ilk_last = WS_eff_ilk.copy()
             max_diff_last = max_diff
 
