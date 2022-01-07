@@ -640,6 +640,7 @@ class All2AllIterative(EngineeringWindFarmModel):
                                           blockage_deficitModel=blockage_deficitModel, deflectionModel=deflectionModel,
                                           turbulenceModel=turbulenceModel)
         self.convergence_tolerance = convergence_tolerance
+        self.ct_fuzzy_edge = 0.25
 
     def _calc_wt_interaction(self, localWind,
                              WS_eff_ilk, TI_eff_ilk,
@@ -651,6 +652,7 @@ class All2AllIterative(EngineeringWindFarmModel):
         dw_iil, hcw_iil, dh_iil = self.site.distance(wd_l=lw.wd.values, WD_il=mean_deg(lw.WD_ilk, 2))
 
         ct_ilk = self.windTurbines.ct(lw.WS.ilk((I, L, K)), **kwargs)
+        # find idleing thrust coefficient
         ct_ilk_idle = self.windTurbines.ct(0.1 * np.ones_like(lw.WS.ilk((I, L, K))), **kwargs)
         D_src_il = D_i[:, na]
         args = {'WS_ilk': lw.WS.ilk((I, L, K)),
@@ -667,28 +669,32 @@ class All2AllIterative(EngineeringWindFarmModel):
                 'h_il': h_i[:, na]
                 }
 
-        # Iterate until convergence
+        # Iterate until convergence, converging without blockage first
         wakes_converged = False
         set_ioff = False
         for j in tqdm(range(I), disable=I <= 1 or not self.verbose,
                       desc="Calculate flow interaction", unit="Iteration"):
 
             ct_ilk = self.windTurbines.ct(np.maximum(WS_eff_ilk, 0), **kwargs)
-            # if j == 1:
-            #     ioff = ct_ilk <= ct_ilk_idle
-            # if j >= 1:
-            #     ct_ilk[ioff] = ct_ilk_idle[ioff]
+
+            # once the wakes only solution has converged the blockage acts only as a small
+            # perturbation, accelerating convergence
             if wakes_converged:
+                # find all turbines that are not running with wakes only. They will remain
+                # off of subsequent iterations
                 if not set_ioff:
-                    ct_ilk_wakes = ct_ilk.copy()
-                    ioff = ct_ilk_wakes <= ct_ilk_idle
-                    ct_ilk_up = self.windTurbines.ct(np.maximum(WS_eff_ilk + 0.25, 0), **kwargs)
-                    ct_ilk_low = self.windTurbines.ct(np.maximum(WS_eff_ilk - 0.25, 0), **kwargs)
-                    ioff_up = ct_ilk_up <= ct_ilk_idle
-                    ioff_low = ct_ilk_low <= ct_ilk_idle
-                    ifreeze = ioff | ioff_up | ioff_low
+                    ioff = ct_ilk_last <= ct_ilk_idle
                     set_ioff = True
-                ct_ilk[ifreeze] = ct_ilk_wakes[ifreeze]
+                # find all turbines that are close to being switched off. If they should
+                # switch off they would make the solution unstable
+                ct_ilk_up = self.windTurbines.ct(np.maximum(WS_eff_ilk + self.ct_fuzzy_edge, 0), **kwargs)
+                ct_ilk_low = self.windTurbines.ct(np.maximum(WS_eff_ilk - self.ct_fuzzy_edge, 0), **kwargs)
+                ioff_up = ct_ilk_up <= ct_ilk_idle
+                ioff_low = ct_ilk_low <= ct_ilk_idle
+                # to ensure that no turbines switch on and that none switch off once
+                # computing with blockage added, the ct is frozen for these turbines.
+                ifreeze = ioff | ioff_up | ioff_low
+                ct_ilk[ifreeze] = ct_ilk_last[ifreeze]
 
             args['ct_ilk'] = ct_ilk
             args['WS_eff_ilk'] = WS_eff_ilk
@@ -748,6 +754,7 @@ class All2AllIterative(EngineeringWindFarmModel):
                   (j, wakes_converged, max_diff, i_, l_, WS_eff_ilk[i_, l_, k_]))
             WS_eff_ilk_last = WS_eff_ilk.copy()
             max_diff_last = max_diff
+            ct_ilk_last = ct_ilk.copy()
 
         self._reset_deficit()
         return WS_eff_ilk, TI_eff_ilk, ct_ilk
