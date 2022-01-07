@@ -668,14 +668,27 @@ class All2AllIterative(EngineeringWindFarmModel):
                 }
 
         # Iterate until convergence
+        wakes_converged = False
+        set_ioff = False
         for j in tqdm(range(I), disable=I <= 1 or not self.verbose,
                       desc="Calculate flow interaction", unit="Iteration"):
 
             ct_ilk = self.windTurbines.ct(np.maximum(WS_eff_ilk, 0), **kwargs)
-            if j == 1:
-                ioff = ct_ilk <= ct_ilk_idle
-            if j >= 1:
-                ct_ilk[ioff] = ct_ilk_idle[ioff]
+            # if j == 1:
+            #     ioff = ct_ilk <= ct_ilk_idle
+            # if j >= 1:
+            #     ct_ilk[ioff] = ct_ilk_idle[ioff]
+            if wakes_converged:
+                if not set_ioff:
+                    ct_ilk_wakes = ct_ilk.copy()
+                    ioff = ct_ilk_wakes <= ct_ilk_idle
+                    ct_ilk_up = self.windTurbines.ct(np.maximum(WS_eff_ilk + 0.25, 0), **kwargs)
+                    ct_ilk_low = self.windTurbines.ct(np.maximum(WS_eff_ilk - 0.25, 0), **kwargs)
+                    ioff_up = ct_ilk_up <= ct_ilk_idle
+                    ioff_low = ct_ilk_low <= ct_ilk_idle
+                    ifreeze = ioff | ioff_up | ioff_low
+                    set_ioff = True
+                ct_ilk[ifreeze] = ct_ilk_wakes[ifreeze]
 
             args['ct_ilk'] = ct_ilk
             args['WS_eff_ilk'] = WS_eff_ilk
@@ -707,12 +720,12 @@ class All2AllIterative(EngineeringWindFarmModel):
                                                                  args['hcw_ijlk'],
                                                                  dh_iil[..., na])
                 # Add blockage as linear effect
-                if self.blockage_deficitModel and j > 0:
+                if self.blockage_deficitModel and wakes_converged:
                     WS_eff_ilk -= (self.blockage_deficitModel.superpositionModel or LinearSum())(blockage_iilk)
             else:
                 WS_eff_ilk = lw.WS_ilk.astype(
                     float) - self.superpositionModel(deficit_iilk)
-                if self.blockage_deficitModel and j > 0:
+                if self.blockage_deficitModel and wakes_converged:
                     WS_eff_ilk -= (self.blockage_deficitModel.superpositionModel or self.superpositionModel)(blockage_iilk)
 
             if self.turbulenceModel:
@@ -725,10 +738,14 @@ class All2AllIterative(EngineeringWindFarmModel):
             diff = np.abs(WS_eff_ilk_last - WS_eff_ilk)
             max_diff = np.max(diff)
             if (self.convergence_tolerance and max_diff < self.convergence_tolerance):
-                # print("All2AllIterative converge after %d iterations" % j)
-                break
+                if not wakes_converged:
+                    wakes_converged = True
+                else:
+                    # print("All2AllIterative converge after %d iterations" % j)
+                    break
             i_, l_, k_ = list(zip(*np.where(diff == max_diff)))[0]
-            print("Iteration: %d, max diff: %f, WT: %d, WD: %d, WS: %d" % (j, max_diff, i_, l_, WS_eff_ilk[i_, l_, k_]))
+            print("Iteration: %d, %s,max diff: %f, WT: %d, WD: %d, WS: %d" %
+                  (j, wakes_converged, max_diff, i_, l_, WS_eff_ilk[i_, l_, k_]))
             WS_eff_ilk_last = WS_eff_ilk.copy()
             max_diff_last = max_diff
 
