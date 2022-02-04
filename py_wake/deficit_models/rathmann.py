@@ -94,7 +94,7 @@ class Rathmann(BlockageDeficitModel):
         if not self.deficit_initalized:
             # calculate layout term, self.dmu_G_ijlk
             self._calc_layout_terms(D_src_il, dw_ijlk, cw_ijlk)
-
+        self._calc_layout_terms(D_src_il, dw_ijlk, cw_ijlk)
         # circulation/strength of vortex dipole Eq. (1) in [1]
         gammat_ilk = WS_ilk * 2. * self.a0(ct_ilk * self.sct)
 
