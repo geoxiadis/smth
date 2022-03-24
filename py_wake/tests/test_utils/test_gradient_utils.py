@@ -193,6 +193,24 @@ def test_vector2multi_vector():
     npt.assert_array_equal(autograd(hsum, False)(x), refsum)
 
 
+def test_wrt_2d():
+    def f(x):
+        return np.sum(x**2)
+
+    for grad in [fd, cs, autograd]:
+        for x in [2, np.arange(4), np.arange(6).reshape((3, 2))]:
+            assert np.shape(grad(f)(x)) == np.shape(x)
+
+
+def test_2d_wrt_2d():
+    def f2d(x):
+        return np.reshape(np.sum(x**2) * np.arange(6), (2, 3))
+
+    for grad in [fd, cs, autograd]:
+        for x in [2, np.arange(3), np.arange(20).reshape((4, 5))]:
+            assert np.shape(grad(f2d)(x)) == (2, 3) + np.shape(x)
+
+
 def test_gradients():
     wt = IEA37_WindTurbines()
     ws_lst = np.arange(3, 25, .1)

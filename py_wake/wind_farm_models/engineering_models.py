@@ -13,6 +13,8 @@ from py_wake.wind_turbines._wind_turbines import WindTurbines
 from py_wake.utils.model_utils import check_model
 from py_wake.utils.functions import mean_deg
 from py_wake.utils.gradients import hypot
+from py_wake.utils.parallelization import get_pool
+import multiprocessing
 
 
 class EngineeringWindFarmModel(WindFarmModel):
@@ -153,9 +155,29 @@ class EngineeringWindFarmModel(WindFarmModel):
         deficit, blockage = self._add_blockage(deficit, dw_ijlk, **kwargs)
         return deficit, uc, sigma_sqr, blockage
 
+    def _calc_wt_interaction_args(self, kwargs):
+        """Used for parallel execution"""
+        return self.calc_wt_interaction(**kwargs)
+
     def calc_wt_interaction(self, x_i, y_i, h_i=None, type_i=0, wd=None, ws=None, time=False,
-                            yaw_ilk=None, tilt_ilk=None, **kwargs):
-        """See WindFarmModel.calc_wt_interaction"""
+                            yaw_ilk=None, tilt_ilk=None,
+                            n_cpu=1, wd_chunks=None, ws_chunks=None,
+                            **kwargs):
+        """See WindFarmModel.calc_wt_interaction and additional parameters below
+
+        Parameters
+        ----------
+        n_cpu : int or None, optional
+            Number of CPUs to be used for execution.
+            If 1 (default), the execution is not parallized
+            If None, the available number of CPUs are used
+        wd_chunks : int or None, optional
+            If n_cpu>1, the wind directions are divided into <wd_chunks> chunks and executed in parallel.
+            If wd_chunks is None, wd_chunks is set to the available number of CPUs
+        ws_chunks : int or None, optional
+            If n_cpu>1, the wind speeds are divided into <ws_chunks> chunks and executed in parallel.
+            If ws_chunks is None, ws_chunks is set to 1
+        """
         h_i, D_i = self.windTurbines.get_defaults(len(x_i), type_i, h_i)
         x_i, y_i, type_i = [np.asarray(v) for v in [x_i, y_i, type_i]]
         wd, ws = self.site.get_defaults(wd, ws)
@@ -165,6 +187,30 @@ class EngineeringWindFarmModel(WindFarmModel):
 
         # Calculate down-wind and cross-wind distances
         self._validate_input(x_i, y_i)
+
+        if n_cpu != 1:
+            # parallel execution
+            n_cpu = n_cpu or multiprocessing.cpu_count()
+            wd_chunks = wd_chunks or n_cpu
+            ws_chunks = ws_chunks or 1
+
+            wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
+            ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
+
+            arg_lst = [{'x_i': x_i, 'y_i': y_i, 'h_i': h_i, 'type_i': type_i, 'yaw_ilk': yaw_ilk,
+                        'wd': wd[wd_i0:wd_i1], 'ws':ws[ws_i0:ws_i1], 'time':time, **kwargs}
+                       for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:]) for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])]
+            map_func = get_pool(n_cpu).map
+            WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, _, wt_inputs = list(
+                zip(*map_func(self._calc_wt_interaction_args, arg_lst)))
+
+            def concatenate(v_ilk):
+                if all([v is None for v in v_ilk]):
+                    return None
+                return np.concatenate([np.concatenate(v_ilk[i::ws_chunks], axis=1) for i in range(ws_chunks)], axis=2)
+
+            return ([concatenate(v) for v in [WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk]] +
+                    [lw, {k: concatenate([wt_i[k] for wt_i in wt_inputs]) for k in wt_inputs[0]}])
 
         I, L, K, = len(x_i), len(wd), (1, len(ws))[time is False]
         for v in ['WS', 'WD', 'TI']:
@@ -372,20 +418,6 @@ class EngineeringWindFarmModel(WindFarmModel):
         if len(i1):
             msg = "\n".join(["Turbines %d and %d are at the same position" % (i1[i], i2[i]) for i in range(len(i1))])
             raise ValueError(msg)
-
-    def dAEPdxy(self, gradient_method, normalize_probabilities=False, with_wake_loss=True, gradient_method_kwargs={}):
-        # collects x,y to one list and compute gradients of aep with respect to all elements
-        def aep_xy(xy, h=None, type=0, wd=None, ws=None, yaw_ilk=None):
-            x, y = np.reshape(xy, (2, -1))
-            return self.aep(x, y, h, type, wd, ws, yaw_ilk,
-                            normalize_probabilities=normalize_probabilities, with_wake_loss=with_wake_loss)
-
-        def wrap(x, y, h=None, type=0, wd=None, ws=None, yaw_ilk=None):  # @ReservedAssignment
-            h, _ = self.windTurbines.get_defaults(len(x), type, h)
-            return gradient_method(aep_xy, True, 0, **gradient_method_kwargs)(
-                np.r_[x, y], h, type, wd, ws, yaw_ilk).reshape((2, -1))
-
-        return wrap
 
 
 class PropagateDownwind(EngineeringWindFarmModel):

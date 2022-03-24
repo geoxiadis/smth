@@ -235,23 +235,6 @@ def test_dAEP_2wt():
     plt.close('all')
 
 
-def test_dAEPdx():
-    site = Hornsrev1Site()
-    iea37_site = IEA37Site(16)
-
-    wt = IEA37_WindTurbines()
-    # wt.enable_autograd()
-    wfm = IEA37SimpleBastankhahGaussian(site, wt)
-    x, y = iea37_site.initial_position[np.array([0, 2, 5, 8, 14])].T
-
-    dAEPdxy_autograd = wfm.dAEPdxy(gradient_method=autograd)(x, y)
-    dAEPdxy_cs = wfm.dAEPdxy(gradient_method=cs)(x, y)
-    dAEPdxy_fd = wfm.dAEPdxy(gradient_method=fd)(x, y)
-
-    npt.assert_array_almost_equal(dAEPdxy_autograd, dAEPdxy_cs, 15)
-    npt.assert_array_almost_equal(dAEPdxy_autograd, dAEPdxy_fd, 6)
-
-
 @pytest.mark.parametrize('wake_deficitModel,blockage_deficitModel', [(FugaDeficit(), None),
                                                                      (NoWakeDeficit(), SelfSimilarityDeficit()),
                                                                      (FugaDeficit(), SelfSimilarityDeficit())])

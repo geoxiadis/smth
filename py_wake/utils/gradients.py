@@ -144,19 +144,24 @@ def _step_grad(f, argnum, step_func, step, vector_interdependence):
         f_signature = signature(f)
 
         def wrap(*args, **kwargs):
-            bound_arguments = f_signature.bind(*args, **kwargs)
-            bound_arguments.apply_defaults()
-            args, kwargs = bound_arguments.args, bound_arguments.kwargs
-            x = np.atleast_1d(args[argnum]).astype(float)
+            args, kwargs = kwargs2args(f, *args, **kwargs)
+
+            x = args[argnum]
+            x_shape = np.shape(x)
+            x = np.atleast_1d(x).flatten().astype(float)
+
             if 'ref' in inspect.getfullargspec(step_func).args:
-                ref = np.asarray(f(*(args[:argnum] + (x,) + args[argnum + 1:]), **kwargs))
+                ref = np.asarray(f(*(args[:argnum] + (np.reshape(x, x_shape),) + args[argnum + 1:]), **kwargs))
             else:
                 ref = None
             if vector_interdependence:
-                return np.array([step_func(f(*(args[:argnum] + (x_,) + args[argnum + 1:]), **kwargs), ref, step)
-                                 for x_ in x + np.diag(np.ones_like(x) * step)]).T
+                res = np.moveaxis([step_func(f(*(args[:argnum] + (np.reshape(x_, x_shape),) + args[argnum + 1:]),
+                                               **kwargs), ref, step)
+                                   for x_ in x + np.diag(np.ones_like(x) * step)], 0, -1)
             else:
-                return step_func(f(*(args[:argnum] + (x + step,) + args[argnum + 1:]), **kwargs), ref, step)
+                res = step_func(f(*(args[:argnum] + (np.reshape(x + step, x_shape),) +
+                                    args[argnum + 1:]), **kwargs), ref, step)
+            return np.reshape(res, res.shape[:-1] + x_shape)
         fname = getattr(f, '__name__', f'{f.__class__.__name__}.{f.__call__.__name__}')
         wrap.__name__ = "%s_of_%s_wrt_argnum_%d" % (step_func.__name__, fname, argnum)
         return wrap
@@ -174,6 +179,16 @@ def cs(f, vector_interdependence=True, argnum=0, step=1e-20):
     return _step_grad(f, argnum, cs_gradient, step * 1j, vector_interdependence)
 
 
+def kwargs2args(f, *args, **kwargs):
+    if isinstance(args, tuple) and len(args) == 1 and isinstance(args[0], dict) and not kwargs:
+        kwargs = args[0]
+        args = tuple()
+
+    bound_arguments = signature(f).bind(*args, **kwargs)
+    bound_arguments.apply_defaults()
+    return bound_arguments.args, bound_arguments.kwargs
+
+
 def autograd(f, vector_interdependence=True, argnum=0):
     if isinstance(argnum, (list, tuple)):
         return lambda *args, **kwargs: [autograd(f, vector_interdependence, i)(*args, **kwargs) for i in argnum]
@@ -185,11 +200,9 @@ def autograd(f, vector_interdependence=True, argnum=0):
 
         @wraps(grad_func)
         def wrap(*args, **kwargs):
-            bound_arguments = signature(f).bind(*args, **kwargs)
-            bound_arguments.apply_defaults()
-            args = bound_arguments.args
+            args, kwargs = kwargs2args(f, *args, **kwargs)
             return grad_func(*(args[:argnum] + (anp.asarray(args[argnum], dtype=float),) + args[argnum + 1:]),  # @UndefinedVariable
-                             **bound_arguments.kwargs)
+                             **kwargs)
 
         return _use_autograd_in(modules=['py_wake.', f])(wrap)
 

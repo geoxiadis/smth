@@ -77,7 +77,7 @@ class WindFarmModel(ABC):
                                 WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk,
                                 power_ilk=power_ilk, ct_ilk=ct_ilk, wt_inputs=wt_inputs)
 
-    def aep(self, x, y, h=None, type=0, wd=None, ws=None, yaw_ilk=None,  # @ReservedAssignment
+    def aep(self, x, y, h=None, type=0, wd=None, ws=None, yaw=None, tilt=None,  # @ReservedAssignment
             normalize_probabilities=False, with_wake_loss=True):
         """Anual Energy Production (sum of all wind turbines, directions and speeds) in GWh.
 
@@ -90,8 +90,13 @@ class WindFarmModel(ABC):
         >> windFarmModel.aep(x,y,...)
 
         """
+        wd, ws = self.site.get_defaults(wd, ws)
+        I, L, K, = len(x), len(np.atleast_1d(wd)), len(np.atleast_1d(ws))
+        yaw_ilk = fix_shape(yaw, (I, L, K), allow_None=True, allow_number=True)
+        tilt_ilk = fix_shape(tilt, (I, L, K), allow_None=True, allow_number=True)
+
         _, _, power_ilk, _, localWind, power_ct_inputs = self.calc_wt_interaction(
-            x_i=x, y_i=y, h_i=h, type_i=type, yaw_ilk=yaw_ilk, wd=wd, ws=ws)
+            x_i=x, y_i=y, h_i=h, type_i=type, yaw_ilk=yaw_ilk, tilt_ilk=tilt_ilk, wd=wd, ws=ws)
         P_ilk = localWind.P_ilk
         if normalize_probabilities:
             norm = P_ilk.sum((1, 2))[:, na, na]
@@ -149,31 +154,66 @@ class WindFarmModel(ABC):
             Local free-flow wind
         """
 
-    def _calc_wt_interaction_args(self, kwargs):
-        return self.calc_wt_interaction(**kwargs)
+    def dAEP(self, gradient_method, wrt_arg, gradient_method_kwargs={},
+             n_cpu=1, wd_chunks=None, ws_chunks=None):
+        """Compute the gradients of the AEP wrt. wrt_arg using the gradient_method
 
-    def calc_wt_interaction_parallel(self, x_i, y_i, h_i=None, type_i=0, yaw_ilk=None,
-                                     wd=None, ws=None, time=False, wd_chunks=multiprocessing.cpu_count(),
-                                     ws_chunks=1, processes=multiprocessing.cpu_count(), **kwargs):
-        wd, ws = self.site.get_defaults(wd, ws)
-        wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
-        ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
+        Parameters
+        ----------
+        gradient_method : gradient function, {fd, cs, autograd}
+            gradient function
+        wrt_arg : {'x', 'y', 'xy', 'h', 'wd', 'ws', 'yaw'}
+            argument to compute gradients of AEP with respect to
+            With autograd, 'xy' is around 40% faster than sequentially computing 'x' and 'y'
+        """
 
-        arg_lst = [{'x_i': x_i, 'y_i': y_i, 'h_i': h_i, 'type_i': type_i, 'yaw_ilk': yaw_ilk,
-                    'wd': wd[wd_i0:wd_i1], 'ws':ws[ws_i0:ws_i1], 'time':time, **kwargs}
-                   for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:]) for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])]
-        map_func = map
-        map_func = get_pool(processes).map
-        WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, _, wt_inputs = list(
-            zip(*map_func(self._calc_wt_interaction_args, arg_lst)))
+        def get_wrap(f, n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks):
+            def wrap(x, y, h=None, type=0, wd=None, ws=None, yaw=None,
+                     n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks):  # @ReservedAssignment
+                h, _ = self.windTurbines.get_defaults(len(x), type, h)
+                wd, ws = self.site.get_defaults(wd, ws)
 
-        def concatenate(v_ilk):
-            if all([v is None for v in v_ilk]):
-                return None
-            return np.concatenate([np.concatenate(v_ilk[i::ws_chunks], axis=1) for i in range(ws_chunks)], axis=2)
-        lw = self.site.local_wind(x_i=x_i, y_i=y_i, h_i=h_i, wd=wd, ws=ws, time=time)
-        return ([concatenate(v) for v in [WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk]] +
-                [lw, {k: concatenate([wt_i[k] for wt_i in wt_inputs]) for k in wt_inputs[0]}])
+                if n_cpu != 1:
+                    # parallel execution
+                    n_cpu = n_cpu or multiprocessing.cpu_count()
+                    wd_chunks = wd_chunks or n_cpu
+                    ws_chunks = ws_chunks or 1
+
+                    wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
+                    ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
+
+                    arg_lst = [{'x': x, 'y': y, 'h': h, 'type': type, 'yaw': yaw,
+                                'wd': wd[wd_i0:wd_i1], 'ws':ws[ws_i0:ws_i1]}
+                               for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:]) for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])]
+
+                    map_func = get_pool(n_cpu).map
+                    map_func = map
+                    return np.sum([daep / self.site.wd_bin_size(args['wd'])
+                                   for args, daep in zip(arg_lst, map_func(f, arg_lst))], 0)
+
+                else:
+                    return f({'x': x, 'y': y, 'h': h, 'type': type, 'ws': ws, 'wd': wd, 'yaw': yaw})
+
+            return wrap
+
+        if wrt_arg == 'xy':
+            # collects x,y to one list and compute gradients of aep with respect to all elements
+            def aep_xy(xy, h=None, type=0, wd=None, ws=None, yaw=None):
+                x, y = np.reshape(xy, (2, -1))
+                return self.aep(x, y, h, type, wd, ws, yaw)
+
+            def xy_wrapper(args_dict):
+                x = args_dict.pop('x')
+                y = args_dict.pop('y')
+
+                return gradient_method(aep_xy, True, 0, **
+                                       gradient_method_kwargs)(np.r_[x, y], **args_dict).reshape((2, -1))
+
+            return get_wrap(xy_wrapper)
+
+        else:
+            argnum = ['x', 'y', 'h', 'type', 'wd', 'ws', 'yaw'].index(wrt_arg)
+            return get_wrap(gradient_method(self.aep, True, argnum, **gradient_method_kwargs))
 
 
 class SimulationResult(xr.Dataset):
