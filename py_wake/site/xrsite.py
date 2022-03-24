@@ -1,9 +1,11 @@
-import xarray as xr
-from py_wake.site.distance import StraightDistance
 import numpy as np
-from py_wake.utils.grid_interpolator import GridInterpolator, EqDistRegGrid2DInterpolator
+from numpy import newaxis as na
+import xarray as xr
+from requests import get
 from py_wake.site._site import Site
+from py_wake.site.distance import StraightDistance
 from py_wake.utils import weibull
+from py_wake.utils.grid_interpolator import GridInterpolator, EqDistRegGrid2DInterpolator
 
 
 class XRSite(Site):
@@ -121,19 +123,14 @@ class XRSite(Site):
 
         # pre select, i.e. reduce input data size in case only one ws or wd is needed
         data, k_indices = pre_sel(data, 'ws')
-        if 'time' in coords:
-            data, l_indices = pre_sel(data, 'time')
-        else:
-            data, l_indices = pre_sel(data, 'wd')
+        l_name = ['wd', 'time']['time' in coords]
+        data, l_indices = pre_sel(data, l_name)
 
-        if 'i' in ip_dims:
-            if 'i' in coords and len(var.i) != len(coords['i']):
-                raise ValueError(
-                    "Number of points, i(=%d), in site data variable, %s, must match number of requested points(=%d)" %
-                    (len(var.i), var.name, len(coords['i'])))
-            # requesting all points(wt positions) in site
-            # ip_dims.remove('i')
-            # ip_data_dims = ['i']
+        if 'i' in ip_dims and 'i' in coords and len(var.i) != len(coords['i']):
+            raise ValueError(
+                "Number of points, i(=%d), in site data variable, %s, must match number of requested points(=%d)" %
+                (len(var.i), var.name, len(coords['i'])))
+        data, i_indices = pre_sel(data, 'i')
 
         if len(ip_dims) > 0:
             grid_interp = GridInterpolator([var.coords[k].data for k in ip_dims], data,
@@ -165,15 +162,12 @@ class XRSite(Site):
             ip_data = data
             ip_data_dims = []
 
-#         if 'i' in var.dims:
-#             ip_data_dims.insert(0, 'i')
+        if i_indices is not None:
+            ip_data_dims.append('i')
+            ip_data = sel(ip_data, ip_data_dims, i_indices, 'i')
         if l_indices is not None:
-            if 'time' in coords:
-                ip_data_dims.append('time')
-                ip_data = sel(ip_data, ip_data_dims, l_indices, 'time')
-            else:
-                ip_data_dims.append('wd')
-                ip_data = sel(ip_data, ip_data_dims, l_indices, 'wd')
+            ip_data_dims.append(l_name)
+            ip_data = sel(ip_data, ip_data_dims, l_indices, l_name)
         if k_indices is not None:
             ip_data_dims.append('ws')
             ip_data = sel(ip_data, ip_data_dims, k_indices, 'ws')
@@ -263,11 +257,12 @@ class UniformSite(XRSite):
     constant wind speed probability of 1. Only for one fixed wind speed
     """
 
-    def __init__(self, p_wd, ti, ws=12, interp_method='nearest', shear=None, initial_position=None):
+    def __init__(self, p_wd, ti=None, ws=12, interp_method='nearest', shear=None, initial_position=None):
         ds = xr.Dataset(
-            data_vars={'P': ('wd', p_wd), 'TI': ti},
+            data_vars={'P': ('wd', p_wd)},
             coords={'wd': np.linspace(0, 360, len(p_wd), endpoint=False)})
-
+        if ti is not None:
+            ds['TI'] = ti
         XRSite.__init__(self, ds, interp_method=interp_method, shear=shear, initial_position=initial_position,
                         default_ws=np.atleast_1d(ws))
 
@@ -277,7 +272,7 @@ class UniformWeibullSite(XRSite):
     weibull distributed wind speed
     """
 
-    def __init__(self, p_wd, a, k, ti, interp_method='nearest', shear=None):
+    def __init__(self, p_wd, a, k, ti=None, interp_method='nearest', shear=None):
         """Initialize UniformWeibullSite
 
         Parameters
@@ -288,7 +283,7 @@ class UniformWeibullSite(XRSite):
             Weilbull scaling parameter of wind direction sectors
         k : array_like
             Weibull shape parameter
-        ti : float or array_like
+        ti : float or array_like, optional
             Turbulence intensity
         interp_method : 'nearest', 'linear'
             p_wd, a, k, ti and alpha are interpolated to 1 deg sectors using this
@@ -303,6 +298,52 @@ class UniformWeibullSite(XRSite):
 
         """
         ds = xr.Dataset(
-            data_vars={'Sector_frequency': ('wd', p_wd), 'Weibull_A': ('wd', a), 'Weibull_k': ('wd', k), 'TI': ti},
+            data_vars={'Sector_frequency': ('wd', p_wd), 'Weibull_A': ('wd', a), 'Weibull_k': ('wd', k)},
             coords={'wd': np.linspace(0, 360, len(p_wd), endpoint=False)})
+        if ti is not None:
+            ds['TI'] = ti
         XRSite.__init__(self, ds, interp_method=interp_method, shear=shear)
+
+
+class GlobalWindAtlasSite(XRSite):
+    """Site with Global Wind Climate (GWC) from the Global Wind Atlas based on
+    lat and long which is interpolated at specific roughness and height.
+    """
+
+    def __init__(self, lat, long, height, roughness, ti=None, **kwargs):
+        """
+        Parameters
+        ----------
+        lat: float
+            Latitude of the location
+        long: float
+            Longitude of the location
+        height: float
+            Height of the location
+        roughness: float
+            roughness length at the location
+        """
+        self.gwc_ds = self._read_gwc(lat, long)
+        if ti is not None:
+            self.gwc_ds['TI'] = ti
+        XRSite.__init__(self, ds=self.gwc_ds.interp(height=height, roughness=roughness), **kwargs)
+
+    def _read_gwc(self, lat, long):
+        url_str = f'https://globalwindatlas.info/api/gwa/custom/Lib/?lat={lat}&long={long}'
+        lines = get(url_str).text.strip().split('\r\n')
+
+        # Read header information one line at a time
+        # desc = txt[0].strip()  # File Description
+        nrough, nhgt, nsec = map(int, lines[1].split())  # dimensions
+        roughnesses = np.array(lines[2].split(), dtype=float)  # Roughness classes
+        heights = np.array(lines[3].split(), dtype=float)  # heights
+        data = np.array([l.split() for l in lines[4:]], dtype=float).reshape((nrough, nhgt * 2 + 1, nsec))
+        freq = data[:, 0] / data[:, 0].sum(1)[:, na]
+        A = data[:, 1::2]
+        k = data[:, 2::2]
+        ds = xr.Dataset({'Weibull_A': (["roughness", "height", "wd"], A),
+                         'Weibull_k': (["roughness", "height", "wd"], k),
+                         "Sector_frequency": (["roughness", "wd"], freq)},
+                        coords={"height": heights, "roughness": roughnesses,
+                                "wd": np.linspace(0, 360, nsec, endpoint=False)})
+        return ds
