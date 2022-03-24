@@ -8,6 +8,8 @@ from py_wake.utils import xarray_utils, weibull  # register ilk function @Unused
 from numpy import newaxis as na
 from py_wake.utils.model_utils import check_model, fix_shape
 from py_wake.utils.xarray_utils import da2py
+import multiprocessing
+from py_wake.utils.parallelization import get_pool
 
 
 class WindFarmModel(ABC):
@@ -101,7 +103,7 @@ class WindFarmModel(ABC):
         return (power_ilk * P_ilk / norm * 24 * 365 * 1e-9).sum()
 
     @abstractmethod
-    def calc_wt_interaction(self, x_i, y_i, h_i=None, type_i=None, yaw_ilk=None,
+    def calc_wt_interaction(self, x_i, y_i, h_i=None, type_i=0, yaw_ilk=None,
                             wd=None, ws=None, time=False, **kwargs):
         """Calculate effective wind speed, turbulence intensity,
         power and thrust coefficient, and local site parameters
@@ -146,6 +148,32 @@ class WindFarmModel(ABC):
         localWind : LocalWind
             Local free-flow wind
         """
+
+    def _calc_wt_interaction_args(self, kwargs):
+        return self.calc_wt_interaction(**kwargs)
+
+    def calc_wt_interaction_parallel(self, x_i, y_i, h_i=None, type_i=0, yaw_ilk=None,
+                                     wd=None, ws=None, time=False, wd_chunks=multiprocessing.cpu_count(),
+                                     ws_chunks=1, processes=multiprocessing.cpu_count(), **kwargs):
+        wd, ws = self.site.get_defaults(wd, ws)
+        wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
+        ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
+
+        arg_lst = [{'x_i': x_i, 'y_i': y_i, 'h_i': h_i, 'type_i': type_i, 'yaw_ilk': yaw_ilk,
+                    'wd': wd[wd_i0:wd_i1], 'ws':ws[ws_i0:ws_i1], 'time':time, **kwargs}
+                   for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:]) for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])]
+        map_func = map
+        map_func = get_pool(processes).map
+        WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, _, wt_inputs = list(
+            zip(*map_func(self._calc_wt_interaction_args, arg_lst)))
+
+        def concatenate(v_ilk):
+            if all([v is None for v in v_ilk]):
+                return None
+            return np.concatenate([np.concatenate(v_ilk[i::ws_chunks], axis=1) for i in range(ws_chunks)], axis=2)
+        lw = self.site.local_wind(x_i=x_i, y_i=y_i, h_i=h_i, wd=wd, ws=ws, time=time)
+        return ([concatenate(v) for v in [WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk]] +
+                [lw, {k: concatenate([wt_i[k] for wt_i in wt_inputs]) for k in wt_inputs[0]}])
 
 
 class SimulationResult(xr.Dataset):
@@ -240,7 +268,8 @@ class SimulationResult(xr.Dataset):
         else:
             wt_kwargs_keys = set(self.windFarmModel.windTurbines.powerCtFunction.required_inputs +
                                  self.windFarmModel.windTurbines.powerCtFunction.optional_inputs)
-            power_ilk = self.windFarmModel.windTurbines.power(self.WS.ilk(self.Power.ilk().shape), **{k: v for k, v in self.wt_inputs.items() if k in wt_kwargs_keys})
+            power_ilk = self.windFarmModel.windTurbines.power(self.WS.ilk(
+                self.Power.ilk().shape), **{k: v for k, v in self.wt_inputs.items() if k in wt_kwargs_keys})
 
         if linear_power_segments:
             s = "The linear_power_segments method "

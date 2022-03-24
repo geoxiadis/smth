@@ -215,7 +215,7 @@ def test_dAEP_2wt():
     x_ = x_lst[20]
     ax1.set_title("Center line")
     for grad in [fd, cs, autograd]:
-        dAEPdx = wfm.dAEPdn(0, grad)(x_, y, **kwargs)[1]
+        dAEPdx = grad(wfm.aep, argnum=0)(x_, y, **kwargs)[1]
         npt.assert_almost_equal(dAEPdx / 360, 3.976975605364392e-06, (10, 5)[grad == fd])
         plot_gradients(wfm.aep(x_, y, **kwargs), dAEPdx, x_[1], grad.__name__, step=100, ax=ax1)
     y_lst = np.array([0, 1.]) * np.arange(-100, 100, 5)[:, na]
@@ -225,7 +225,7 @@ def test_dAEP_2wt():
     y_ = y_lst[25]
     ax2.set_title("%d m downstream" % x[1])
     for grad in [fd, cs, autograd]:
-        dAEPdy = wfm.dAEPdn(1, grad)(x, y_, **kwargs)[1]
+        dAEPdy = grad(wfm.aep, argnum=1)(x, y_, **kwargs)[1]
         plot_gradients(wfm.aep(x, y_, **kwargs), dAEPdy, y_[1], grad.__name__, step=50, ax=ax2)
         npt.assert_almost_equal(dAEPdy / 360, 3.794435973860448e-05, (10, 5)[grad == fd])
 

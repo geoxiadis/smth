@@ -373,9 +373,6 @@ class EngineeringWindFarmModel(WindFarmModel):
             msg = "\n".join(["Turbines %d and %d are at the same position" % (i1[i], i2[i]) for i in range(len(i1))])
             raise ValueError(msg)
 
-    def dAEPdn(self, argnum, gradient_method):
-        return gradient_method(self.aep, True, argnum)
-
     def dAEPdxy(self, gradient_method, normalize_probabilities=False, with_wake_loss=True, gradient_method_kwargs={}):
         # collects x,y to one list and compute gradients of aep with respect to all elements
         def aep_xy(xy, h=None, type=0, wd=None, ws=None, yaw_ilk=None):

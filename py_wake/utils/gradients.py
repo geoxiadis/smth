@@ -162,19 +162,19 @@ def _step_grad(f, argnum, step_func, step, vector_interdependence):
         return wrap
 
 
-def fd(f, vector_interdependence=False, argnum=0, step=1e-6):
+def fd(f, vector_interdependence=True, argnum=0, step=1e-6):
     def fd_gradient(res, ref, step):
         return (res - ref) / step
     return _step_grad(f, argnum, fd_gradient, step, vector_interdependence)
 
 
-def cs(f, vector_interdependence=False, argnum=0, step=1e-20):
+def cs(f, vector_interdependence=True, argnum=0, step=1e-20):
     def cs_gradient(res, _, step):
         return np.imag(res) / np.imag(step)
     return _step_grad(f, argnum, cs_gradient, step * 1j, vector_interdependence)
 
 
-def autograd(f, vector_interdependence=False, argnum=0):
+def autograd(f, vector_interdependence=True, argnum=0):
     if isinstance(argnum, (list, tuple)):
         return lambda *args, **kwargs: [autograd(f, vector_interdependence, i)(*args, **kwargs) for i in argnum]
     else:
