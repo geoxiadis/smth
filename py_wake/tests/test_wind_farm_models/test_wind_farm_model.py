@@ -116,11 +116,12 @@ def test_dAEP_parallel(wrt_arg):
     wfm = IEA37SimpleBastankhahGaussian(site, wt, deflectionModel=JimenezWakeDeflection())
     x, y = iea37_site.initial_position[np.array([0, 2, 5, 8, 14])].T
     kwargs = {'x': x, 'y': y, 'wd': None, 'ws': [10]}
-    dAEP_ref, t_seq = timeit(lambda: wfm.dAEP(gradient_method=autograd, wrt_arg=wrt_arg)(**kwargs))()
+    dAEP_ref, t_seq = timeit(lambda: wfm.daep(gradient_method=autograd, wrt_arg=wrt_arg)(**kwargs))()
 
-    dAEP_autograd, t_par = timeit(lambda: wfm.dAEP(gradient_method=autograd, wrt_arg=wrt_arg, n_cpu=None)(**kwargs),
+    dAEP_autograd, t_par = timeit(lambda: wfm.daep(gradient_method=autograd, wrt_arg=wrt_arg, n_cpu=None)(**kwargs),
                                   min_runs=2)()
 
     npt.assert_array_almost_equal(dAEP_ref, dAEP_autograd, 15)
 
+    print(t_par, t_seq)
     # assert min(t_par)<min(t_seq) # not faster on 4 CPU laptop
