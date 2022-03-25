@@ -17,6 +17,9 @@ class DeficitModel(ABC):
     def _calc_layout_terms(self, **_):
         """Calculate layout dependent terms, which is not updated during simulation"""
 
+    def __getstate__(self):
+        return {k: v for k, v in self.__dict__.items() if k not in {'layout_factor_ijlk', 'denominator_ijlk'}}
+
     @abstractmethod
     def calc_deficit(self):
         """Calculate wake deficit caused by the x'th most upstream wind turbines

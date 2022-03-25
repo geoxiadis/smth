@@ -141,8 +141,6 @@ def _step_grad(f, argnum, step_func, step, vector_interdependence):
         return lambda *args, **kwargs: [_step_grad(f, i, step_func, step,
                                                    vector_interdependence)(*args, **kwargs) for i in argnum]
     else:
-        f_signature = signature(f)
-
         def wrap(*args, **kwargs):
             args, kwargs = kwargs2args(f, *args, **kwargs)
 
@@ -199,12 +197,12 @@ def autograd(f, vector_interdependence=True, argnum=0):
             grad_func = elementwise_grad(f, argnum)
 
         @wraps(grad_func)
-        def wrap(*args, **kwargs):
+        def wrap2(*args, **kwargs):
             args, kwargs = kwargs2args(f, *args, **kwargs)
             return grad_func(*(args[:argnum] + (anp.asarray(args[argnum], dtype=float),) + args[argnum + 1:]),  # @UndefinedVariable
                              **kwargs)
 
-        return _use_autograd_in(modules=['py_wake.', f])(wrap)
+        return _use_autograd_in(modules=['py_wake.', f])(wrap2)
 
 
 color_dict = {}

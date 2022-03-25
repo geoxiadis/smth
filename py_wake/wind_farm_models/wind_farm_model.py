@@ -154,37 +154,39 @@ class WindFarmModel(ABC):
             Local free-flow wind
         """
 
-    def get_aep_multiprocessing_wrapper(self, aep_function):
-        def aep_multiprocessing_wrapper(x, y, h=None, type=0, wd=None, ws=None, yaw=None,
-                                        n_cpu=1, wd_chunks=None, ws_chunks=None):
-            h, _ = self.windTurbines.get_defaults(len(x), type, h)
-            wd, ws = self.site.get_defaults(wd, ws)
+    def aep_multiprocessing_wrapper(self, aep_function,  # x, y, h=None, type=0,
+                                    wd=None, ws=None,
+                                    # yaw=None,
+                                    n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
+        wd, ws = self.site.get_defaults(wd, ws)
 
-            if n_cpu != 1:
-                # parallel execution
-                n_cpu = n_cpu or multiprocessing.cpu_count()
-                wd_chunks = wd_chunks or n_cpu
-                ws_chunks = ws_chunks or 1
+        # parallel execution
+        n_cpu = n_cpu or multiprocessing.cpu_count()
+        wd_chunks = wd_chunks or n_cpu
+        ws_chunks = ws_chunks or 1
 
-                wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
-                ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
+        wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
+        ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
 
-                arg_lst = [{'x': x, 'y': y, 'h': h, 'type': type, 'yaw': yaw,
-                            'wd': wd[wd_i0:wd_i1], 'ws':ws[ws_i0:ws_i1]}
-                           for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:]) for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])]
+        kwargs_lst = [{'wd': wd[wd_i0:wd_i1], 'ws':ws[ws_i0:ws_i1], **kwargs}
+                      for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:]) for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])]
 
-                map_func = get_pool(n_cpu).map
-                #map_func = map
-                return np.sum([daep / self.site.wd_bin_size(args['wd'])
-                               for args, daep in zip(arg_lst, map_func(aep_function, arg_lst))], 0)
+        map_func = get_pool(n_cpu).map
+        #map_func = map
 
-            else:
-                return aep_function({'x': x, 'y': y, 'h': h, 'type': type, 'ws': ws, 'wd': wd, 'yaw': yaw})
-        return aep_multiprocessing_wrapper
+        return np.sum([aep / self.site.wd_bin_size(args['wd'])
+                       for args, aep in zip(kwargs_lst, map_func(aep_function, kwargs_lst))], 0)
+
+    def _daep_kwargs(self, kwargs):
+        return self.daep(**kwargs)
 
     def daep(self, gradient_method, wrt_arg, gradient_method_kwargs={},
-             n_cpu=1, wd_chunks=None, ws_chunks=None):
-        """Compute the gradients of the AEP wrt. wrt_arg using the gradient_method
+             n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
+        # if n_cpu!=1:
+        #     self.aep_multiprocessing_wrapper(daep, gradient_method=gradient_method, wrt_arg=wrt_arg,
+        #                                      gradient_method_kwargs=gradient_method_kwargs, **kwargs)
+        """Compute the gradients of the AEP wrt. wrt_arg using the gradient_method"""
+        """return function to compute the gradients of the AEP wrt. wrt_arg using the gradient_method
 
         Parameters
         ----------
@@ -194,6 +196,11 @@ class WindFarmModel(ABC):
             argument to compute gradients of AEP with respect to
             With autograd, 'xy' is around 40% faster than sequentially computing 'x' and 'y'
         """
+        if n_cpu != 1:
+            return self.aep_multiprocessing_wrapper(
+                self._daep_kwargs, gradient_method=gradient_method, wrt_arg=wrt_arg,
+                gradient_method_kwargs=gradient_method_kwargs,
+                n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks, **kwargs)
 
         if wrt_arg == 'xy':
             # collects x,y to one list and compute gradients of aep with respect to all elements
@@ -201,19 +208,23 @@ class WindFarmModel(ABC):
                 x, y = np.reshape(xy, (2, -1))
                 return self.aep(x, y, h, type, wd, ws, yaw)
 
-            def xy_wrapper(args_dict):
+            def xy_wrapper(**args_dict):
                 x = args_dict.pop('x')
                 y = args_dict.pop('y')
 
                 return gradient_method(aep_xy, True, 0, **
                                        gradient_method_kwargs)(np.r_[x, y], **args_dict).reshape((2, -1))
 
-            return self.get_aep_multiprocessing_wrapper(xy_wrapper)
+            f = xy_wrapper
 
         else:
             argnum = ['x', 'y', 'h', 'type', 'wd', 'ws', 'yaw'].index(wrt_arg)
-            return self.get_aep_multiprocessing_wrapper(
-                gradient_method(self.aep, True, argnum, **gradient_method_kwargs))
+            f = gradient_method(self.aep, True, argnum, **gradient_method_kwargs)
+
+        if kwargs:
+            return f(**kwargs)
+        else:
+            return f
 
 
 class SimulationResult(xr.Dataset):

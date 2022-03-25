@@ -18,11 +18,12 @@ from autograd.numpy.numpy_boxes import ArrayBox
 class XRSite(Site):
     use_WS_bins = False
 
-    def __init__(self, ds, initial_position=None, interp_method='linear', shear=None, distance=StraightDistance(),
+    def __init__(self, ds, initial_position=None, interp_method='linear', shear=None, distance=None,
                  default_ws=np.arange(3, 26), bounds='check'):
         assert interp_method in [
             'linear', 'nearest'], 'interp_method "%s" not implemented. Must be "linear" or "nearest"' % interp_method
         assert bounds in ['check', 'limit', 'ignore'], 'bounds must be "check", "limit" or "ignore"'
+        distance = distance or StraightDistance()
 
         self.interp_method = interp_method
         self.shear = shear

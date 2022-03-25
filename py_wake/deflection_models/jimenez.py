@@ -17,6 +17,9 @@ class JimenezWakeDeflection(DeflectionModel):
         self.beta = beta
         self.N = N
 
+    def __getstate__(self):
+        return {k: v for k, v in self.__dict__.items() if k not in ['hcw_ijlk', 'dh_ijlk']}
+
     def calc_deflection(self, dw_ijl, hcw_ijl, dh_ijl, D_src_il, yaw_ilk, tilt_ilk, ct_ilk, **kwargs):
         dw_lst = (np.logspace(0, 1.1, self.N) - 1) / (10**1.1 - 1)
         dw_ijxl = dw_ijl[:, :, na] * dw_lst[na, na, :, na]

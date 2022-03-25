@@ -185,6 +185,9 @@ class IEA37SimpleBastankhahGaussianDeficit(BastankhahGaussianDeficit):
         self.layout_factor_ijlk = WS_ilk[:, na] * (dw_ijlk > eps) * np.exp(-0.5 * (cw_ijlk / sigma_ijlk)**2)
         self.denominator_ijlk = 8. * (sigma_ijlk / D_src_il[:, na, :, na])**2
 
+    def clear_layout_terms(self):
+        self.layout_factor_ijlk = self.denominator_ijlk = None
+
     def calc_deficit(self, WS_ilk, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **_):
         if not self.deficit_initalized:
             self._calc_layout_terms(WS_ilk, D_src_il, dw_ijlk, cw_ijlk)
