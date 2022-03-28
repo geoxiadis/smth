@@ -40,9 +40,20 @@ class WindFarmModel(ABC):
             Wind direction(s)
         ws : int, float or array_like
             Wind speed(s)
-        yaw_ilk : array_like or None, optional
-            Yaw misalignement of turbine(i) for wind direction(l) and wind speed (k)\n
-            Positive is counter-clockwise when seen from above
+        yaw : int, float, array_like or None, optional
+            Yaw misalignement, Positive is counter-clockwise when seen from above.
+            May be
+            - constant for all wt and flow cases or dependent on
+            - wind turbine(i),
+            - wind turbine and wind direction(il) or
+            - wind turbine, wind direction and wind speed (ilk)
+        tilt : array_like or None, optional
+            Tilt angle of rotor shaft. Normal tilt (rotor center above tower top) is positivie
+            May be
+            - constant for all wt and flow cases or dependent on
+            - wind turbine(i),
+            - wind turbine and wind direction(il) or
+            - wind turbine, wind direction and wind speed (ilk)
 
         Returns
         -------
@@ -91,9 +102,52 @@ class WindFarmModel(ABC):
         which makes it slightly faster for small problems.
         >> windFarmModel.aep(x,y,...)
 
+        Parameters
+        ----------
+        x : array_like
+            Wind turbine x positions
+        y : array_like
+            Wind turbine y positions
+        h : array_like, optional
+            Wind turbine hub heights
+        type : int or array_like, optional
+            Wind turbine type, default is 0
+        wd : int or array_like
+            Wind direction(s)
+        ws : int, float or array_like
+            Wind speed(s)
+        yaw : int, float, array_like or None, optional
+            Yaw misalignement, Positive is counter-clockwise when seen from above.
+            May be
+            - constant for all wt and flow cases or dependent on
+            - wind turbine(i),
+            - wind turbine and wind direction(il) or
+            - wind turbine, wind direction and wind speed (ilk)
+        tilt : array_like or None, optional
+            Tilt angle of rotor shaft. Normal tilt (rotor center above tower top) is positivie
+            May be
+            - constant for all wt and flow cases or dependent on
+            - wind turbine(i),
+            - wind turbine and wind direction(il) or
+            - wind turbine, wind direction and wind speed (ilk)
+        n_cpu : int or None, optional
+            Number of CPUs to be used for execution.
+            If 1 (default), the execution is not parallized
+            If None, the available number of CPUs are used
+        wd_chunks : int or None, optional
+            If n_cpu>1, the wind directions are divided into <wd_chunks> chunks and executed in parallel.
+            If wd_chunks is None, wd_chunks is set to the available number of CPUs
+        ws_chunks : int or None, optional
+            If n_cpu>1, the wind speeds are divided into <ws_chunks> chunks and executed in parallel.
+            If ws_chunks is None, ws_chunks is set to 1
+
+        Returns
+        -------
+        AEP in GWh
+
         """
         if n_cpu != 1:
-            return self.aep_multiprocessing_wrapper(
+            return self._aep_multiprocessing_wrapper(
                 self._aep_kwargs, wd, ws, n_cpu, wd_chunks, ws_chunks,
                 x=x, y=y, h=h, type=type, yaw=yaw, tilt=tilt,
                 normalize_probabilities=normalize_probabilities, with_wake_loss=with_wake_loss)
@@ -161,10 +215,10 @@ class WindFarmModel(ABC):
             Local free-flow wind
         """
 
-    def aep_multiprocessing_wrapper(self, aep_function,  # x, y, h=None, type=0,
-                                    wd=None, ws=None,
-                                    # yaw=None,
-                                    n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
+    def _aep_multiprocessing_wrapper(self, aep_function,  # x, y, h=None, type=0,
+                                     wd=None, ws=None,
+                                     # yaw=None,
+                                     n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
         wd, ws = self.site.get_defaults(wd, ws)
 
         # parallel execution
@@ -184,19 +238,18 @@ class WindFarmModel(ABC):
         return np.sum([aep / self.site.wd_bin_size(args['wd'])
                        for args, aep in zip(kwargs_lst, map_func(aep_function, kwargs_lst))], 0)
 
-    def _daep_kwargs(self, kwargs):
-        return self.daep(**kwargs)
+    def aep_gradients(self, gradient_method, wrt_arg, gradient_method_kwargs={},
+                      n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
+        """Method to compute the gradients of the AEP with respect to wrt_arg using the gradient_method
 
-    def _aep_kwargs(self, kwargs):
-        return self.aep(**kwargs)
+        Note, this method has two behaviours:
+        - Without specifying additional key-word arguments, kwargs, the method returns the function to
+          compute the gradients of the aep:
+          gradient_function = wfm.aep_gradietns(autograd, 'xy')
+          gradients = gradient_function(x,y)
+        - With additional key-word arguments, kwargs, the method returns the gradients of the aep:
+          gradients = wfm.aep_gradients(autograd,'xy',x=x,y=y)
 
-    def daep(self, gradient_method, wrt_arg, gradient_method_kwargs={},
-             n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
-        # if n_cpu!=1:
-        #     self.aep_multiprocessing_wrapper(daep, gradient_method=gradient_method, wrt_arg=wrt_arg,
-        #                                      gradient_method_kwargs=gradient_method_kwargs, **kwargs)
-        """Compute the gradients of the AEP wrt. wrt_arg using the gradient_method"""
-        """return function to compute the gradients of the AEP wrt. wrt_arg using the gradient_method
 
         Parameters
         ----------
@@ -205,10 +258,22 @@ class WindFarmModel(ABC):
         wrt_arg : {'x', 'y', 'xy', 'h', 'wd', 'ws', 'yaw'}
             argument to compute gradients of AEP with respect to
             With autograd, 'xy' is around 40% faster than sequentially computing 'x' and 'y'
+        gradient_method_kwargs : dict, optional
+            additional arguments for the gradient method, e.g. step size
+        n_cpu : int or None, optional
+            Number of CPUs to be used for execution.
+            If 1 (default), the execution is not parallized
+            If None, the available number of CPUs are used
+        wd_chunks : int or None, optional
+            If n_cpu>1, the wind directions are divided into <wd_chunks> chunks and executed in parallel.
+            If wd_chunks is None, wd_chunks is set to the available number of CPUs
+        ws_chunks : int or None, optional
+            If n_cpu>1, the wind speeds are divided into <ws_chunks> chunks and executed in parallel.
+            If ws_chunks is None, ws_chunks is set to 1
         """
         if n_cpu != 1:
-            return self.aep_multiprocessing_wrapper(
-                self._daep_kwargs, gradient_method=gradient_method, wrt_arg=wrt_arg,
+            return self._aep_multiprocessing_wrapper(
+                self._aep_gradients_kwargs, gradient_method=gradient_method, wrt_arg=wrt_arg,
                 gradient_method_kwargs=gradient_method_kwargs,
                 n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks, **kwargs)
 
@@ -235,6 +300,12 @@ class WindFarmModel(ABC):
             return f(**kwargs)
         else:
             return f
+
+    def _aep_gradients_kwargs(self, kwargs):
+        return self.aep_gradients(**kwargs)
+
+    def _aep_kwargs(self, kwargs):
+        return self.aep(**kwargs)
 
 
 class SimulationResult(xr.Dataset):

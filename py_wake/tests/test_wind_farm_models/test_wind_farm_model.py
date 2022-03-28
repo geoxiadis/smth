@@ -74,7 +74,7 @@ def test_aep_parallel_results():
                                      #'wd', 'ws'
                                      'yaw'
                                      ])
-def test_dAEP_function(wrt_arg):
+def test_aep_gradients_function(wrt_arg):
     site = Hornsrev1Site()
     iea37_site = IEA37Site(16)
 
@@ -83,9 +83,9 @@ def test_dAEP_function(wrt_arg):
     x, y = iea37_site.initial_position[np.array([0, 2, 5, 8, 14])].T
     kwargs = {'x': x, 'y': y, 'h': x * 0 + wt.hub_height(),
               'wd': [0], 'ws': 9.8, 'yaw': np.arange(1, 6).reshape((5, 1, 1)) * 5}
-    dAEP_autograd = wfm.daep(gradient_method=autograd, wrt_arg=wrt_arg)(**kwargs)
-    dAEP_cs = wfm.daep(gradient_method=cs, wrt_arg=wrt_arg)(**kwargs)
-    dAEP_fd = wfm.daep(gradient_method=fd, wrt_arg=wrt_arg)(**kwargs)
+    dAEP_autograd = wfm.aep_gradients(gradient_method=autograd, wrt_arg=wrt_arg)(**kwargs)
+    dAEP_cs = wfm.aep_gradients(gradient_method=cs, wrt_arg=wrt_arg)(**kwargs)
+    dAEP_fd = wfm.aep_gradients(gradient_method=fd, wrt_arg=wrt_arg)(**kwargs)
 
     if 0:
         ax1, ax2 = plt.subplots(1, 2)[1]
@@ -104,7 +104,7 @@ def test_dAEP_function(wrt_arg):
                                      #'wd', 'ws'
                                      #'yaw'
                                      ])
-def test_dAEP_parallel(wrt_arg):
+def test_aep_gradients_parallel(wrt_arg):
     site = Hornsrev1Site()
     iea37_site = IEA37Site(16)
 
@@ -112,7 +112,7 @@ def test_dAEP_parallel(wrt_arg):
     wfm = IEA37SimpleBastankhahGaussian(site, wt, deflectionModel=JimenezWakeDeflection())
     x, y = iea37_site.initial_position[np.array([0, 2, 5, 8, 14])].T
     kwargs = {'x': x, 'y': y, 'h': x * 0 + wt.hub_height(), 'wd': None, 'ws': [10]}
-    dAEP_ref, t_seq = timeit(lambda: wfm.daep(gradient_method=autograd, wrt_arg=wrt_arg, **kwargs))()
+    dAEP_ref, t_seq = timeit(lambda: wfm.aep_gradients(gradient_method=autograd, wrt_arg=wrt_arg, **kwargs))()
     # import pickle
     # import io
     #
@@ -136,7 +136,7 @@ def test_dAEP_parallel(wrt_arg):
     #         print("Return", obj)
     # get_pickle_fail(wfm)
 
-    dAEP_autograd, t_par = timeit(lambda: wfm.daep(gradient_method=fd, wrt_arg=wrt_arg, n_cpu=None, **kwargs),
+    dAEP_autograd, t_par = timeit(lambda: wfm.aep_gradients(gradient_method=fd, wrt_arg=wrt_arg, n_cpu=None, **kwargs),
                                   min_runs=2)()
 
     npt.assert_array_almost_equal(dAEP_ref, dAEP_autograd, 8)
