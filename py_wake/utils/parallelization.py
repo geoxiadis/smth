@@ -1,4 +1,6 @@
 import multiprocessing
+import atexit
+
 pool_dict = {}
 
 
@@ -12,7 +14,5 @@ def close_pools():
     for k, pool in pool_dict.items():
         pool.close()
 
-
-import atexit
 
 atexit.register(close_pools)

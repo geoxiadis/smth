@@ -179,7 +179,7 @@ class WindFarmModel(ABC):
                       for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:]) for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])]
 
         map_func = get_pool(n_cpu).map
-        #map_func = map
+        # map_func = map
 
         return np.sum([aep / self.site.wd_bin_size(args['wd'])
                        for args, aep in zip(kwargs_lst, map_func(aep_function, kwargs_lst))], 0)
