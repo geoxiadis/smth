@@ -5,7 +5,7 @@ import pytest
 import numpy as np
 from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussian
 from py_wake.deficit_models.noj import NOJ, NOJDeficit
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80, HornsrevV80, wt9_y, wt9_x, wt16_x, wt16_y
+from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80, HornsrevV80, wt9_y, wt9_x, wt16_x, wt16_y, wt_x, wt_y
 from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines
 from py_wake.tests import npt
 from py_wake.utils.gradients import autograd, cs, fd
@@ -54,7 +54,7 @@ def test_calc_wt_interaction_parallel_results():
     x, y = wt16_x, wt16_y
     wt = HornsrevV80()
     wfm = NOJ(site, wt)
-    WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, *_ = wfm.calc_wt_interaction(x, y, wd_chunks=3, ws_chunks=2, n_cpu=2)
+    WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, *_ = wfm.calc_wt_interaction(x, y, wd_chunks=3, ws_chunks=2, n_cpu=None)
     WS_ref, TI_ref, power_ref, ct_ref, *_ = wfm.calc_wt_interaction(x, y)
     npt.assert_array_equal(WS_eff_ilk, WS_ref)
     npt.assert_array_equal(TI_eff_ilk, TI_ref)
@@ -73,6 +73,27 @@ def test_calc_wt_interaction_parallel_speed():
     _, t1 = timeit(wfm.calc_wt_interaction)(x, y)
     if multiprocessing.cpu_count() >= 2:
         assert np.min(tn) < np.min(t1)
+
+
+def test_aep_parallel_results():
+    site = Hornsrev1Site()
+    x, y = wt16_x, wt16_y
+    wt = HornsrevV80()
+    wfm = NOJ(site, wt)
+    aep = wfm.aep(x, y, wd_chunks=3, ws_chunks=2, n_cpu=None)
+    aep_ref = wfm.aep(x, y)
+    npt.assert_array_equal(aep, aep_ref)
+
+
+def test_aep_parallel_speed():
+    site = Hornsrev1Site()
+    x, y = wt_x, wt_y
+    wt = HornsrevV80()
+    wfm = NOJ(site, wt)
+    aep, t = timeit(wfm.aep, min_runs=2)(x, y, n_cpu=None)
+    aep_ref, t_ref = timeit(wfm.aep)(x, y)
+    npt.assert_array_almost_equal(aep, aep_ref, 10)
+    assert min(t) < min(t_ref)
 
 
 @pytest.mark.parametrize('wrt_arg', ['x', 'y',

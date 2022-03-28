@@ -78,7 +78,9 @@ class WindFarmModel(ABC):
                                 power_ilk=power_ilk, ct_ilk=ct_ilk, wt_inputs=wt_inputs)
 
     def aep(self, x, y, h=None, type=0, wd=None, ws=None, yaw=None, tilt=None,  # @ReservedAssignment
-            normalize_probabilities=False, with_wake_loss=True):
+            normalize_probabilities=False, with_wake_loss=True,
+            n_cpu=1, wd_chunks=None, ws_chunks=None,
+            ):
         """Anual Energy Production (sum of all wind turbines, directions and speeds) in GWh.
 
         the typical use is:
@@ -90,6 +92,11 @@ class WindFarmModel(ABC):
         >> windFarmModel.aep(x,y,...)
 
         """
+        if n_cpu != 1:
+            return self.aep_multiprocessing_wrapper(
+                self._aep_kwargs, wd, ws, n_cpu, wd_chunks, ws_chunks,
+                x=x, y=y, h=h, type=type, yaw=yaw, tilt=tilt,
+                normalize_probabilities=normalize_probabilities, with_wake_loss=with_wake_loss)
         wd, ws = self.site.get_defaults(wd, ws)
         I, L, K, = len(x), len(np.atleast_1d(wd)), len(np.atleast_1d(ws))
         yaw_ilk = fix_shape(yaw, (I, L, K), allow_None=True, allow_number=True)
@@ -179,6 +186,9 @@ class WindFarmModel(ABC):
 
     def _daep_kwargs(self, kwargs):
         return self.daep(**kwargs)
+
+    def _aep_kwargs(self, kwargs):
+        return self.aep(**kwargs)
 
     def daep(self, gradient_method, wrt_arg, gradient_method_kwargs={},
              n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
