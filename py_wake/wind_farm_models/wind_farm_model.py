@@ -215,22 +215,23 @@ class WindFarmModel(ABC):
             Local free-flow wind
         """
 
-    def _aep_multiprocessing_wrapper(self, aep_function,  # x, y, h=None, type=0,
-                                     wd=None, ws=None,
-                                     # yaw=None,
-                                     n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
-        wd, ws = self.site.get_defaults(wd, ws)
-
-        # parallel execution
+    def _multiprocessing_chunks(self, wd, ws, n_cpu, wd_chunks, ws_chunks):
         n_cpu = n_cpu or multiprocessing.cpu_count()
         wd_chunks = wd_chunks or n_cpu
         ws_chunks = ws_chunks or 1
 
         wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
         ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
+        return ([wd[wd_i0:wd_i1] for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:])],
+                [ws[ws_i0:ws_i1] for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])])
 
-        kwargs_lst = [{'wd': wd[wd_i0:wd_i1], 'ws':ws[ws_i0:ws_i1], **kwargs}
-                      for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:]) for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])]
+    def _aep_multiprocessing_wrapper(self, aep_function,
+                                     wd=None, ws=None,
+                                     n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
+        wd, ws = self.site.get_defaults(wd, ws)
+
+        wd_chunks, ws_chunks = self._multiprocessing_chunks(wd, ws, n_cpu, wd_chunks, ws_chunks)
+        kwargs_lst = [{'wd': wd, 'ws': ws, **kwargs} for wd in wd_chunks for ws in ws_chunks]
 
         map_func = get_pool(n_cpu).map
         # map_func = map
@@ -255,7 +256,7 @@ class WindFarmModel(ABC):
         ----------
         gradient_method : gradient function, {fd, cs, autograd}
             gradient function
-        wrt_arg : {'x', 'y', 'xy', 'h', 'wd', 'ws', 'yaw'}
+        wrt_arg : {'x', 'y', 'xy', 'h', 'wd', 'ws', 'yaw','tilt'}
             argument to compute gradients of AEP with respect to
             With autograd, 'xy' is around 40% faster than sequentially computing 'x' and 'y'
         gradient_method_kwargs : dict, optional
@@ -283,17 +284,15 @@ class WindFarmModel(ABC):
                 x, y = np.reshape(xy, (2, -1))
                 return self.aep(x, y, h, type, wd, ws, yaw)
 
-            def xy_wrapper(**args_dict):
-                x = args_dict.pop('x')
-                y = args_dict.pop('y')
+            def xy_wrapper(x, y, *args, **kwargs):
 
                 return gradient_method(aep_xy, True, 0, **
-                                       gradient_method_kwargs)(np.r_[x, y], **args_dict).reshape((2, -1))
+                                       gradient_method_kwargs)(np.r_[x, y], *args, **kwargs).reshape((2, -1))
 
             f = xy_wrapper
 
         else:
-            argnum = ['x', 'y', 'h', 'type', 'wd', 'ws', 'yaw'].index(wrt_arg)
+            argnum = ['x', 'y', 'h', 'type', 'wd', 'ws', 'yaw', 'tilt'].index(wrt_arg)
             f = gradient_method(self.aep, True, argnum, **gradient_method_kwargs)
 
         if kwargs:

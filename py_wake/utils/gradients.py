@@ -122,17 +122,32 @@ class _use_autograd_in():
         return wrap
 
 
-def set_vjp(df):
+def set_gradient_function(df):
     def get_func(f, df_lst=df):
-
         if not isinstance(df, (list, tuple)):
             df_lst = [df_lst]
 
-        pf = primitive(f)
+        vjp = [lambda ans, *args, df=df, **kwargs: lambda g: g * df(*args, **kwargs) for df in df_lst]
         first_arg = int(len(inspect.getfullargspec(f).args) > 0 and inspect.getfullargspec(f).args[0] == 'self')
-        defvjp(pf, *[lambda ans, *args, df=df, **kwargs: lambda g: g * df(*args, **kwargs)
-                     for df in df_lst], argnums=count(first_arg))
-        return pf
+
+        return set_vjp(vjp, first_arg)(f)
+
+    return get_func
+
+
+def set_vjp(vjp_lst, first_arg=0):
+    # set vjp (vector jacobian product) similar to this
+    # lambda ans, *args, **kwargs: lambda g: g * gradient_function(*args, **kwargs)
+    def get_func(f, vjp_lst=vjp_lst):
+
+        pf = primitive(f)
+
+        def fkwargs(*args, **kwargs):
+            args, kwargs = kwargs2args(f, *args, **kwargs)
+            return pf(*args, **kwargs)
+
+        defvjp(pf, *vjp_lst, argnums=count(first_arg))
+        return fkwargs
     return get_func
 
 
@@ -264,7 +279,7 @@ def dinterp_dxp(xp, x, y):
         return np.ones_like(xp)
 
 
-@set_vjp([dinterp_dxp])
+@set_gradient_function([dinterp_dxp])
 def interp(xp, x, y, *args, **kwargs):
     if all([np.isrealobj(v) for v in [xp, x, y]]):
         return np.interp(xp, x, y, *args, **kwargs)
@@ -295,7 +310,7 @@ class PchipInterpolator(scipy_PchipInterpolator):
     def df(self, x, extrapolate=None):
         return scipy_PchipInterpolator.__call__(self, x, nu=1, extrapolate=extrapolate)
 
-    @set_vjp(df)
+    @set_gradient_function(df)
     def __call__(self, x, extrapolate=None):
         y = scipy_PchipInterpolator.__call__(self, np.real(x), extrapolate=extrapolate)
         if np.iscomplexobj(x):
@@ -308,7 +323,7 @@ class UnivariateSpline(scipy_UnivariateSpline):
     def df(self, x, ext=None):
         return scipy_UnivariateSpline.__call__(self, x, nu=1, ext=ext)
 
-    @set_vjp(df)
+    @set_gradient_function(df)
     def __call__(self, x, ext=None):
         y = scipy_UnivariateSpline.__call__(self, np.real(x), ext=ext)
         if np.iscomplexobj(x):

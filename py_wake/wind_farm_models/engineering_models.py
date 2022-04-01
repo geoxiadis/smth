@@ -190,16 +190,11 @@ class EngineeringWindFarmModel(WindFarmModel):
 
         if n_cpu != 1:
             # parallel execution
-            n_cpu = n_cpu or multiprocessing.cpu_count()
-            wd_chunks = wd_chunks or n_cpu
-            ws_chunks = ws_chunks or 1
-
-            wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
-            ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
+            wd_chunks, ws_chunks = self._multiprocessing_chunks(wd, ws, n_cpu, wd_chunks, ws_chunks)
 
             arg_lst = [{'x_i': x_i, 'y_i': y_i, 'h_i': h_i, 'type_i': type_i, 'yaw_ilk': yaw_ilk,
-                        'wd': wd[wd_i0:wd_i1], 'ws':ws[ws_i0:ws_i1], 'time':time, **kwargs}
-                       for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:]) for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])]
+                        'wd': wd, 'ws': ws, 'time': time, **kwargs}
+                       for wd in wd_chunks for ws in ws_chunks]
             map_func = get_pool(n_cpu).map
             WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, _, wt_inputs = list(
                 zip(*map_func(self._calc_wt_interaction_args, arg_lst)))
@@ -207,7 +202,8 @@ class EngineeringWindFarmModel(WindFarmModel):
             def concatenate(v_ilk):
                 if all([v is None for v in v_ilk]):
                     return None
-                return np.concatenate([np.concatenate(v_ilk[i::ws_chunks], axis=1) for i in range(ws_chunks)], axis=2)
+                n_ws = len(ws_chunks)
+                return np.concatenate([np.concatenate(v_ilk[i::n_ws], axis=1) for i in range(n_ws)], axis=2)
 
             return ([concatenate(v) for v in [WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk]] +
                     [lw, {k: concatenate([wt_i[k] for wt_i in wt_inputs]) for k in wt_inputs[0]}])

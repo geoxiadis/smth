@@ -10,7 +10,7 @@ from py_wake.tests import npt
 from py_wake.tests.check_speed import timeit
 from py_wake.utils import gradients
 from py_wake.utils.gradients import autograd, plot_gradients, fd, cs, hypot, cabs, interp,\
-    _use_autograd_in, set_vjp
+    _use_autograd_in, set_gradient_function
 from py_wake.wind_turbines import WindTurbines
 from py_wake.wind_turbines import _wind_turbines
 from py_wake.wind_turbines.power_ct_functions import CubePowerSimpleCt
@@ -303,11 +303,11 @@ def test_gradients_logaddexp():
     npt.assert_array_equal(autograd(f, False, argnum=1)(x, y), dfdy)
 
 
-def test_set_vjp():
+def test_set_gradient_function():
     def df(x):
         return 3 * x
 
-    @set_vjp(df)
+    @set_gradient_function(df)
     def f(x):
         return x**2
 
@@ -317,12 +317,12 @@ def test_set_vjp():
     npt.assert_array_equal(autograd(f, False)([4, 5]), [12, 15])
 
 
-def test_set_vjp_cls():
+def test_set_gradient_function_cls():
     class T():
         def df(self, x):
             return 3 * x
 
-        @set_vjp(df)
+        @set_gradient_function(df)
         def f(self, x):
             return x**2
 
@@ -333,11 +333,11 @@ def test_set_vjp_cls():
     assert autograd(t.f)(4) == 12
 
 
-def test_set_vjp_kwargs():
+def test_set_gradient_function_kwargs():
     def df(x):
         return 3 * x
 
-    @set_vjp(df)
+    @set_gradient_function(df)
     def f(x):
         return x**2
 

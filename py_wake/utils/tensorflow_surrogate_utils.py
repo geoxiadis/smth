@@ -5,7 +5,7 @@ from sklearn.preprocessing import MinMaxScaler
 import pickle
 from pathlib import Path
 import warnings
-from py_wake.utils.gradients import set_vjp
+from py_wake.utils.gradients import set_gradient_function
 import numpy as np
 from numpy import newaxis as na
 
@@ -68,10 +68,10 @@ class TensorflowSurrogate():
         gradient = tape.gradient(out_, inp_).numpy()
         return out_.numpy().astype(float), gradient.astype(float)
 
-    def predict_gradients_scaled(self, x_scaled):
+    def predict_gradients_scaled(self, ans, x_scaled):
         return self.predict_output_gradients_scaled(x_scaled)[1]
 
-    @set_vjp(predict_gradients_scaled)
+    @set_gradient_function(predict_gradients_scaled)
     def predict_output_scaled(self, x_scaled):
         return self.model.predict(x_scaled, batch_size=x_scaled[0].shape[0]).astype(float)
 

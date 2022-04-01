@@ -56,3 +56,10 @@ def check_memory_usage(f, subtract_initial=True):
             mem_usage -= initial_mem_usage
         return res, mem_usage
     return wrap
+
+
+def profileit(f):
+    def wrap(*args, **kwargs):
+        (res, t), mem_usage = check_memory_usage(timeit(f), subtract_initial=True)(*args, **kwargs)
+        return res, t[0], mem_usage
+    return wrap

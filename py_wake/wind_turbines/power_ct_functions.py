@@ -7,7 +7,7 @@ from py_wake.wind_turbines.wind_turbine_functions import WindTurbineFunction, Fu
 from py_wake.utils.check_input import check_input
 from py_wake.utils.model_utils import check_model, fix_shape
 from py_wake.utils import gradients
-from py_wake.utils.gradients import PchipInterpolator, UnivariateSpline, set_vjp
+from py_wake.utils.gradients import PchipInterpolator, UnivariateSpline, set_gradient_function
 from py_wake.utils.grid_interpolator import GridInterpolator
 
 
@@ -450,7 +450,7 @@ class CubePowerSimpleCt(PowerCtFunction):
 
         return ct
 
-    def _power_ct_grad(self, ws, run_only):
+    def _power_ct_grad(self, ans, ws, run_only):
         if run_only == 0:
             return np.where((ws > self.ws_cutin) & (ws <= self.ws_rated),
                             3 * self.power_rated * (ws - self.ws_cutin)**2 / (self.ws_rated - self.ws_cutin)**3,
@@ -463,7 +463,7 @@ class CubePowerSimpleCt(PowerCtFunction):
                                0)  # constant ct
             return dct
 
-    @set_vjp(_power_ct_grad)
+    @set_gradient_function(_power_ct_grad)
     def _power_ct_withgrad(self, ws, run_only):
         return (self._power, self._ct)[run_only](ws)
 
