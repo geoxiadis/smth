@@ -23,7 +23,8 @@ class WindFarmModel(ABC):
         self.windTurbines = windTurbines
 
     def __call__(self, x, y, h=None, type=0, wd=None, ws=None, yaw=None,
-                 tilt=None, time=False, verbose=False, **kwargs):
+                 tilt=None, time=False, verbose=False,
+                 n_cpu=1, wd_chunks=None, ws_chunks=1, **kwargs):
         """Run the wind farm simulation
 
         Parameters
@@ -54,6 +55,24 @@ class WindFarmModel(ABC):
             - wind turbine(i),
             - wind turbine and wind direction(il) or
             - wind turbine, wind direction and wind speed (ilk)
+        time : boolean or array_like
+            If False (default), the simulation will be computed for the full wd x ws matrix
+            If True, the wd and ws will be considered as a time series of flow conditions with time stamp 0,1,..,n
+            If array_like: same as True, but the time array is used as flow case time stamp
+        n_cpu : int or None, optional
+            Number of CPUs to be used for execution.
+            If 1 (default), the execution is not parallized
+            If None, the available number of CPUs are used
+        wd_chunks : int or None, optional
+            The wind directions are divided into <wd_chunks> chunks. More chunks reduces the memory usage
+            and allows parallel execution if n_cpu>1.
+            If wd_chunks is None, wd_chunks is set to the number of CPUs used, i.e. 1 if n_cpu is not specified
+        ws_chunks : int, optional
+            The wind speeds are divided into <ws_chunks> chunks. More chunks reduces the memory usage
+            and allows parallel execution if n_cpu>1.
+        time_chunks : int, optional
+            The time != False, flow case time series is divided into <time_chunks> chunks.
+            More chunks reduces the memory usage and allows parallel execution if n_cpu>1.
 
         Returns
         -------
@@ -79,7 +98,9 @@ class WindFarmModel(ABC):
             return SimulationResult(self, lw, [], yaw, tilt, z, z, z, z, kwargs)
         res = self.calc_wt_interaction(x_i=np.asarray(x), y_i=np.asarray(y), h_i=h, type_i=type,
                                        yaw_ilk=yaw_ilk, tilt_ilk=tilt_ilk,
-                                       wd=wd, ws=ws, time=time, **kwargs)
+                                       wd=wd, ws=ws, time=time,
+                                       n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
+                                       **kwargs)
         WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, localWind, wt_inputs = res
 
         return SimulationResult(self, localWind=localWind,
@@ -146,8 +167,8 @@ class WindFarmModel(ABC):
         AEP in GWh
 
         """
-        if n_cpu != 1:
-            return self._aep_multiprocessing_wrapper(
+        if n_cpu != 1 or wd_chunks or ws_chunks:
+            return self._aep_chunk_wrapper(
                 self._aep_kwargs, wd, ws, n_cpu, wd_chunks, ws_chunks,
                 x=x, y=y, h=h, type=type, yaw=yaw, tilt=tilt,
                 normalize_probabilities=normalize_probabilities, with_wake_loss=with_wake_loss)
@@ -170,7 +191,8 @@ class WindFarmModel(ABC):
 
     @abstractmethod
     def calc_wt_interaction(self, x_i, y_i, h_i=None, type_i=0, yaw_ilk=None,
-                            wd=None, ws=None, time=False, **kwargs):
+                            wd=None, ws=None, time=False,
+                            n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
         """Calculate effective wind speed, turbulence intensity,
         power and thrust coefficient, and local site parameters
 
@@ -199,6 +221,16 @@ class WindFarmModel(ABC):
         ws : int, float, array_like or None
             Wind speed(s)\n
             If None, default, the wake is calculated for site.default_ws
+        n_cpu : int or None, optional
+            Number of CPUs to be used for execution.
+            If 1 (default), the execution is not parallized
+            If None, the available number of CPUs are used
+        wd_chunks : int or None, optional
+            If n_cpu>1, the wind directions are divided into <wd_chunks> chunks and executed in parallel.
+            If wd_chunks is None, wd_chunks is set to the available number of CPUs
+        ws_chunks : int or None, optional
+            If n_cpu>1, the wind speeds are divided into <ws_chunks> chunks and executed in parallel.
+            If ws_chunks is None, ws_chunks is set to 1
 
 
         Returns
@@ -215,26 +247,37 @@ class WindFarmModel(ABC):
             Local free-flow wind
         """
 
-    def _multiprocessing_chunks(self, wd, ws, n_cpu, wd_chunks, ws_chunks):
+    def _multiprocessing_chunks(self, wd, ws, n_cpu, wd_chunks, ws_chunks, time=False):
         n_cpu = n_cpu or multiprocessing.cpu_count()
         wd_chunks = wd_chunks or n_cpu
-        ws_chunks = ws_chunks or 1
+        if time is False:
+            ws_chunks = ws_chunks or 1
+            time_chunks = None
+        else:
+            ws_chunks = wd_chunks
+            if time is True:
+                time = np.arange(len(wd))
+            time_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
+            time_chunks = [time[t_i0:t_i1] for t_i0, t_i1 in zip(time_i[:-1], time_i[1:])]
 
         wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
         ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
-        return ([wd[wd_i0:wd_i1] for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:])],
-                [ws[ws_i0:ws_i1] for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])])
+        if n_cpu > 1:
+            map_func = get_pool(n_cpu).map
+        else:
+            map_func = map
+        return (map_func,
+                [wd[wd_i0:wd_i1] for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:])],
+                [ws[ws_i0:ws_i1] for ws_i0, ws_i1 in zip(ws_i[:-1], ws_i[1:])],
+                time_chunks)
 
-    def _aep_multiprocessing_wrapper(self, aep_function,
-                                     wd=None, ws=None,
-                                     n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
+    def _aep_chunk_wrapper(self, aep_function,
+                           wd=None, ws=None,
+                           n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
         wd, ws = self.site.get_defaults(wd, ws)
 
-        wd_chunks, ws_chunks = self._multiprocessing_chunks(wd, ws, n_cpu, wd_chunks, ws_chunks)
+        map_func, wd_chunks, ws_chunks = self._multiprocessing_chunks(wd, ws, n_cpu, wd_chunks, ws_chunks)
         kwargs_lst = [{'wd': wd, 'ws': ws, **kwargs} for wd in wd_chunks for ws in ws_chunks]
-
-        map_func = get_pool(n_cpu).map
-        # map_func = map
 
         return np.sum([aep / self.site.wd_bin_size(args['wd'])
                        for args, aep in zip(kwargs_lst, map_func(aep_function, kwargs_lst))], 0)
@@ -272,8 +315,8 @@ class WindFarmModel(ABC):
             If n_cpu>1, the wind speeds are divided into <ws_chunks> chunks and executed in parallel.
             If ws_chunks is None, ws_chunks is set to 1
         """
-        if n_cpu != 1:
-            return self._aep_multiprocessing_wrapper(
+        if n_cpu != 1 or wd_chunks or ws_chunks:
+            return self._aep_chunk_wrapper(
                 self._aep_gradients_kwargs, gradient_method=gradient_method, wrt_arg=wrt_arg,
                 gradient_method_kwargs=gradient_method_kwargs,
                 n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks, **kwargs)

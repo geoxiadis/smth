@@ -6,7 +6,7 @@ from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80, HornsrevV80, wt9
 from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines
 from py_wake.tests import npt
 from py_wake.utils.gradients import autograd, cs, fd
-from py_wake.utils.profiling import timeit
+from py_wake.utils.profiling import timeit, profileit
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind
 import matplotlib.pyplot as plt
 from py_wake.deflection_models.jimenez import JimenezWakeDeflection
@@ -59,19 +59,37 @@ def test_calc_wt_interaction_parallel_results():
     npt.assert_array_equal(ct_ilk, ct_ref)
 
 
-def test_aep_parallel_results():
+def test_chunks_results():
     site = Hornsrev1Site()
     x, y = wt16_x, wt16_y
     wt = HornsrevV80()
     wfm = NOJ(site, wt)
-    aep = wfm.aep(x, y, wd_chunks=3, ws_chunks=2, n_cpu=None)
-    aep_ref = wfm.aep(x, y)
+
+    sim_res_ref, t_ref, mem_ref = profileit(wfm)(x, y)
+    sim_res, t, mem = profileit(wfm)(x, y, wd_chunks=3, ws_chunks=2)
+
+    npt.assert_array_equal(sim_res_ref.aep(), sim_res.aep())
+    assert mem < mem_ref / 2
+    assert t < t_ref * 6
+
+
+def test_aep_chunks_results():
+    site = Hornsrev1Site()
+    x, y = wt16_x, wt16_y
+    wt = HornsrevV80()
+    wfm = NOJ(site, wt)
+
+    aep_ref, t_ref, mem_ref = profileit(wfm.aep)(x, y)
+    aep, t, mem = profileit(wfm.aep)(x, y, wd_chunks=3, ws_chunks=2)
+
     npt.assert_array_equal(aep, aep_ref)
+    assert mem < mem_ref / 2
+    assert t < t_ref * 6
 
 
 @pytest.mark.parametrize('wrt_arg', ['x', 'y',
                                      'xy', 'h',
-                                     #'wd', 'ws'
+                                     # 'wd', 'ws'
                                      'yaw'
                                      ])
 def test_aep_gradients_function(wrt_arg):
@@ -100,9 +118,9 @@ def test_aep_gradients_function(wrt_arg):
 
 
 @pytest.mark.parametrize('wrt_arg', ['x',
-                                     #'y', 'xy', 'h',
-                                     #'wd', 'ws'
-                                     #'yaw'
+                                     # 'y', 'xy', 'h',
+                                     # 'wd', 'ws'
+                                     # 'yaw'
                                      ])
 def test_aep_gradients_parallel(wrt_arg):
     site = Hornsrev1Site()

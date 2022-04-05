@@ -161,7 +161,7 @@ class EngineeringWindFarmModel(WindFarmModel):
 
     def calc_wt_interaction(self, x_i, y_i, h_i=None, type_i=0, wd=None, ws=None, time=False,
                             yaw_ilk=None, tilt_ilk=None,
-                            n_cpu=1, wd_chunks=None, ws_chunks=None,
+                            n_cpu=1, wd_chunks=None, ws_chunks=1,
                             **kwargs):
         """See WindFarmModel.calc_wt_interaction and additional parameters below
 
@@ -188,22 +188,31 @@ class EngineeringWindFarmModel(WindFarmModel):
         # Calculate down-wind and cross-wind distances
         self._validate_input(x_i, y_i)
 
-        if n_cpu != 1:
+        if n_cpu != 1 or wd_chunks or ws_chunks > 1:
             # parallel execution
-            wd_chunks, ws_chunks = self._multiprocessing_chunks(wd, ws, n_cpu, wd_chunks, ws_chunks)
+            map_func, wd_chunks, ws_chunks, time_chunks = self._multiprocessing_chunks(
+                wd, ws, n_cpu, wd_chunks, ws_chunks, time)
 
-            arg_lst = [{'x_i': x_i, 'y_i': y_i, 'h_i': h_i, 'type_i': type_i, 'yaw_ilk': yaw_ilk,
-                        'wd': wd, 'ws': ws, 'time': time, **kwargs}
-                       for wd in wd_chunks for ws in ws_chunks]
-            map_func = get_pool(n_cpu).map
+            if time is False:
+                arg_lst = [{'x_i': x_i, 'y_i': y_i, 'h_i': h_i, 'type_i': type_i, 'yaw_ilk': yaw_ilk,
+                            'wd': wd, 'ws': ws, 'time': time, **kwargs}
+                           for wd in wd_chunks for ws in ws_chunks]
+            else:
+                arg_lst = [{'x_i': x_i, 'y_i': y_i, 'h_i': h_i, 'type_i': type_i, 'yaw_ilk': yaw_ilk,
+                            'wd': wd, 'ws': ws, 'time': time, **kwargs}
+                           for wd, ws, time in zip(wd_chunks, ws_chunks, time_chunks)]
+
             WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, _, wt_inputs = list(
                 zip(*map_func(self._calc_wt_interaction_args, arg_lst)))
 
             def concatenate(v_ilk):
                 if all([v is None for v in v_ilk]):
                     return None
-                n_ws = len(ws_chunks)
-                return np.concatenate([np.concatenate(v_ilk[i::n_ws], axis=1) for i in range(n_ws)], axis=2)
+                if time is False:
+                    n_ws = len(ws_chunks)
+                    return np.concatenate([np.concatenate(v_ilk[i::n_ws], axis=1) for i in range(n_ws)], axis=2)
+                else:
+                    return np.concatenate(v_ilk, axis=1)
 
             return ([concatenate(v) for v in [WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk]] +
                     [lw, {k: concatenate([wt_i[k] for wt_i in wt_inputs]) for k in wt_inputs[0]}])

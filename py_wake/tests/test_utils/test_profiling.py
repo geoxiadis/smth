@@ -1,8 +1,7 @@
 import time
 import numpy as np
-from py_wake.utils.profiling import timeit, check_memory_usage, profileit
-import sys
-from tests import npt
+from py_wake.utils.profiling import profileit
+from py_wake.tests import npt
 
 
 def test_profile_it():

@@ -27,7 +27,7 @@ from py_wake.wind_turbines.wind_turbines_deprecated import DeprecatedOneTypeWind
 import pandas as pd
 import os
 from py_wake.rotor_avg_models.rotor_avg_model import CGIRotorAvg
-from py_wake.utils.profiling import timeit
+from py_wake.utils.profiling import timeit, profileit
 
 
 WindFarmModel.verbose = False
@@ -398,6 +398,20 @@ def test_time_series_aep():
     sim_res = wfm(x, y, ws=ws, wd=wd, time=True, verbose=False)
     npt.assert_allclose(sim_res.aep().sum(), 545, atol=1)
     npt.assert_allclose(sim_res.aep().sum() / sim_res.aep(with_wake_loss=False).sum(), 0.94, atol=1)
+
+
+def test_time_series_aep_chunks():
+
+    d = np.load(os.path.dirname(examples.__file__) + "/data/time_series.npz")
+    wd, ws = [d[k][::100] for k in ['wd', 'ws']]
+    wt = V80()
+    site = Hornsrev1Site()
+    x, y = site.initial_position.T
+    wfm = NOJ(site, wt)
+    sim_res_ref, t_ref, mem_ref = profileit(wfm.__call__)(x, y, ws=ws, wd=wd, time=True, verbose=False)
+    sim_res, t, mem = profileit(wfm.__call__)(x, y, ws=ws, wd=wd, time=True, wd_chunks=4, verbose=False)
+    npt.assert_almost_equal(sim_res.aep().sum(), sim_res_ref.aep().sum())
+    npt.assert_allclose(mem, mem_ref / 4, rtol=.3)
 
 
 def test_time_series_operating():
