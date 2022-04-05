@@ -21,9 +21,6 @@ from py_wake.turbulence_models.crespo import CrespoHernandez
 from py_wake.deficit_models.gaussian import BastankhahGaussian, IEA37SimpleBastankhahGaussianDeficit,\
     IEA37SimpleBastankhahGaussian
 import xarray as xr
-import os
-import pkgutil
-import inspect
 from py_wake.examples.data.hornsrev1 import Hornsrev1Site
 from py_wake.rotor_avg_models.rotor_avg_model import RotorCenter, EqGridRotorAvg, GQGridRotorAvg, CGIRotorAvg
 from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
@@ -116,7 +113,7 @@ def test_superposition_model_indices():
     npt.assert_array_almost_equal(TI_ilk, np.reshape([0.1, 0.2, 0.3], (3, 1, 1)), 10)
 
     def get_wf_model(cls):
-        return cls(site, NibeA0, wake_deficitModel=NoWakeDeficit(),
+        return cls(site, NibeA0(), wake_deficitModel=NoWakeDeficit(),
                    superpositionModel=LinearSum(),
                    turbulenceModel=STF2017TurbulenceModel())
     for wake_model in [get_wf_model(PropagateDownwind),

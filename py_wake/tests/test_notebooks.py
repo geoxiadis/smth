@@ -6,6 +6,7 @@ from py_wake.tests.notebook import Notebook
 import py_wake
 from py_wake.flow_map import Grid
 from pathlib import Path
+import xarray
 
 
 def get_notebooks():

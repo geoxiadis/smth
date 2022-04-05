@@ -1,13 +1,12 @@
 import numpy as np
 import xarray as xr
 import pytest
-from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site, IEA37WindTurbinesDeprecated
-from py_wake import NOJ, Fuga, examples
+from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
+from py_wake import NOJ, examples
 from py_wake.site._site import UniformSite
 from py_wake.tests import npt
 from py_wake.examples.data.hornsrev1 import HornsrevV80, Hornsrev1Site, wt_x, wt_y, V80
-from py_wake.tests.test_files.fuga import LUT_path_2MW_z0_0_03
-from py_wake.flow_map import HorizontalGrid, XYGrid
+from py_wake.flow_map import HorizontalGrid
 from py_wake.wind_farm_models.engineering_models import All2AllIterative, PropagateDownwind
 from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.superposition_models import SquaredSum, WeightedSum
@@ -26,8 +25,7 @@ from py_wake.wind_turbines import WindTurbines
 from py_wake.wind_turbines.wind_turbines_deprecated import DeprecatedOneTypeWindTurbines
 import pandas as pd
 import os
-from py_wake.rotor_avg_models.rotor_avg_model import CGIRotorAvg
-from py_wake.utils.profiling import timeit, profileit
+from py_wake.utils.profiling import profileit
 
 
 WindFarmModel.verbose = False
