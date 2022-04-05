@@ -250,10 +250,11 @@ class WindFarmModel(ABC):
     def _multiprocessing_chunks(self, wd, ws, n_cpu, wd_chunks, ws_chunks, time=False):
         n_cpu = n_cpu or multiprocessing.cpu_count()
         wd_chunks = np.minimum(wd_chunks or n_cpu, len(wd))
+        ws_chunks = ws_chunks or 1
         if time is False:
-            ws_chunks = ws_chunks or 1
             time_chunks = None
         else:
+            wd_chunks = np.maximum(ws_chunks, wd_chunks)
             ws_chunks = wd_chunks
             if time is True:
                 time = np.arange(len(wd))
@@ -277,7 +278,7 @@ class WindFarmModel(ABC):
                            n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
         wd, ws = self.site.get_defaults(wd, ws)
 
-        map_func, wd_chunks, ws_chunks = self._multiprocessing_chunks(wd, ws, n_cpu, wd_chunks, ws_chunks)
+        map_func, wd_chunks, ws_chunks, time_chunks = self._multiprocessing_chunks(wd, ws, n_cpu, wd_chunks, ws_chunks)
         kwargs_lst = [{'wd': wd, 'ws': ws, **kwargs} for wd in wd_chunks for ws in ws_chunks]
 
         return np.sum([aep / self.site.wd_bin_size(args['wd'])

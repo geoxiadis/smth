@@ -68,7 +68,7 @@ class TensorflowSurrogate():
         gradient = tape.gradient(out_, inp_).numpy()
         return out_.numpy().astype(float), gradient.astype(float)
 
-    def predict_gradients_scaled(self, ans, x_scaled):
+    def predict_gradients_scaled(self, x_scaled):
         return self.predict_output_gradients_scaled(x_scaled)[1]
 
     @set_gradient_function(predict_gradients_scaled)

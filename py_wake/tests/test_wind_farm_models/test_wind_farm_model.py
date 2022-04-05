@@ -114,7 +114,7 @@ def test_aep_gradients_function(wrt_arg):
 
     npt.assert_array_almost_equal(dAEP_autograd, dAEP_cs, 15)
     npt.assert_array_almost_equal(dAEP_autograd, dAEP_fd, 6)
-    npt.assert_array_equal(dAEP_autograd, wfm.daep(gradient_method=autograd, wrt_arg=wrt_arg, **kwargs))
+    npt.assert_array_equal(dAEP_autograd, wfm.aep_gradients(gradient_method=autograd, wrt_arg=wrt_arg, **kwargs))
 
 
 @pytest.mark.parametrize('wrt_arg', ['x',
