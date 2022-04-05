@@ -84,4 +84,4 @@ def test_multiprocessing_xy(pool):
 def test_pool():
     # second should be fast
     _, t = timeit(parallelization.get_pool, min_runs=2)()
-    npt.assert_allclose(t[1], 0)
+    npt.assert_allclose(t[1], 0, atol=.01)

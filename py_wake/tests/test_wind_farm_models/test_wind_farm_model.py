@@ -69,7 +69,7 @@ def test_chunks_results():
     sim_res, t, mem = profileit(wfm)(x, y, wd_chunks=3, ws_chunks=2)
 
     npt.assert_array_equal(sim_res_ref.aep(), sim_res.aep())
-    assert mem < mem_ref / 2
+    assert mem < mem_ref
     assert t < t_ref * 6
 
 
