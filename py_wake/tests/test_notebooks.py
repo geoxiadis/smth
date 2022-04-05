@@ -44,6 +44,7 @@ def test_notebooks(notebook):
         Grid.default_resolution = default_resolution
         plt.close('all')
         plt.rcParams.update({'figure.max_open_warning': 20})
+        xarray.set_options(display_expand_data=True)
 
 
 if __name__ == '__main__':
