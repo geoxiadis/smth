@@ -73,18 +73,19 @@ def test_chunks_results():
     assert t < t_ref * 6
 
 
-def test_aep_chunks_results():
+@pytest.mark.parametrize('wd', [np.arange(360), np.arange(0, 360, 22.5), np.arange(3)])
+def test_aep_chunks_results(wd):
     site = Hornsrev1Site()
     x, y = wt16_x, wt16_y
     wt = HornsrevV80()
     wfm = NOJ(site, wt)
 
-    aep_ref, t_ref, mem_ref = profileit(wfm.aep)(x, y)
-    aep, t, mem = profileit(wfm.aep)(x, y, wd_chunks=3, ws_chunks=2)
+    aep_ref, t_ref, mem_ref = profileit(wfm.aep)(x, y, wd=wd)
+    aep, t, mem = profileit(wfm.aep)(x, y, wd_chunks=3, ws_chunks=2, wd=wd)
 
-    npt.assert_array_equal(aep, aep_ref)
-    assert mem < mem_ref / 2
-    assert t < t_ref * 6
+    npt.assert_array_almost_equal(aep, aep_ref, 10)
+    if len(wd > 3):
+        assert mem < mem_ref
 
 
 @pytest.mark.parametrize('wrt_arg', ['x', 'y',
