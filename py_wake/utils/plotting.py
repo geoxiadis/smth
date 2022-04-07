@@ -7,7 +7,8 @@ def setup_plot(ax=None, title=None, ylabel=None, xlabel=None, xlim=None, ylim=No
     ax.set_ylabel(ylabel)
     ax.set_xlabel(xlabel)
     ax.set_xlim(xlim)
-    ax.set_ylim(ylim)
+    if ylim:
+        ax.set_ylim(ylim)
     if grid:
         ax.grid()
     if ax.get_legend_handles_labels()[1]:

@@ -31,6 +31,7 @@ def test_notebooks(notebook):
     plt.show = no_show  # disable plt show that requires the user to close the plot
 
     try:
+        # print(notebook.filename)
         default_resolution = Grid.default_resolution
         Grid.default_resolution = 100
         plt.rcParams.update({'figure.max_open_warning': 0})
@@ -49,4 +50,7 @@ def test_notebooks(notebook):
 
 
 if __name__ == '__main__':
-    print("\n".join([f.filename for f in get_notebooks()]))
+    #print("\n".join([f.filename for f in get_notebooks()]))
+    path = os.path.dirname(py_wake.__file__) + "/../docs/notebooks/"
+    f = 'optimization.ipynb'
+    test_notebooks(Notebook(path + f))

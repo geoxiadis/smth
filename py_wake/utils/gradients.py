@@ -71,13 +71,13 @@ defvjp(anp.sqrt, lambda ans, x: lambda g: g * 0.5 * np.where(x == 0, eps, x)**-0
 
 class _use_autograd_in():
     def __init__(self, modules=["py_wake."]):
-        self.dict_lst = []
+        self.npdict_dict = {}
         for m in modules:
-            self.dict_lst.extend(self.get_dict(m))
+            self.npdict_dict.update(self.get_dict(m))
 
     def get_dict(self, m):
         if isinstance(m, dict):
-            return [m]
+            return {f'd{len(self.npdict_dict)}': m}
         if isinstance(m, str):
             def is_submodule(k, m):
                 if k.startswith(m):
@@ -91,29 +91,28 @@ class _use_autograd_in():
                         return True
                 return False
 
-            return [v.__dict__ for k, v in sys.modules.items()
-                    if (is_submodule(k, m) and k != __name__ and getattr(v, 'np', None) == np)]
+            return {str(k): v.__dict__ for k, v in sys.modules.items()
+                    if (is_submodule(k, m) and k != __name__ and getattr(v, 'np', None) == np)}
 
         if inspect.ismodule(m):
-            return [m.__dict__]
+            return {str(m): m.__dict__}
 
         if inspect.getmodule(m) is not None and 'np' in inspect.getmodule(m).__dict__:
-            return [inspect.getmodule(m).__dict__]
+            return {str(m): inspect.getmodule(m).__dict__}
         else:
-            return []
+            return {}
 
     def __enter__(self):
         try:
-            self.prev_np = {}
-            for d in self.dict_lst:
-                self.prev_np[d["__name__"]] = d['np']
+            self.prev_np = {k: d['np'] for k, d in self.npdict_dict.items()}
+            for k, d in self.npdict_dict.items():
                 d['np'] = anp
         finally:
             return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        for d in self.dict_lst:
-            d['np'] = self.prev_np[d["__name__"]]
+        for k, d in self.npdict_dict.items():
+            d['np'] = self.prev_np[k]
 
     def __call__(self, f):
         def wrap(*args, **kwargs):
