@@ -81,9 +81,9 @@ class Rathmann(BlockageDeficitModel):
         The deficit is determined from a streamwise and radial shape function, whereas
         the strength is given from vortex and BEM theory.
         """
-        if not self.deficit_initalized:
-            # calculate layout term, self.dmu_G_ijlk
-            self._calc_layout_terms(D_src_il, dw_ijlk, cw_ijlk)
+        # if not self.deficit_initalized:
+        # calculate layout term, self.dmu_G_ijlk
+        self._calc_layout_terms(D_src_il, dw_ijlk, cw_ijlk)
 
         # circulation/strength of vortex dipole Eq. (1) in [1]
         gammat_ilk = WS_ilk * 2. * a0(ct_ilk * self.sct)

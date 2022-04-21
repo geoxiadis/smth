@@ -26,10 +26,14 @@ class Mirror(GroundModel):
         if 'cw_ijlk' in kwargs:
             cw_ijlk_mirror = np.sqrt(dh_ijlk_mirror**2 + kwargs['hcw_ijlk']**2)
         above_ground = ((kwargs['h_il'][:, na, :, na] + kwargs['dh_ijlk']) > 0)
-        return np.array([calc_deficit(**kwargs),
-                         calc_deficit(dh_ijlk=dh_ijlk_mirror,
+        mirror_deficit = calc_deficit(dh_ijlk=dh_ijlk_mirror,
                                       cw_ijlk=cw_ijlk_mirror,
-                                      **{k: v for k, v in kwargs.items() if k not in ['dh_ijlk', 'cw_ijlk']})]) * above_ground[na]
+                                      **{k: v for k, v in kwargs.items() if k not in ['dh_ijlk', 'cw_ijlk']})
+        # ensure the dificit on itself to be zero
+        idiag = np.diag_indices(mirror_deficit.shape[0])
+        mirror_deficit[idiag] = 0.
+        return np.array([calc_deficit(**kwargs),
+                         mirror_deficit]) * above_ground[na]
 
     def __call__(self, calc_deficit, **kwargs):
         return np.sum(self._calc(calc_deficit, **kwargs), 0)

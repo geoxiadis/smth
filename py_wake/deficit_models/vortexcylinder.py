@@ -52,7 +52,7 @@ class VortexCylinder(BlockageDeficitModel):
         # term 1
         # non-zero for rho < R
         term1_ijlk = np.zeros_like(rho_ijlk)
-        term1_ijlk[rho_ijlk < 1.] = 1.
+        term1_ijlk[(rho_ijlk < 1.) & (abs(xi_ijlk) > self.limiter)] = 1.
         # term 2
         # zero for xi==0, thus avoid computation
         ic = (abs(xi_ijlk) > self.limiter)
@@ -75,9 +75,10 @@ class VortexCylinder(BlockageDeficitModel):
         """
         The analytical relationships can be found in [1,2], in particular equations (7-8) from [1].
         """
-        if not self.deficit_initalized:
-            # calculate layout term, self.dmu_G_ijlk
-            self._calc_layout_terms(D_src_il, dw_ijlk, cw_ijlk)
+
+        # if not self.deficit_initalized:
+        #    # calculate layout term, self.dmu_G_ijlk
+        self._calc_layout_terms(D_src_il, dw_ijlk, cw_ijlk)
 
         # circulation/strength of vortex cylinder
         gammat_ilk = WS_ilk * 2. * a0(ct_ilk)
