@@ -127,14 +127,15 @@ class IEA10MW(WindTurbine):
     def __init__(self, method='linear'):
         u, p = power_curve.T
         WindTurbine.__init__(
-            self,
-            'IEA10MW',
-            diameter=198.0,
-            hub_height=119,
-            powerCtFunction=PowerCtTabular(u, p * 1000, 'w',
-                                           ct_curve[:, 1],
-                                           ws_cutin=4, ws_cutout=25,
-                                           method=method))
+                             self,
+                             'IEA10MW',
+                             diameter=198.0,
+                             hub_height=119,
+                             powerCtFunction=PowerCtTabular(u, p * 1000, 'w',
+                                                            ct_curve[:, 1],
+                                                            ws_cutin=4,
+                                                            ws_cutout=25,
+                                                            method=method))
 
 
 IEA10WM_RWT = IEA10MW
