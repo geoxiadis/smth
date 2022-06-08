@@ -32,9 +32,9 @@ ct_vals = np.array([0.0, 0.0, 0.7701, 0.7701, 0.7763, 0.7824, 0.782, 0.7802,
                     0.0559, 0.0512, 0.047, 0.0, 0.0])
 
 power_curve = np.column_stack([wind_speeds,
-                       cp_vals * 0.5 * 1.225 *
-                       np.pi * (rotor_diameter // 2) ** 2 *
-                       wind_speeds ** 3])
+                               cp_vals * 0.5 * 1.225 *
+                               np.pi * (rotor_diameter // 2) ** 2 *
+                               wind_speeds ** 3])
 
 ct_curve = np.column_stack([wind_speeds, ct_vals])
 
