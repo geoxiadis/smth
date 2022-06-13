@@ -59,7 +59,7 @@ class IEA10MW(WindTurbine):
             powerCtFunction=PowerCtTabular(u, p * 1000, 'w',
                                            ct_curve[:, 1],
                                            ws_cutin=4,
-                                           ws_cutout=25,
+                                           ws_cutout=None,
                                            method=method))
 
 
