@@ -268,7 +268,7 @@ class EngineeringWindFarmModel(WindFarmModel):
                     wt_kwargs['TI_eff'] = None
                 elif optional is False:
                     raise KeyError("Argument, TI_eff, needed to calculate power and ct requires a TurbulenceModel")
-            elif name in ['dw_ijl', 'cw_ijl', 'hcw_ijl']:
+            elif name in ['dw_ijlk', 'cw_ijlk', 'hcw_ijlk']:
                 pass
             elif optional:
                 pass
@@ -291,13 +291,14 @@ class EngineeringWindFarmModel(WindFarmModel):
         WS_eff_ilk, TI_eff_ilk, ct_ilk = self._calc_wt_interaction(**kwargs)
         if 'TI_eff' in wt_kwargs:
             wt_kwargs['TI_eff'] = TI_eff_ilk
-        d_ijl_keys = ({k for l in self.windTurbines.function_inputs for k in l} &
-                      {'dw_ijl', 'hcw_ijl', 'dh_ijl', 'cw_ijl'})
-        if d_ijl_keys:
-            d_ijl_dict = {k: lambda v=v: v for k, v in zip(['dw_ijl', 'hcw_ijl', 'dh_ijl'], self.site.distance(wd[na]))}
-            d_ijl_dict['cw_ijl'] = lambda d_ijl_dict=d_ijl_dict: np.sqrt(
-                d_ijl_dict['dw_ijl']**2 + d_ijl_dict['hcw_ijl']**2)
-            wt_kwargs.update({k: d_ijl_dict[k]() for k in d_ijl_keys})
+        d_ijlk_keys = ({k for l in self.windTurbines.function_inputs for k in l} &
+                       {'dw_ijlk', 'hcw_ijlk', 'dh_ijlk', 'cw_ijlk'})
+        if d_ijlk_keys:
+            d_ijlk_dict = {k: lambda v=v: v for k, v in zip(
+                ['dw_ijlk', 'hcw_ijlk', 'dh_ijlk'], self.site.distance(wd[na]))}
+            d_ijlk_dict['cw_ijlk'] = lambda d_ijlk_dict=d_ijlk_dict: np.sqrt(
+                d_ijlk_dict['dw_ijlk']**2 + d_ijlk_dict['hcw_ijlk']**2)
+            wt_kwargs.update({k: d_ijlk_dict[k]() for k in d_ijlk_keys})
 
         wt_kwargs_keys = set(self.windTurbines.powerCtFunction.required_inputs +
                              self.windTurbines.powerCtFunction.optional_inputs)
