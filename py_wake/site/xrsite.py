@@ -238,7 +238,8 @@ class XRSite(Site):
             if 'i' in lw.dims and 'i' in self.ds.Turning.dims and len(lw.i) != len(self.ds.i):
                 warnings.warn("Turning ignored")
             else:
-                WD = gradients.mod((self.interp(self.ds.Turning, lw.coords, deg=True) + WD), 360)
+                WD = DataArrayILK(gradients.mod((self.interp(self.ds.Turning, lw.coords, deg=True) + WD), 360)
+                                  ).squeeze()
 
         lw.set_W(WS, WD, TI, ws_bins, self.use_WS_bins)
         lw.set_data_array(TI_std, 'TI_std', 'Standard deviation of turbulence intensity')
@@ -263,7 +264,7 @@ class XRSite(Site):
                 A, k = self.interp(self.ds.Weibull_A, lw.coords), self.interp(self.ds.Weibull_k, lw.coords)
                 lw['Weibull_A'] = A
                 lw['Weibull_k'] = k
-                lw['Sector_frequency'] = p_wd
+                lw['Sector_frequency'] = p_wd.squeeze()
                 lw['P'] = p_wd * self.weibull_weight(lw, A, k)
         return lw
 
@@ -383,7 +384,7 @@ class UniformSite(XRSite):
     constant wind speed probability of 1. Only for one fixed wind speed
     """
 
-    def __init__(self, p_wd, ti=None, ws=12, interp_method='nearest', shear=None, initial_position=None):
+    def __init__(self, p_wd=[1], ti=0.1, ws=12, interp_method='nearest', shear=None, initial_position=None):
         ds = xr.Dataset(
             data_vars={'P': ('wd', p_wd)},
             coords={'wd': np.linspace(0, 360, len(p_wd), endpoint=False)})
