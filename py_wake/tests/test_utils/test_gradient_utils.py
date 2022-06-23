@@ -3,26 +3,26 @@ from autograd.core import primitive, defvjp
 import pytest
 
 import matplotlib.pyplot as plt
-import numpy as np
+from py_wake import np
 from py_wake.examples.data.hornsrev1 import V80
 from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines
 from py_wake.tests import npt
-from py_wake.tests.check_speed import timeit
 from py_wake.utils import gradients
-from py_wake.utils.gradients import autograd, plot_gradients, fd, cs, hypot, cabs, interp,\
-    _use_autograd_in, set_gradient_function
+from py_wake.utils.gradients import autograd, plot_gradients, fd, cs, hypot, cabs, interp, set_gradient_function
 from py_wake.wind_turbines import WindTurbines
 from py_wake.wind_turbines import _wind_turbines
-from py_wake.wind_turbines.power_ct_functions import CubePowerSimpleCt
 from xarray.core.dataset import Dataset
+from py_wake.utils.numpy_utils import AutogradNumpy
+from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
+from py_wake.site.distance import StraightDistance
 
 
 @pytest.mark.parametrize('obj', [_wind_turbines, WindTurbines, V80().power, _wind_turbines.__dict__])
 def test_use_autograd_in(obj):
     _wind_turbines.np = np
     assert _wind_turbines.np == np
-    with _use_autograd_in([obj]):
-        assert _wind_turbines.np == anp
+    with AutogradNumpy():
+        assert _wind_turbines.np.abs == anp.abs
     assert _wind_turbines.np == np
 
 
@@ -287,10 +287,10 @@ def test_arctan2():
     for x in [-.5, 0, .5]:
         for y in [-.4, 0, .4]:
             npt.assert_array_almost_equal(gradients.arctan2(y + 0j, x).real, gradients.arctan2(y, x), 15)
+            dydx_lst = [grad(gradients.arctan2)(y, x) for grad in [fd, cs, autograd]]
             if x != 0 and y != 0:
-                dydx_lst = [grad(gradients.arctan2)(y, x) for grad in [fd, cs, autograd]]
                 npt.assert_array_almost_equal(dydx_lst[0], dydx_lst[1])
-                npt.assert_array_almost_equal(dydx_lst[1], dydx_lst[2])
+            npt.assert_array_almost_equal(dydx_lst[1], dydx_lst[2])
 
 
 def test_gradients_interp():

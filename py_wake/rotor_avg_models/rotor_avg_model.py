@@ -1,5 +1,6 @@
-import numpy as np
+from py_wake import np
 from numpy import newaxis as na
+from py_wake.utils.model_utils import check_model
 
 
 class RotorAvgModel():
@@ -127,6 +128,41 @@ class CGIRotorAvg(GridRotorAvg):
                         (16 - np.sqrt(6)) / 360] for k in range(1, 11)]]
         }[n].T
         GridRotorAvg.__init__(self, nodes_x, nodes_y, nodes_weight=nodes_weight)
+
+
+class WSPowerRotorAvg(RotorAvgModel):
+    '''Compute the wind speed average, ws_avg = sum(ws_point^alpha)^(1/alpha).
+    Node weights are ignored'''
+
+    def __init__(self, rotorAvgModel=CGIRotorAvg(7), alpha=3):
+        """
+        Parameters
+        ----------
+        rotorAvgModel : RotorAvgModel, optional
+            RotorAvgModel defining the points, nodes_x and nodes_y, at which the wind speed to average is extracted
+        alpha : number, optional
+            power coefficient, default is 3
+        """
+        check_model(rotorAvgModel, cls=RotorAvgModel, arg_name='rotorAvgModel', accept_None=False)
+        self.rotorAvgModel = rotorAvgModel
+        self.args4rotor_avg_deficit = set(rotorAvgModel.args4rotor_avg_deficit) | {'WS_ilk'}
+        self.alpha = alpha
+
+    def __getattribute__(self, name):
+        try:
+            return object.__getattribute__(self, name)
+        except AttributeError:
+            return getattr(self.rotorAvgModel, name)
+
+    def __call__(self, func, WS_ilk, D_dst_ijl, **kwargs):
+
+        # add extra dimension, p, with 40 points distributed over the destination rotors
+        kwargs = self._update_kwargs(D_dst_ijl=D_dst_ijl, WS_ilk=WS_ilk, **kwargs)
+
+        values_ijlkp = func(**kwargs)
+        # Calculate weighted sum of deficit over the destination rotors
+        WS_eff_ijlk = np.mean((WS_ilk[:, na, :, :, na] - values_ijlkp)**self.alpha, -1) ** (1 / self.alpha)
+        return WS_ilk[:, na] - WS_eff_ijlk
 
 
 def gauss_quadrature(n_x, n_y):

@@ -1,11 +1,12 @@
 from numpy import newaxis as na
 
-import numpy as np
+from py_wake import np
 import xarray as xr
 from xarray.plot.plot import _PlotMethods
 import warnings
 from xarray.core.dataarray import DataArray
 from autograd.numpy.numpy_boxes import ArrayBox
+from xarray.core import dtypes
 
 
 class ilk():
@@ -30,7 +31,7 @@ class ilk():
                 v = v[:, na]
             if 'ws' not in dims:
                 v = v[:, :, na]
-        dtype = (float, np.complex128)[np.iscomplexobj(v)]
+        dtype = (np.float, np.complex)[np.iscomplexobj(v)]
         v = v.astype(dtype)
         if shape is None:
             return v
@@ -151,11 +152,28 @@ def da2py(v, include_dims=False):
 class DataArrayILK(DataArray):
     __slots__ = []
 
+    def __init__(self, data=dtypes.NA, coords=None, dims=None, name=None, attrs=None, indexes=None, fastpath=False):
+        if not hasattr(data, 'dims') and len(data.shape) == 3:
+            dims = ('i', 'wd', 'ws')
+        DataArray.__init__(self, data=data, coords=coords, dims=dims, name=name, attrs=attrs,
+                           indexes=indexes, fastpath=fastpath)
+
     def log(self):
         if isinstance(self.values, ArrayBox):
             return DataArrayILK(xr.DataArray(np.log(self.ilk()), dims=('i', 'wd', 'ws')))
         else:
             return np.log(self)
+
+    def squeeze(self, dim=None, drop=False, axis=None):
+        if isinstance(self.values, ArrayBox):
+            dims = self.dims
+            data = self.values
+            while data.shape and data.shape[-1] == 1:
+                data = data[..., 0]
+                dims = dims[:-1]
+            return DataArrayILK(data, dims=dims)
+        else:
+            return DataArray.squeeze(self, dim=dim, drop=drop, axis=axis)
 
 
 for op_name in ['__mul__', '__add__', '__pow__']:

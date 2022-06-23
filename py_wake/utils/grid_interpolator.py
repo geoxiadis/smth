@@ -1,4 +1,4 @@
-import numpy as np
+from py_wake import np
 from numpy import newaxis as na
 from py_wake.utils import gradients
 from autograd.numpy.numpy_boxes import ArrayBox
@@ -26,7 +26,7 @@ class GridInterpolator(object):
         self.V = V
         self.bounds = bounds
         self.method = method
-        self.n = np.array([len(x) for x in x])
+        self.n = np.array([len(x) for x in x], dtype=int)
         self.x0 = np.array([x[0] for x in x])
         dx = np.array([x[min(1, len(x) - 1)] - x[0] for x in x])
         self.dx = np.where(dx == 0, 1, dx)
@@ -41,7 +41,7 @@ class GridInterpolator(object):
             ui = np.array([(np.r_[ui, 0], np.r_[ui, 1]) for ui in ui])
             ui = ui.reshape((ui.shape[0] * ui.shape[1], ui.shape[2]))
         ui[:, dx == 0] = 0
-        self.ui = ui
+        self.ui = ui.astype(int)
 
     def __call__(self, xp, method=None, bounds=None, deg=False):
         """Interpolate points
@@ -90,7 +90,7 @@ class GridInterpolator(object):
 
         indexes = (self.ui.T[:, :, na] + xpi0.T[:, na])
 
-        indexes = np.minimum(indexes, (self.n - 1)[:, na, na])
+        indexes = np.minimum(indexes, (self.n - 1)[:, na, na], dtype=int)
         v = np.moveaxis(self.V[tuple(indexes)], [0, 1], [-2, -1])
         if deg:
             v = (v + 180) % 360 - 180  # -180..180 > 0-360
@@ -144,8 +144,10 @@ class EqDistRegGrid2DInterpolator():
             yi0 = np.minimum(np.maximum(yi0, self.yi_valid_min), self.yi_valid_max - 2)
         xi1 = xi0 + (xif > 0)
         yi1 = yi0 + (yif > 0)
-        valid = (xif >= 0) & (yif >= 0) & (xi1 < len(self.x)) & (yi1 < len(self.y))
-        z = np.empty_like(xp) + np.nan
+        if isinstance(xp, ArrayBox) or isinstance(yp, ArrayBox):
+            valid = slice(None)
+        else:
+            valid = (xif >= 0) & (yif >= 0) & (xi1 < len(self.x)) & (yi1 < len(self.y))
         xi0, xi1, xif, yi0, yi1, yif = [v[valid] for v in [xi0, xi1, xif, yi0, yi1, yif]]
         z00 = self.Z[xi0, yi0]
         z10 = self.Z[xi1, yi0]
@@ -153,5 +155,9 @@ class EqDistRegGrid2DInterpolator():
         z11 = self.Z[xi1, yi1]
         z0 = z00 + (z10 - z00) * xif
         z1 = z01 + (z11 - z01) * xif
-        z[valid] = z0 + (z1 - z0) * yif
+        if isinstance(xp, ArrayBox) or isinstance(yp, ArrayBox):
+            z = z0 + (z1 - z0) * yif
+        else:
+            z = np.empty_like(xp) + np.nan
+            z[valid] = z0 + (z1 - z0) * yif
         return z

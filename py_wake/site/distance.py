@@ -1,8 +1,9 @@
-import numpy as np
+from py_wake import np
 from numpy import newaxis as na
 import matplotlib
 from py_wake.utils.functions import mean_deg
 from py_wake.utils import gradients
+from py_wake.utils.gradients import rad2deg, deg2rad
 
 
 class StraightDistance():
@@ -124,18 +125,27 @@ class TerrainFollowingDistance(StraightDistance):
                            for src_x, src_y in zip(self.src_x_i, self.src_y_i)
                            for dst_x, dst_y in zip(self.dst_x_j, self.dst_y_j)])
             upper_tri_only = False
-        x, y = xy[:, 0], xy[:, 1]
+        if len(xy):
+            x, y = xy[:, 0], xy[:, 1]
+        else:
+            x, y = np.zeros((0, 2)), np.zeros((0, 2))
 
         # find height and calculate surface distance
         h = self.site.elevation(x.flatten(), y.flatten()).reshape(x.shape)
         dxy = np.sqrt((x[:, 1] - x[:, 0])**2 + (y[:, 1] - y[:, 0])**2)
+
         dh = np.diff(h, 1, 1)
         s = np.sum(np.sqrt(dxy[:, na]**2 + dh**2), 1)
-
         if upper_tri_only:
-            d_ij = np.zeros(self.dx_ij.shape)
-            d_ij[np.triu(np.eye(len(src_x_i)) == 0)] = s  # set upper triangle
-            d_ij[np.tril(np.eye(len(src_x_i)) == 0)] = s  # set lower triangle
+            # d_ij = np.zeros(self.dx_ij.shape)
+            # d_ij[np.triu(np.eye(len(src_x_i)) == 0)] = s  # set upper triangle
+
+            # same as above without item assignment
+            n = len(src_x_i)
+            d_ij = np.array([np.concatenate([[0] * (i + 1),
+                                             s[int(n * i - (i * (i + 1) / 2)):][:n - i - 1]])
+                             for i in range(n)])  # set upper and lower triangle
+            d_ij += d_ij.T
         else:
             d_ij = s.reshape(self.dx_ij.shape)
         self.d_ij = d_ij
@@ -146,15 +156,15 @@ class TerrainFollowingDistance(StraightDistance):
         # we offset the wind direction by the direction between source and destination
         _, hcw_ijl, dh_ijl = StraightDistance.__call__(self, WD_il, src_idx=src_idx, dst_idx=dst_idx)
         if len(np.shape(WD_il)) == 1:
-            dir_ij = 90 - np.rad2deg(self.theta_ij[src_idx, dst_idx])
+            dir_ij = 90 - rad2deg(self.theta_ij[src_idx, dst_idx])
             wdir_offset_ij = np.asarray(WD_il)[na] - dir_ij
-            theta_ij = np.deg2rad(90 - wdir_offset_ij)
+            theta_ij = deg2rad(90 - wdir_offset_ij)
             sin_ij = np.sin(theta_ij)
             dw_ijl = - sin_ij * self.d_ij[src_idx, dst_idx]
         else:
-            dir_ij = 90 - np.rad2deg(self.theta_ij[src_idx, ][:, dst_idx])
+            dir_ij = 90 - rad2deg(self.theta_ij[src_idx, ][:, dst_idx])
             wdir_offset_ijl = np.asarray(WD_il)[:, na] - dir_ij[:, :, na]
-            theta_ijl = np.deg2rad(90 - wdir_offset_ijl)
+            theta_ijl = deg2rad(90 - wdir_offset_ijl)
             sin_ijl = np.sin(theta_ijl)
             dw_ijl = - sin_ijl * self.d_ij[src_idx][:, dst_idx][:, :, na]
 
@@ -165,6 +175,7 @@ class TerrainFollowingDistance2():
     """Warning: This model is deprecated and will be removed in a future release.
     It is very slow and has not been updated to match the newest api changes. Hence it may fail in some setup.
     """
+
     def __init__(self, k_star=0.075, r_i=None, calc_all=False, terrain_step=5, **kwargs):
         super().__init__(**kwargs)
         self.k_star = k_star
