@@ -250,7 +250,7 @@ def dinterp_dxp(xp, x, y):
 @set_gradient_function([dinterp_dxp])
 def interp(xp, x, y, *args, **kwargs):
     if all([np.isrealobj(v) for v in [xp, x, y]]):
-        return np.interp(xp, x, y, *args, **kwargs)
+        return np.interp(np.asarray(xp, order='C'), np.asarray(x), np.asarray(y), *args, **kwargs)
     else:
         # yp = np.interp(xp.real, x.real, y.real, *args, **kwargs)
         # dyp_dxp = dinterp_dxp(xp.real, x.real, y.real)

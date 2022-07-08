@@ -230,7 +230,7 @@ class EngineeringWindFarmModel(WindFarmModel):
             if k in kwargs:
                 lw.add_ilk(k + '_ilk', kwargs[k])
 
-        self.site.distance.setup(x_i, y_i, h_i)
+        self.site.distance.setup(np.asarray(x_i), np.asarray(y_i), np.asarray(h_i))
 
         def add_arg(name, optional):
             if name in wt_kwargs:  # custom WindFarmModel.__call__ arguments
@@ -763,7 +763,7 @@ class All2AllIterative(EngineeringWindFarmModel):
             # ensure idling wt in unstable flow cases do not cutin even if ws increases due to speedup
             # this helps to converge
             # WS_eff_ilk[ioff] = np.minimum(WS_eff_ilk[ioff], WS_eff_ilk_last[ioff])
-            WS_eff_ilk = np.minimum(WS_eff_ilk, WS_eff_ilk_last, out=WS_eff_ilk, where=ioff)
+            # WS_eff_ilk = np.minimum(WS_eff_ilk, WS_eff_ilk_last, out=WS_eff_ilk, where=ioff)
 
             if self.turbulenceModel:
                 add_turb_ijlk = self.turbulenceModel(**model_kwargs)
