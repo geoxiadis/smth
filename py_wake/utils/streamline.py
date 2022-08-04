@@ -45,7 +45,10 @@ class VectorField3D():
             # calculate downwind distance and update m (mask of streamlines to continue)
             dist = (p[m, :2] - start_points[m, :2])
             dw = dist[:, 0] * co[m] + dist[:, 1] * si[m]
-            m = m[dw < dw_stop[m]]
+            is_in = p[m, 2] <= self.da.h.values[-1]
+            is_not_over = dw < dw_stop[m]
+            m = m[is_in * is_not_over]
             if len(m) == 0:
                 break
+
         return np.moveaxis(stream_lines, 0, 1).reshape((len(wd), -1, 3))
