@@ -283,7 +283,9 @@ class EngineeringWindFarmModel(WindFarmModel):
 
         wt_kwargs_keys = set(self.windTurbines.powerCtFunction.required_inputs +
                              self.windTurbines.powerCtFunction.optional_inputs)
-        power_ilk = self.windTurbines.power(np.maximum(0.0, np.maximum(0.0, WS_eff_ilk)), **{k: v for k, v in wt_kwargs.items() if k in wt_kwargs_keys})
+
+        power_ilk = self.windTurbines.power(np.maximum(0.0, np.maximum(0.0, WS_eff_ilk)),
+                                            **{k: v for k, v in wt_kwargs.items() if k in wt_kwargs_keys})
 
         return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, lw, wt_kwargs
 
@@ -546,6 +548,7 @@ class PropagateDownwind(EngineeringWindFarmModel):
             _kwargs = {k: mask(k, v) for k, v in kwargs.items() if k in keys}
             if 'TI_eff' in _kwargs:
                 _kwargs['TI_eff'] = TI_eff_mk[-1]
+
             ct_lk = self.windTurbines.ct(np.maximum(0.0, np.maximum(0.0, WS_eff_lk)), **_kwargs)
 
             ct_jlk.append(ct_lk)
