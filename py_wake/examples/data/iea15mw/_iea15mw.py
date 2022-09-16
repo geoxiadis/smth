@@ -43,7 +43,7 @@ class IEA15MW(WindTurbine):
     def __init__(self, method='linear'):
         WindTurbine.__init__(
             self,
-            'DTU10MW',
+            'IEA15MW',
             diameter=240,
             hub_height=150,
             powerCtFunction=PowerCtTabular(wsp, power, 'w', ct, ws_cutin=3, ws_cutout=25,
