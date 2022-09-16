@@ -1,40 +1,48 @@
 from py_wake import np
 from numpy import newaxis as na
+from py_wake.utils.model_utils import ModelMethodWrapper, Model
 
 
-class GroundModel():
-    def __init__(self):
-        pass
+class GroundModel(Model, ModelMethodWrapper):
+    """"""
 
 
 class NoGround(GroundModel):
-    args4deficit = []
+    """ Using this model corresponds to groundModel=None, but it can be used to override the groundModel
+     specified for the windFarmModel in e.g. the turbulence model"""
 
-    def __call__(self, calc_deficit, **kwargs):
-        return calc_deficit(**kwargs)
+    def __call__(self, func, **kwargs):
+        return func(**kwargs)
 
 
 class Mirror(GroundModel):
-    """The WindFarmModel-to-GroundModel API will most likely if a new model is added, while the
-    User-to-WindFarmModel API wrt. GroundModel will hopefully persist
+    """Consider the ground as a mirror (modeled by adding underground wind turbines).
+    The deficits caused by the above- and below-ground turbines are summed
+    by the superpositionModel of the windFarmModel
     """
-    args4deficit = ['dh_ijlk', 'h_il', 'hcw_ijlk']
 
-    def _calc(self, calc_deficit, **kwargs):
-        dh_ijlk_mirror = 2 * kwargs['h_il'][:, na, :, na] + kwargs['dh_ijlk']
-        cw_ijlk_mirror = None
+    def _update_kwargs(self, **kwargs):
+        def add_mirror_wt(k, v):
+            if (np.shape(v)[0] > 1 or '_ijlk' in k) and '_jlk' not in k:
+                return np.concatenate([v, v], 0)
+            else:
+                return v
+
+        new_kwargs = {k: add_mirror_wt(k, v) for k, v in kwargs.items()}
+        new_kwargs['dh_ijlk'] = np.concatenate([kwargs['dh_ijlk'],
+                                                kwargs['dh_ijlk'] + (2 * kwargs['h_il'][:, na, :, na])],
+                                               0)
         if 'cw_ijlk' in kwargs:
-            cw_ijlk_mirror = np.sqrt(dh_ijlk_mirror**2 + kwargs['hcw_ijlk']**2)
-        above_ground = ((kwargs['h_il'][:, na, :, na] + kwargs['dh_ijlk']) > 0)
-        return np.array([calc_deficit(**kwargs),
-                         calc_deficit(dh_ijlk=dh_ijlk_mirror,
-                                      cw_ijlk=cw_ijlk_mirror,
-                                      **{k: v for k, v in kwargs.items() if k not in ['dh_ijlk', 'cw_ijlk']})]) * above_ground[na]
+            new_kwargs['cw_ijlk'] = np.sqrt(new_kwargs['dh_ijlk']**2 + new_kwargs['hcw_ijlk']**2)
+        return new_kwargs
 
-    def __call__(self, calc_deficit, **kwargs):
-        return np.sum(self._calc(calc_deficit, **kwargs), 0)
+    def __call__(self, func, h_il, dh_ijlk, IJLK, **kwargs):
+        new_kwargs = self._update_kwargs(h_il=h_il, dh_ijlk=dh_ijlk, IJLK=IJLK, **kwargs)
+        above_ground = ((new_kwargs['h_il'][:, na, :, na] + new_kwargs['dh_ijlk']) > 0)
+        values_pijlk = func(**new_kwargs)
+        deficit_mijlk = np.reshape(values_pijlk * above_ground, (2,) + IJLK)
+        return self.windFarmModel.superpositionModel(deficit_mijlk)
 
-
-class MirrorSquaredSum(Mirror):
-    def __call__(self, calc_deficit, **kwargs):
-        return np.sqrt(np.sum(self._calc(calc_deficit, **kwargs)**2, 0))
+    def _calc_layout_terms(self, func, **kwargs):
+        new_kwargs = self._update_kwargs(**kwargs)
+        func(**new_kwargs)
