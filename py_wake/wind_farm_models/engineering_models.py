@@ -132,7 +132,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         if self.blockage_deficitModel is None:
             deficit *= (dw_ijlk > rotor_pos)
             blockage = np.zeros_like(deficit)
-        elif (self.blockage_deficitModel != self.wake_deficitModel):
+        elif self.blockage_deficitModel != self.wake_deficitModel:
             blockage = self.blockage_deficitModel.calc_blockage_deficit(dw_ijlk=dw_ijlk, **kwargs)
             deficit *= (dw_ijlk > rotor_pos)
         else:
@@ -410,7 +410,8 @@ class EngineeringWindFarmModel(WindFarmModel):
             TI_eff_jlk = np.broadcast_to(lw_j.TI_ilk, (len(x_j), L, K)) + 0.
         return lw_j, WS_eff_jlk, TI_eff_jlk
 
-    def _validate_input(self, x_i, y_i, h_i):
+    @staticmethod
+    def _validate_input(x_i, y_i, h_i):
         i1, i2 = np.where((cabs(
             x_i[:, na] - x_i[na]) + cabs(y_i[:, na] - y_i[na]) + cabs(h_i[:, na] - h_i[na]) + np.eye(len(x_i))) == 0)
         if len(i1):
@@ -684,7 +685,7 @@ class All2AllIterative(EngineeringWindFarmModel):
 
         WS_eff_ilk = WS_eff_ilk.astype(dtype)
         WS_eff_ilk_last = WS_eff_ilk + 0  # fast autograd-friendly copy
-        diff_lk = np.zeros((L, K))
+        # diff_lk = np.zeros((L, K))
         diff_lk_last, diff_lk_lastlast = None, None
         dw_iil, hcw_iil, dh_iil = self.site.distance(wd_l=wd, WD_il=mean_deg(WD_ilk, 2))
 
@@ -771,7 +772,7 @@ class All2AllIterative(EngineeringWindFarmModel):
             diff_lk = diff_ilk.max(0)
             max_diff = np.max(diff_lk)
 
-            if (self.convergence_tolerance and max_diff < self.convergence_tolerance):
+            if self.convergence_tolerance and max_diff < self.convergence_tolerance:
                 break
             # i_, l_, k_ = list(zip(*np.where(diff_ilk == max_diff)))[0]
             # print("Iteration: %d, max diff_ilk: %.8f, WT: %d, WD: %d, WS: %f, WS_eff: %f" %
