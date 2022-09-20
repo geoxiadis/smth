@@ -27,6 +27,8 @@ def asarray(x, dtype=None, order=None):
         return x
     elif isinstance(x, DataArray) and isinstance(x.values, ArrayBox):
         return x.values
+    if hasattr(np, 'asnumpy'):  # move from GPU to host
+        x = np.asnumpy(x)
     return np_asarray(x, dtype, order)
 
 

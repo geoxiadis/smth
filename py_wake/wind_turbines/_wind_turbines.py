@@ -53,7 +53,7 @@ Use WindTurbines(names, diameters, hub_heights, power_ct_funcs) instead""", Depr
         return ri, oi
 
     def _info(self, var, type):
-        return var[np.asarray(type, int)]
+        return np.asarray(var)[np.asarray(type, int)]
 
     def hub_height(self, type=0):
         """Hub height of the specified type(s) of wind turbines"""

@@ -71,6 +71,9 @@ class NumpyWrapper():
     def __init__(self):
         self.set_backend(numpy)
 
+    def __str__(self):
+        return f"Wrapper of {str(self.backend)}"
+
     @property
     def float(self):
         if self.backend == numpy:

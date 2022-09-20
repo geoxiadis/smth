@@ -35,7 +35,7 @@ class GridInterpolator(object):
         for i in self.irregular_axes_indexes:
             self.x[i] = np.r_[self.x[i], self.x[i][-1] + 1]
         self.V = np.asarray(V)
-        if not np.all(self.V.shape[:len(self.n)] == self.n):
+        if not np.all(np.asarray(self.V.shape[:len(self.n)]) == self.n):
             raise ValueError("Lengths of x does not match shape of V")
         ui = np.array([[0], [1]])
         for _ in range(len(x) - 1):
