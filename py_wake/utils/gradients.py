@@ -27,8 +27,8 @@ def asarray(x, dtype=None, order=None):
         return x
     elif isinstance(x, DataArray) and isinstance(x.values, ArrayBox):
         return x.values
-    if hasattr(np, 'asnumpy'):  # move from GPU to host
-        x = np.asnumpy(x)
+    if hasattr(x, '__cuda_array_interface__'):
+        x = x.get()  # x is on GPU, move  to host
     return np_asarray(x, dtype, order)
 
 
