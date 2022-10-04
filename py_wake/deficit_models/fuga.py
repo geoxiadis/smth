@@ -54,7 +54,7 @@ class FugaDeficit(WakeDeficitModel, BlockageDeficitModel, FugaUtils):
                 amu = -19.3
                 aux2 = np.sqrt(1 + amu * zeta)
                 aux = np.sqrt(aux2)
-                return np.pi / 2 - 2 * np.arctan(aux) + np.log(np.sqr(1 + aux) * (1 + aux2) / 8)
+                return np.pi / 2 - 2 * np.arctan(aux) + np.log((1 + aux)**2 * (1 + aux2) / 8)
         return 1 / (1 - (psim(self.zHub * self.invL) - psim(self.zeta0)) / np.log(self.zHub / self.z0))
 
     def load(self):
