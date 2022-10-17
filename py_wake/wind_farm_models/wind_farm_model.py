@@ -306,7 +306,7 @@ class WindFarmModel(ABC):
         wd_bin_size = self.site.wd_bin_size(wd)
 
         map_func, kwargs_lst, wd_chunks, ws_chunks = self._multiprocessing_chunks(
-            wd=wd, ws=ws, time=False, n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
+            wd=wd, ws=ws, n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
             x=x, y=y, h=h, type=type, yaw=yaw, tilt=tilt, **kwargs)
 
         return np.sum([np.array(aep) / self.site.wd_bin_size(args['wd']) * wd_bin_size
