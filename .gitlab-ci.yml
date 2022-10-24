@@ -33,6 +33,8 @@ test_PyWake_windows:  # name the job what we like
   - whoami
   - echo "hej"
   - REG QUERY "HKCU\SOFTWARE\Microsoft\Command Processor"
+  - reg delete  "HKCU\SOFTWARE\Microsoft\Command Processor" /v autorun
+  - REG QUERY "HKCU\SOFTWARE\Microsoft\Command Processor"
   # - cmd /c "echo %PATH%"
   # - cmd /c "dir"
   #- D:\miniconda3\condabin\conda init powershell
