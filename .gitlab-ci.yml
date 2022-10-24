@@ -5,16 +5,6 @@ stages:
   - test_plugins
   - deploy
 
-# ===== TEST PyWake debian=====
-test_PyWake:  # name the job what we like
-  image: continuumio/anaconda3
-  stage:  # build, test, deploy defined by default [2]
-    test
-  script:
-  - pip install -e .[test] --timeout 3600 --default-timeout=3600
-  - pytest
-  tags:  # only runners with this tag can do the job [3]
-  - ci-ubuntu
 
 ## ===== TEST PyWake debian=====
 #test_PyWake_python3.6:  # name the job what we like
@@ -34,15 +24,6 @@ test_PyWake:  # name the job what we like
 
 
   
-# ===== Check code style =====
-check_code_style:  # name the job what we like
-  stage:  # build, test, deploy defined by default [2]
-    test
-  script:
-  - pip install -e . --user
-  - pycodestyle --ignore=E501,W504,E741 py_wake
-  tags:  # only runners with this tag can do the job [3]
-  - python
 
 # ===== TEST PyWake on Windows =====
 test_PyWake_windows:  # name the job what we like
@@ -50,7 +31,8 @@ test_PyWake_windows:  # name the job what we like
     test
   script:  # runs on windows machine due to tag below
   - whoami
-  #- d:/miniconda3/test.bat
+  - echo "hej"
+  - d:/miniconda3/test.bat
   #- D:\miniconda3\condabin\conda init powershell
   #- "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
   #- D:/miniconda3/condabin/conda activate py38
