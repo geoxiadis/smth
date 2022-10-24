@@ -5,16 +5,6 @@ stages:
   - test_plugins
   - deploy
 
-# ===== TEST PyWake debian=====
-test_PyWake:  # name the job what we like
-  image: continuumio/anaconda3
-  stage:  # build, test, deploy defined by default [2]
-    test
-  script:
-  - pip install -e .[test] --timeout 3600 --default-timeout=3600
-  - pytest
-  tags:  # only runners with this tag can do the job [3]
-  - ci-ubuntu
 
 ## ===== TEST PyWake debian=====
 #test_PyWake_python3.6:  # name the job what we like
@@ -34,26 +24,22 @@ test_PyWake:  # name the job what we like
 
 
   
-# ===== Check code style =====
-check_code_style:  # name the job what we like
-  stage:  # build, test, deploy defined by default [2]
-    test
-  script:
-  - pip install -e . --user
-  - pycodestyle --ignore=E501,W504,E741 py_wake
-  tags:  # only runners with this tag can do the job [3]
-  - python
 
 # ===== TEST PyWake on Windows =====
 test_PyWake_windows:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
     test
   script:  # runs on windows machine due to tag below
+  - whoami
+  - echo "hej"
+  # - cmd /c "echo %PATH%"
+  # - cmd /c "dir"
   - conda init powershell
   - "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
   - conda activate py38
-  - pip install -e .[test]
-  - pytest --cov-report term-missing:skip-covered --cov=py_wake --cov-config .coveragerc
+  - python -c "import sys; print(sys.executable)"
+  #- pip install -e .[test]
+  #- pytest --cov-report term-missing:skip-covered --cov=py_wake --cov-config .coveragerc
   tags:  # tag for shared runner on windows machine
   - ANMH_old
 
