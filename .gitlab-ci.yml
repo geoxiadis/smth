@@ -32,7 +32,7 @@ test_PyWake_windows:  # name the job what we like
   script:  # runs on windows machine due to tag below
   - whoami
   - echo "hej"
-  - C:\GitLab-Runner\test.bat
+  - cmd /c "C:\GitLab-Runner\test.bat"
   #- D:\miniconda3\condabin\conda init powershell
   #- "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
   #- D:/miniconda3/condabin/conda activate py38
