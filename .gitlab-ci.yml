@@ -50,7 +50,7 @@ test_PyWake_windows:  # name the job what we like
     test
   script:  # runs on windows machine due to tag below
   - whoami
-  - d:/miniconda3/test.bat
+  #- d:/miniconda3/test.bat
   #- D:\miniconda3\condabin\conda init powershell
   #- "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
   #- D:/miniconda3/condabin/conda activate py38
