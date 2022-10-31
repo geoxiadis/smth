@@ -12,7 +12,7 @@ from py_wake.utils.gradients import cabs
 
 
 class FugaDeficit(WakeDeficitModel, BlockageDeficitModel, FugaUtils):
-    ams = 5
+    ams = -5
 
     def __init__(self, LUT_path=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00/', remove_wriggles=False,
                  method='linear', rotorAvgModel=None, groundModel=None):
