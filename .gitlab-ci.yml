@@ -52,7 +52,7 @@ test_PyWake_windows:  # name the job what we like
   - conda init powershell
   - "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
   - conda activate py38
-  - pip install -e .[test]
+  - pip install -e .[test] --no-deps
   - pytest --cov-report term-missing:skip-covered --cov=py_wake --cov-config .coveragerc
   tags:  # tag for shared runner on windows machine
   - ANMH_old
@@ -96,11 +96,12 @@ pages:  # "pages" is a job specifically for GitLab pages [1]
     deploy
   script:  # use sphinx to build docs, move to public page
   - apt-get update
-  - apt-get -y install make pandoc
+  - apt-get -y install make pandoc graphviz
   - pip install --upgrade pip
   - pip install pypandoc
   - pip install sphinx --upgrade
   - pip install nbsphinx --upgrade
+  - pip install nbconvert --upgrade
   - pip install git+https://gitlab.windenergy.dtu.dk/TOPFARM/TopFarm2.git
   - pip install -e .[test]
   - cd docs/validation_report
