@@ -17,16 +17,16 @@ class FrandsenWeight():
     """
 
     def apply_weight(self, dw_ijlk, cw_ijlk, D_src_il, TI_ilk, TI_add_ijlk):
-        s_ijlk = dw_ijlk / D_src_il[:, na, :, na]
+        s_ijlk = dw_ijlk / (D_src_il[:, na, :, na] + 1.e-9)
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', r'divide by zero encountered in true_divide')
             warnings.filterwarnings('ignore', r'invalid value encountered in true_divide')
 
             # Theta_w is the characteristic view angle defined in Eq. (3.18)
-            theta_w = (180.0 / np.pi * np.arctan(1 / s_ijlk) + 10) / 2
+            theta_w = (180.0 / np.pi * np.arctan(1 / (s_ijlk + 1.e-9)) + 10) / 2
 
             # thetq denotes the acutally view angles
-            theta = np.where(dw_ijlk > 0, np.arctan(cw_ijlk / dw_ijlk) * 180.0 / np.pi, 0)
+            theta = np.where(dw_ijlk > 0, np.arctan(cw_ijlk / (dw_ijlk + 1.e-9)) * 180.0 / np.pi, 0)
         weights_ijlk = np.where(theta < theta_w, np.exp(-(theta / theta_w)**2), 0) * (dw_ijlk > 1e-10)
 
         # In Frandsens thesis, the weight is multiplied to I0 * alpha:
@@ -73,7 +73,10 @@ class STF2017TurbulenceModel(TurbulenceModel):
         dist_ijlk = hypot(dw_ijlk, cw_ijlk) / D_src_il[:, na, :, na]
         # In the standard (see page 103), the maximal added TI is calculated as
         # TI_add = 1/(1.5 + 0.8*d/sqrt(Ct))
-        return 1 / (self.c[0] + self.c[1] * dist_ijlk / np.sqrt(ct_ilk)[:, na])
+
+        div_num = (self.c[0] + self.c[1] * dist_ijlk / (np.sqrt(ct_ilk)[:, na] + 1.e-9)) + 1.e-9
+
+        return 1. / div_num
 
     def calc_added_turbulence(self, WS_ilk, dw_ijlk, cw_ijlk, D_src_il, TI_ilk, ct_ilk, **kwargs):
         """ Calculate the added turbulence intensity at locations specified by
