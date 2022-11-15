@@ -12,8 +12,7 @@ from py_wake.utils.gradients import cabs
 
 
 class FugaDeficit(WakeDeficitModel, BlockageDeficitModel, FugaUtils):
-    ams = 5
-    invL = 0
+    ams = -5
 
     def __init__(self, LUT_path=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00/', remove_wriggles=False,
                  method='linear', rotorAvgModel=None, groundModel=None):
@@ -48,11 +47,14 @@ class FugaDeficit(WakeDeficitModel, BlockageDeficitModel, FugaUtils):
 
     def zeta0_factor(self):
         def psim(zeta):
-            return self.ams * zeta
-
-        if not self.zeta0 >= 0:  # pragma: no cover
-            # See Colonel.u2b.psim
-            raise NotImplementedError
+            if self.zeta0 >= 0:
+                return self.ams * zeta
+            else:
+                # See Colonel.u2b.psim
+                amu = -19.3
+                aux2 = np.sqrt(1 + amu * zeta)
+                aux = np.sqrt(aux2)
+                return np.pi / 2 - 2 * np.arctan(aux) + np.log((1 + aux)**2 * (1 + aux2) / 8)
         return 1 / (1 - (psim(self.zHub * self.invL) - psim(self.zeta0)) / np.log(self.zHub / self.z0))
 
     def load(self):
