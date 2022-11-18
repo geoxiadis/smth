@@ -63,6 +63,8 @@ class EngineeringWindFarmModel(WindFarmModel):
             assert isinstance(wake_deficitModel, ConvectionDeficitModel)
             assert rotorAvgModel is None or isinstance(rotorAvgModel, RotorCenter), \
                 "WeightedSum only works with RotorCenter"
+            assert wake_deficitModel.WS_key == 'WS_eff_ilk', """Weighted sum needs the local effective wind speed.
+            Please instantiate the wake deficitModel with 'use_effective_ws=True'"""
         # TI_eff requires a turbulence model
         assert 'TI_eff_ilk' not in wake_deficitModel.args4deficit or turbulenceModel
         self.wake_deficitModel = wake_deficitModel
