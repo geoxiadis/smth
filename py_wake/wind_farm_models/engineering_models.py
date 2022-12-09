@@ -12,7 +12,7 @@ from tqdm import tqdm
 from py_wake.wind_turbines._wind_turbines import WindTurbines
 from py_wake.utils.model_utils import check_model
 from py_wake.utils.functions import mean_deg, arg2ilk
-from py_wake.utils.gradients import hypot
+from py_wake.utils import gradients
 import warnings
 
 
@@ -338,7 +338,7 @@ class EngineeringWindFarmModel(WindFarmModel):
 
         model_kwargs.update({'dw_ijlk': dw_ijlk, 'hcw_ijlk': hcw_ijlk, 'dh_ijlk': dh_ijlk})
         if 'cw_ijlk' in self.args4all:
-            model_kwargs['cw_ijlk'] = hypot(dh_ijlk, hcw_ijlk)
+            model_kwargs['cw_ijlk'] = gradients.hypot(dh_ijlk, hcw_ijlk)
 
         if 'wake_radius_ijlk' in self.args4all:
             model_kwargs['wake_radius_ijlk'] = self.wake_deficitModel.wake_radius(**model_kwargs)
@@ -356,7 +356,7 @@ class EngineeringWindFarmModel(WindFarmModel):
 
         l_ = [l, slice(0, 1)][WS_ilk.shape[1] == 1]
         if isinstance(self.superpositionModel, WeightedSum):
-            cw_ijlk = hypot(dh_ijl[..., na], hcw_ijlk)
+            cw_ijlk = gradients.hypot(dh_ijl[..., na], hcw_ijlk)
             WS_eff_jlk = WS_ilk[:, l_] - self.superpositionModel(WS_ilk[:, l_], deficit_ijlk, uc_ijlk,
                                                                  sigma_sqr_ijlk, cw_ijlk, hcw_ijlk, dh_ijlk)
             if self.blockage_deficitModel:
@@ -731,7 +731,7 @@ class All2AllIterative(EngineeringWindFarmModel):
                 dw_ijlk, hcw_ijlk, dh_ijlk = self.deflectionModel.calc_deflection(
                     dw_ijl=dw_iil, hcw_ijl=hcw_iil, dh_ijl=dh_iil, **model_kwargs)
                 model_kwargs.update({'dw_ijlk': dw_ijlk, 'hcw_ijlk': hcw_ijlk, 'dh_ijlk': dh_ijlk,
-                                     'cw_ijlk': hypot(dh_iil[..., na], hcw_ijlk)})
+                                     'cw_ijlk': gradients.hypot(dh_iil[..., na], hcw_ijlk)})
                 self._reset_deficit()
             if 'wake_radius_ijlk' in self.args4all:
                 model_kwargs['wake_radius_ijlk'] = self.wake_deficitModel.wake_radius(**model_kwargs)
@@ -763,7 +763,7 @@ class All2AllIterative(EngineeringWindFarmModel):
             # ensure idling wt in unstable flow cases do not cutin even if ws increases due to speedup
             # this helps to converge
             # WS_eff_ilk[ioff] = np.minimum(WS_eff_ilk[ioff], WS_eff_ilk_last[ioff])
-            # WS_eff_ilk = np.minimum(WS_eff_ilk, WS_eff_ilk_last, out=WS_eff_ilk, where=ioff)
+            WS_eff_ilk = gradients.minimum(WS_eff_ilk, WS_eff_ilk_last, out=WS_eff_ilk, where=ioff)
 
             if self.turbulenceModel:
                 add_turb_ijlk = self.turbulenceModel(**model_kwargs)
@@ -869,7 +869,7 @@ class All2All(EngineeringWindFarmModel):
             dw_ijlk, hcw_ijlk, dh_ijlk = self.deflectionModel.calc_deflection(
                 dw_ijl=dw_iil, hcw_ijl=hcw_iil, dh_ijl=dh_iil, **model_kwargs)
             model_kwargs.update({'dw_ijlk': dw_ijlk, 'hcw_ijlk': hcw_ijlk, 'dh_ijlk': dh_ijlk,
-                                 'cw_ijlk': hypot(dh_iil[..., na], hcw_ijlk)})
+                                 'cw_ijlk': gradients.hypot(dh_iil[..., na], hcw_ijlk)})
             self._reset_deficit()
         if 'wake_radius_ijlk' in self.args4all:
             model_kwargs['wake_radius_ijlk'] = self.wake_deficitModel.wake_radius(**model_kwargs)

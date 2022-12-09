@@ -56,8 +56,9 @@ class GridInterpolator(object):
         bounds : {'check', 'limit', 'ignore'} or None
             Overrides self.bounds if not None
         """
-        method = np.atleast_1d(method or self.method)
-        assert np.all([m in ['linear', 'nearest'] for m in method]), 'method must be "linear" or "nearest"'
+        import numpy
+        method = numpy.atleast_1d(method or self.method)
+        assert all([m in ['linear', 'nearest'] for m in method]), 'method must be "linear" or "nearest"'
         assert len(method) in [1, len(self.x)]
         linear = [method[min(len(method) - 1, i)] == 'linear' for i in range(len(self.x))]
         bounds = bounds or self.bounds
@@ -88,11 +89,11 @@ class GridInterpolator(object):
 
         if 'nearest' in method:
             # round x.5 down to match old results
-            xpi = np.where(linear, xpi, np.round(xpi - .1 * (gradients.mod(xpi, 2) == 1.5)))
+            xpi = np.where(np.asarray(linear), xpi, np.round(xpi - .1 * (gradients.mod(xpi, 2) == 1.5)))
         xpif, xpi0 = gradients.modf(xpi)
 
-        int_box_axes = [[0, (0, 1)][l] for l in linear]
-        ui = np.moveaxis(np.meshgrid(*int_box_axes, indexing='ij'), 0, -1)
+        int_box_axes = [(np.asarray([0]), np.asarray([0, 1]))[l] for l in linear]
+        ui = np.moveaxis(np.asarray(np.meshgrid(*int_box_axes, indexing='ij')), 0, -1)
 
         ui = ui.reshape((-1, len(self.x)))
         indexes = (ui.T[:, :, na] + xpi0.T[:, na])
