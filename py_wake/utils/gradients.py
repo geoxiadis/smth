@@ -27,6 +27,8 @@ def asarray(x, dtype=None, order=None):
         return x
     elif isinstance(x, DataArray) and isinstance(x.values, ArrayBox):
         return x.values
+    if hasattr(x, '__cuda_array_interface__'):
+        x = x.get()  # x is on GPU, move  to host
     return np_asarray(x, dtype, order)
 
 
@@ -250,7 +252,7 @@ def dinterp_dxp(xp, x, y):
 @set_gradient_function([dinterp_dxp])
 def interp(xp, x, y, *args, **kwargs):
     if all([np.isrealobj(v) for v in [xp, x, y]]):
-        return np.interp(xp, x, y, *args, **kwargs)
+        return np.interp(np.asarray(xp, order='C'), np.asarray(x), np.asarray(y), *args, **kwargs)
     else:
         # yp = np.interp(xp.real, x.real, y.real, *args, **kwargs)
         # dyp_dxp = dinterp_dxp(xp.real, x.real, y.real)

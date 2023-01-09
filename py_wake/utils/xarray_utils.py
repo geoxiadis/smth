@@ -83,7 +83,7 @@ class interp_ilk():
                 return data, None
             c, v = coords[name], var[name].data
             indices = None
-            if ip_dims and ip_dims[-1] == name and len(set(c) - set(np.atleast_1d(v))) == 0:
+            if ip_dims and ip_dims[-1] == name and len(set(c.tolist()) - set(np.atleast_1d(v).tolist())) == 0:
                 # all coordinates in var, no need to interpolate
                 ip_dims.remove(name)
                 indices = np.searchsorted(v, c)
@@ -151,7 +151,7 @@ class interp_ilk():
 
         for i, d in enumerate(['i', l_name, 'ws']):
             if d not in ip_data_dims:
-                ip_data = np.expand_dims(ip_data, i)
+                ip_data = np.expand_dims(np.asarray(ip_data), i)
         return ip_data
 
 
