@@ -16,7 +16,6 @@ except Exception:
 
 try:
     from pypandoc import convert_file
-
     def read_md(f): return convert_file(f, 'rst', format='md')
 except ImportError:
     print("warning: pypandoc module not found, could not convert Markdown to RST")
