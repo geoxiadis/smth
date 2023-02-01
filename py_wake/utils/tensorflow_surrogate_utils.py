@@ -1,14 +1,16 @@
 import os
 import json
 from sklearn.preprocessing import MinMaxScaler
-
+import tensorflow as tf
 import pickle
 from pathlib import Path
 import warnings
 from py_wake.utils.gradients import set_gradient_function
 from py_wake import np
 from numpy import newaxis as na
-
+import joblib
+import py_wake
+MinMaxScaler.clip = False 
 
 def extra_data_pkl2json(path):  # pragma: no cover
     import tensorflow as tf
@@ -149,6 +151,24 @@ class TensorflowSurrogate():
     def input_space(self):
         i_s = self.input_scaler
         return {k: (mi, ma) for k, mi, ma in zip(self.input_channel_names, i_s.data_min_, i_s.data_max_)}
+
+
+class TensorflowSurrogate_DTU10MW():
+
+    def __init__(self, path_model, output_s): 
+        
+        self.input_channel_names = ['ws', 'psp', 'ti', 'Alpha', 'Air_density']
+        self.output_channel_name = [output_s] 
+        
+        # Load scaler
+        scaler_dir = os.path.dirname(py_wake.__file__)+'/examples/data/dtu10mw/surrogates/all_models/scaler.gz'
+        self.scaler = joblib.load(scaler_dir)
+        self.model = tf.keras.models.load_model(path_model)   
+        
+    def predict_output(self, x):
+        x_scaled = self.scaler.transform(x)
+        result = self.model.predict(x_scaled)
+        return result
 
 
 if __name__ == '__main__':  # pragma: no cover

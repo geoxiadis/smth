@@ -1,0 +1,1 @@
+from py_wake.examples.data.dtu10mw.surrogates.surrogate_dtu10mw import DTU10MWCTTabularSurrogate, DTU10MWSurrogateWindTurbine

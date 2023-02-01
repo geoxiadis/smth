@@ -167,3 +167,63 @@ class FunctionSurrogates(WindTurbineFunction, ABC):
     @property
     def wohler_exponents(self):
         return [fs.wohler_exponent for fs in self.function_surrogate_lst]
+
+
+class FunctionSurrogates_DTU10MW(WindTurbineFunction, ABC):
+    def __init__(self, function_surrogate_lst, input_parser, output_keys=None):
+        self.function_surrogate_lst = np.asarray(function_surrogate_lst)
+        self.get_input = input_parser
+        input_keys = inspect.getfullargspec(self.get_input).args
+        if input_keys[0] == 'self':
+            input_keys = input_keys[1:]
+        defaults = inspect.getfullargspec(self.get_input).defaults
+        optional_inputs = input_keys[1:] if defaults is None else input_keys[::-1][:len(defaults)]
+
+        if output_keys is None:
+            output_keys = [fs.output_channel_name for fs in self.function_surrogate_lst]
+        WindTurbineFunction.__init__(self, input_keys, optional_inputs, output_keys=output_keys)
+
+    def __call__(self, ws, run_only=slice(None), **kwargs):
+        x = self.get_input(ws=ws, **kwargs)
+        x = np.array([fix_shape(v, ws).ravel() for v in x]).T
+        x[:, 0] = np.clip(x[:, 0], 0.4, 1.1) # clips the psp between the limits (otherwise the CT doesnt work)
+        for i in range(len(x)):
+            if x[i, 2] <= 8: #this was to activate the surrogate only from 8ms above
+                x[i, 0] = 1.0 #this fixes the psp to 1 
+        if isinstance(run_only, int): 
+            if run_only == 0:
+                # For the power, surrogate tensorflow
+                ans = self.function_surrogate_lst[0].predict_output(x, verbose=0).reshape(ws.shape)
+            if run_only == 1:
+                # For the ct, tabular data
+                ans = self.function_surrogate_lst[1].predict_output(x[:,(2,0)].T, self.function_surrogate_lst[1].powerCtFunction).reshape(ws.shape)
+            return ans
+        else:
+            return [fs.predict_output(x, verbose=0).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
+
+
+class FunctionSurrogates_DTU10MW_loads(WindTurbineFunction, ABC):
+    def __init__(self, function_surrogate_lst, input_parser, output_keys=None):
+        self.function_surrogate_lst = np.asarray(function_surrogate_lst)
+        self.get_input = input_parser
+        input_keys = inspect.getfullargspec(self.get_input).args
+        if input_keys[0] == 'self':
+            input_keys = input_keys[1:]
+        defaults = inspect.getfullargspec(self.get_input).defaults
+        optional_inputs = input_keys[1:] if defaults is None else input_keys[::-1][:len(defaults)]
+
+        if output_keys is None:
+            output_keys = [fs.output_channel_name for fs in self.function_surrogate_lst]
+        WindTurbineFunction.__init__(self, input_keys, optional_inputs, output_keys=output_keys)
+
+    def __call__(self, ws, run_only=slice(None), **kwargs):
+        x = self.get_input(ws=ws, **kwargs)
+        x = np.array([fix_shape(v, ws).ravel() for v in x]).T
+        x[:, 0] = np.clip(x[:, 0], 0.4, 1.1)
+        for i in range(len(x)):
+            if x[i, 2] <= 8:
+                x[i, 0] = 1.0 
+        if isinstance(run_only, int):
+            return self.function_surrogate_lst[run_only].predict_output(x, verbose=0).reshape(ws.shape)
+        else:
+            return [fs.predict_output(x, verbose=0).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
