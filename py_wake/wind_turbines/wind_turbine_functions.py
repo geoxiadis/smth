@@ -201,13 +201,13 @@ class FunctionSurrogates_DTU10MW(WindTurbineFunction, ABC):
         if isinstance(run_only, int): 
             if run_only == 0:
                 # For the power, surrogate tensorflow
-                ans = self.function_surrogate_lst[0].predict_output(x, verbose=0).reshape(ws.shape)
+                ans = self.function_surrogate_lst[0].predict_output(x).reshape(ws.shape)
             if run_only == 1:
                 # For the ct, tabular data
                 ans = self.function_surrogate_lst[1].predict_output(x[:,(2,0)].T, self.function_surrogate_lst[1].powerCtFunction).reshape(ws.shape)
             return ans
         else:
-            return [fs.predict_output(x, verbose=0).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
+            return [fs.predict_output(x).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
 
 
 class FunctionSurrogates_DTU10MW_loads(WindTurbineFunction, ABC):
@@ -232,6 +232,6 @@ class FunctionSurrogates_DTU10MW_loads(WindTurbineFunction, ABC):
             if x[i, 2] <= 8:
                 x[i, 0] = 1.0 
         if isinstance(run_only, int):
-            return self.function_surrogate_lst[run_only].predict_output(x, verbose=0).reshape(ws.shape)
+            return self.function_surrogate_lst[run_only].predict_output(x).reshape(ws.shape)
         else:
-            return [fs.predict_output(x, verbose=0).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
+            return [fs.predict_output(x).reshape(ws.shape) for fs in np.asarray(self.function_surrogate_lst)[run_only]]
