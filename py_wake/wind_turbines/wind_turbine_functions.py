@@ -195,9 +195,7 @@ class FunctionSurrogates_DTU10MW(WindTurbineFunction, ABC):
         x = self.get_input(ws=ws, **kwargs)
         x = np.array([fix_shape(v, ws).ravel() for v in x]).T
         x[:, 0] = np.clip(x[:, 0], 0.4, 1.1) # clips the psp between the limits (otherwise the CT doesnt work)
-        for i in range(len(x)):
-            if x[i, 2] <= 8: #this was to activate the surrogate only from 8ms above
-                x[i, 0] = 1.0 #this fixes the psp to 1 
+        x[:, 0] = np.where(x[:, 2] <= 8, 1.0, x[:, 0])
         if isinstance(run_only, int): 
             if run_only == 0:
                 # For the power, surrogate tensorflow
@@ -228,9 +226,7 @@ class FunctionSurrogates_DTU10MW_loads(WindTurbineFunction, ABC):
         x = self.get_input(ws=ws, **kwargs)
         x = np.array([fix_shape(v, ws).ravel() for v in x]).T
         x[:, 0] = np.clip(x[:, 0], 0.4, 1.1)
-        for i in range(len(x)):
-            if x[i, 2] <= 8:
-                x[i, 0] = 1.0 
+        x[:, 0] = np.where(x[:, 2] <= 8, 1.0, x[:, 0])
         if isinstance(run_only, int):
             return self.function_surrogate_lst[run_only].predict_output(x).reshape(ws.shape)
         else:
