@@ -153,22 +153,23 @@ class TensorflowSurrogate():
         return {k: (mi, ma) for k, mi, ma in zip(self.input_channel_names, i_s.data_min_, i_s.data_max_)}
 
 
-class TensorflowSurrogate_DTU10MW():
+class TensorflowSurrogate_DTU10MW(TensorflowSurrogate):
 
     def __init__(self, path_model, output_s): 
         
-        self.input_channel_names = ['ws', 'psp', 'ti', 'Alpha', 'Air_density']
+        self.input_channel_names = ['psp', 'ti', 'ws', 'Alpha', 'Air_density']
         self.output_channel_name = [output_s] 
         
         # Load scaler
         scaler_dir = os.path.dirname(py_wake.__file__)+'/examples/data/dtu10mw/surrogates/all_models/scaler.gz'
-        self.scaler = joblib.load(scaler_dir)
+        self.input_scaler = joblib.load(scaler_dir)
+        self.output_scaler=[]
         self.model = tf.keras.models.load_model(path_model)   
         
-    def predict_output(self, x):
-        x_scaled = self.scaler.transform(x)
-        result = self.model.predict(x_scaled)
-        return result
+#    def predict_output(self, x):
+#        x_scaled = self.scaler.transform(x)
+#        result = self.predict_output_scaled(x_scaled)
+#        return result
 
 
 if __name__ == '__main__':  # pragma: no cover

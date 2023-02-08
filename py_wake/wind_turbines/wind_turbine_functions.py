@@ -194,8 +194,11 @@ class FunctionSurrogates_DTU10MW(WindTurbineFunction, ABC):
     def __call__(self, ws, run_only=slice(None), **kwargs):
         x = self.get_input(ws=ws, **kwargs)
         x = np.array([fix_shape(v, ws).ravel() for v in x]).T
-        x[:, 0] = np.clip(x[:, 0], 0.4, 1.1) # clips the psp between the limits (otherwise the CT doesnt work)
-        x[:, 0] = np.where(x[:, 2] <= 8, 1.0, x[:, 0])
+        # clip the psp between 0.4 and 1.1 
+        x = np.array([np.where(x[:,0]>1.1, 1.1, x[:,0]), x[:,1], x[:,2], x[:,3], x[:,4]]).T
+        x = np.array([np.where(x[:,0]<0.4, 0.4, x[:,0]), x[:,1], x[:,2], x[:,3], x[:,4]]).T
+        # force the psp to be 1 for ws below 8 ms
+        x = np.array([x[:,0],x[:,1],np.where(x[:,2]<8,1,x[:,2]), x[:,3], x[:,4]]).T 
         if isinstance(run_only, int): 
             if run_only == 0:
                 # For the power, surrogate tensorflow
@@ -225,8 +228,11 @@ class FunctionSurrogates_DTU10MW_loads(WindTurbineFunction, ABC):
     def __call__(self, ws, run_only=slice(None), **kwargs):
         x = self.get_input(ws=ws, **kwargs)
         x = np.array([fix_shape(v, ws).ravel() for v in x]).T
-        x[:, 0] = np.clip(x[:, 0], 0.4, 1.1)
-        x[:, 0] = np.where(x[:, 2] <= 8, 1.0, x[:, 0])
+        # clip the psp between 0.4 and 1.1 
+        x = np.array([np.where(x[:,0]>1.1, 1.1, x[:,0]), x[:,1], x[:,2], x[:,3], x[:,4]]).T
+        x = np.array([np.where(x[:,0]<0.4, 0.4, x[:,0]), x[:,1], x[:,2], x[:,3], x[:,4]]).T
+        # force the psp to be 1 for ws below 8 ms
+        x = np.array([x[:,0],x[:,1],np.where(x[:,2]<8,1,x[:,2]), x[:,3], x[:,4]]).T 
         if isinstance(run_only, int):
             return self.function_surrogate_lst[run_only].predict_output(x).reshape(ws.shape)
         else:

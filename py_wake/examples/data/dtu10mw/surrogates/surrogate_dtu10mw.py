@@ -14,7 +14,7 @@ import os
 
 class DTU10MWCTTabularSurrogate():
     """DTU10MW CT tabular surrogate. Needed as thrust is not available in aeroelastic simulation database"""
-    input_channel_names = ['ws', 'psp', 'ti', 'Alpha', 'Air_density']
+    input_channel_names = ['psp', 'ti', 'ws', 'Alpha', 'Air_density']
     
     ws_lst = np.arange(0, 26)
     psp_lst = np.array([0.4, 0.6, 0.8, 1.0, 1.05, 1.1])
