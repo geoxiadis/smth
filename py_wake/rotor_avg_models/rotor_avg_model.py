@@ -87,6 +87,32 @@ class EqGridRotorAvg(GridRotorAvg):
                               nodes_x=X[m].flatten(),
                               nodes_y=Y[m].flatten())
 
+class WindStates(GridRotorAvg):
+    def __init__(self, n=30):
+        X, Y = np.meshgrid(np.linspace(-1, 1, n + 2)[1:-1], np.linspace(-1, 1, n + 2)[1:-1])
+        GridRotorAvg.__init__(self,
+                              nodes_x=X.flatten(),
+                              nodes_y=Y.flatten())
+
+    def _calc_layout_terms(self, func, **kwargs):
+        func(**kwargs)
+
+    # def __call__(self, func, **kwargs):
+
+    def __call__(self, func, D_dst_ijl, **kwargs):
+        print('here')
+        if D_dst_ijl.shape == (1, 1, 1) and D_dst_ijl[0, 0, 0] == 0:
+            return func(**kwargs)
+        # add extra dimension, p, with 40 points distributed over the destination rotors
+        kwargs = self._update_kwargs(D_dst_ijl=D_dst_ijl, **kwargs)
+
+        values_ijlkp = func(**kwargs)
+
+        # Calculate weighted sum of deficit over the destination rotors
+        if self.nodes_weight is None:
+            return np.mean(values_ijlkp, -1)
+        # return np.sum(self.nodes_weight[na, na, na, na, :] * values_ijlkp, -1)
+        return func(**kwargs)
 
 class GQGridRotorAvg(GridRotorAvg):
     """Gauss Quadrature grid rotor average model"""

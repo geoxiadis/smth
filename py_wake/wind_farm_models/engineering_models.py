@@ -240,6 +240,8 @@ class EngineeringWindFarmModel(WindFarmModel):
         self.site.distance.setup(kwargs['x_ilk'], kwargs['y_ilk'], kwargs['h_ilk'])
 
         WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs = self._calc_wt_interaction(**kwargs)
+        if self.windstates:
+            WS_eff_ilkp
 
         power_ilk = self.windTurbines.power(ws=WS_eff_ilk, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
         kwargs.update({'time': time, 'type_i': type_i})
@@ -504,6 +506,11 @@ class PropagateDownwind(EngineeringWindFarmModel):
                     WS_eff_lk = WS_mk[m] - self.superpositionModel(deficit2WT)
                 WS_eff_mk.append(WS_eff_lk)
 
+                if self.windstates:
+                    deficit2WTp = np.array([d_nk2[i] for d_nk2, i in zip(deficit_nkp, range(j)[::-1])])
+                    WS_eff_lkp = WS_mk[m][:, na] - self.superpositionModel(deficit2WTp)
+                    WS_eff_mkp.append(WS_eff_lkp)
+
                 if self.turbulenceModel:
                     add_turb2WT = np.array([d_nk2[i] for d_nk2, i in zip(add_turb_nk, range(j)[::-1])])
                     TI_eff_lk = self.turbulenceModel.calc_effective_TI(TI_mk[m], add_turb2WT)
@@ -596,6 +603,9 @@ class PropagateDownwind(EngineeringWindFarmModel):
                 else:
                     deficit, _ = self._calc_deficit(**model_kwargs)
                 deficit_nk.append(deficit[0])
+                
+                if self.windstates:
+                    deficit_nkp.append(self.windstates(self._calc_deficit, **model_kwargs))
 
                 if self.turbulenceModel:
 
@@ -603,6 +613,8 @@ class PropagateDownwind(EngineeringWindFarmModel):
                     add_turb_nk.append(self.turbulenceModel(**model_kwargs)[0])
 
         WS_eff_jlk, ct_jlk = np.array(WS_eff_mk), np.array(ct_jlk)
+        if self.windstates:
+            WS_eff_jlkp = np.array(WS_eff_mkp)
 
         dw_inv_indices = (np.argsort(dw_order_indices_ld, 1).T * L + np.arange(L).astype(int)[na]).flatten()
         WS_eff_ilk = WS_eff_jlk.reshape((I * L, K))[dw_inv_indices].reshape((I, L, K))
