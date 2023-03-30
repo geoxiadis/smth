@@ -149,16 +149,10 @@ class SimplifiedEddyViscositySpeedFormulation:
             fx = mixing_function(x=x)
 
         du_dx_values = (
-            16.0
-            * fx
-            * (
-                0.015
-                * (np.sqrt((3.56 * ct) / (4.0 * (1.0 - np.power(u_f, 2.0)))))
-                * (1.0 - u_f)
-                + 0.16 * ti0
-            )
-            * (np.power(u_f, 3.0) - np.power(u_f, 2.0) - u_f + 1.0)
-            / (ct * u_f)
+            16.0 * fx * (0.015 * (
+                np.sqrt((3.56 * ct) / (4.0 * (1.0 - np.power(u_f, 2.0))))
+            ) * (1.0 - u_f) + 0.16 * ti0
+            ) * (np.power(u_f, 3.0) - np.power(u_f, 2.0) - u_f + 1.0) / (ct * u_f)
         )
 
         # Return only positive values (representing recovery of the wake wind speed)
@@ -208,15 +202,9 @@ class SimplifiedEddyViscosityDeficitFormulation:
             fx = mixing_function(x=x)
 
         du_dx_values = (
-            -16.0
-            * fx
-            * (
-                0.015 * u_f * np.sqrt((3.56 * ct) / (4.0 * u_f * (2.0 - u_f)))
-                + 0.16 * ti0
-            )
-            * np.power(u_f, 2.0)
-            * (2.0 - u_f)
-            / (ct * (1.0 - u_f))
+            -16.0 * fx * (
+                0.015 * u_f * np.sqrt((3.56 * ct) / (4.0 * u_f * (2.0 - u_f))) + 0.16 * ti0
+            ) * np.power(u_f, 2.0) * (2.0 - u_f) / (ct * (1.0 - u_f))
         )
 
         # Return only negative values (representing decay of the wind speed deficit)

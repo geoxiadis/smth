@@ -154,7 +154,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
             destination turbine, in the lth wind direction sector and
             for the kth wind speed bin)
         """
-        centreline_fractional_deficit_ijlk, wake_width_ijlk = self._calc_deficit_terms(
+        centre_frac_deficit_ijlk, wake_width_ijlk = self._calc_deficit_terms(
             WS_ilk=WS_ilk,
             WS_eff_ilk=WS_eff_ilk,
             TI_ilk=TI_ilk,
@@ -169,17 +169,14 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         dw_norm_ijlk = dw_ijlk / D_src_il[:, na, :, na]
         cw_norm_ijlk = cw_ijlk / D_src_il[:, na, :, na]
 
-        fractional_deficit_ijlk = centreline_fractional_deficit_ijlk * np.exp(
-            -3.56
-            * np.square(
+        fractional_deficit_ijlk = centre_frac_deficit_ijlk * np.exp(
+            -3.56 * np.square(
                 np.divide(
                     cw_norm_ijlk,
                     wake_width_ijlk,
                     where=~np.isclose(wake_width_ijlk, 0.0),
                     out=np.zeros_like(
-                        centreline_fractional_deficit_ijlk
-                        * cw_norm_ijlk
-                        * wake_width_ijlk
+                        centre_frac_deficit_ijlk * cw_norm_ijlk * wake_width_ijlk
                     ),
                 )
             )
@@ -302,23 +299,21 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         interpolator_input = interpolator_input.reshape((flat_dim, 3), order="C")
 
         # Interpolate dimensionless centreline velocity deficit
-        fractional_centreline_deficit = self.interpolator(interpolator_input)
-        fractional_centreline_deficit_ijlk = fractional_centreline_deficit.reshape(
+        centre_frac_deficit = self.interpolator(interpolator_input)
+        centre_frac_deficit_ijlk = centre_frac_deficit.reshape(
             interpolator_input_shape[:-1], order="C"
         )
 
         wake_width_ijlk = np.sqrt(
             np.divide(
                 3.56 * matched_ct,
-                4.0
-                * fractional_centreline_deficit_ijlk
-                * (2.0 - fractional_centreline_deficit_ijlk),
-                where=~np.isclose(fractional_centreline_deficit_ijlk, 0.0),
+                4.0 * centre_frac_deficit_ijlk * (2.0 - centre_frac_deficit_ijlk),
+                where=~np.isclose(centre_frac_deficit_ijlk, 0.0),
                 out=np.zeros_like(product_shape),
             )
         )
 
-        return fractional_centreline_deficit_ijlk, wake_width_ijlk
+        return centre_frac_deficit_ijlk, wake_width_ijlk
 
 
 class EddyViscosityModel(PropagateDownwind):

@@ -33,12 +33,8 @@ SMALL_COORDINATES: Final[LookupTableCoordinates] = LookupTableCoordinates(
 def expected_small_table_filepaths() -> dict[UseMixingFunction, Path]:
     """Mapping of configurations to filepath of expected lookup tables."""
     return {
-        True: Path(__file__).parent
-        / "test_data"
-        / "expected_small_mixing_function_lookup_table.nc",
-        False: Path(__file__).parent
-        / "test_data"
-        / "expected_small_no_mixing_function_lookup_table.nc",
+        True: Path(__file__).parent / "test_data" / "small_mixing_func_lut.nc",
+        False: Path(__file__).parent / "test_data" / "small_no_mixing_func_lut.nc",
     }
 
 

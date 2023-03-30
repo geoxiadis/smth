@@ -155,11 +155,9 @@ class QuartonAndAinslieTurbulenceModel(TurbulenceModel):
         dw_norm_xn_ijlk = np.where(dw_norm_xn_ijlk > 0.1, dw_norm_xn_ijlk, 0.1)
 
         added_ti_ijlk = (
-            self.add_turbulence_factor
-            * np.power(ct_ilk[:, na, :, :], 0.7)
-            * np.power(ti_ref_ilk[:, na, :, :] * 100.0, 0.68)
-            * np.power(dw_norm_xn_ijlk, self.add_turbulence_decay_exponent)
-            * 0.01
+            self.add_turbulence_factor * np.power(ct_ilk[:, na, :, :], 0.7) *
+            np.power(ti_ref_ilk[:, na, :, :] * 100.0, 0.68) *
+            np.power(dw_norm_xn_ijlk, self.add_turbulence_decay_exponent) * 0.01
         )
 
         # Use "built-in" adjustment for cross-wind fraction only if the
@@ -272,9 +270,8 @@ class QuartonAndAinslieTurbulenceModel(TurbulenceModel):
 
         # Total wake growth rate
         drdx_ilk = np.sqrt(
-            np.power(drdx_alpha_ilk, 2.0)
-            + np.power(drdx_m_ilk, 2.0)
-            + np.power(drdx_lambda_ilk, 2.0)
+            np.power(drdx_alpha_ilk, 2.0) + np.power(drdx_m_ilk, 2.0) +
+            np.power(drdx_lambda_ilk, 2.0)
         )
 
         return n_ilk * r0_ilk / drdx_ilk
