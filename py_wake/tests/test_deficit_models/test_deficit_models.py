@@ -128,7 +128,8 @@ def test_huge_distance(deficitModel):
            "GCLDeficit": 9.728704,
            "NoWakeDeficit": 9.8,
            "NOJLocalDeficit": 9.797536,
-           "TurboNOJDeficit": 9.795322, }
+           "TurboNOJDeficit": 9.795322,
+           "EddyViscosityDeficitModel": 9.8}
     site = IEA37Site(16)
 
     windTurbines = IEA37_WindTurbines()
