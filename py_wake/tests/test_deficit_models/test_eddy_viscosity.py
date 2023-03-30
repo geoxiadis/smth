@@ -3,7 +3,7 @@
 """
 
 from pathlib import Path
-from typing import Final, TypeAlias
+from typing import Final
 
 import pytest
 import xarray as xr
@@ -19,8 +19,6 @@ from py_wake.deficit_models.eddy_viscosity_lookup_table_generator import (
     LookupTableCoordinates,
 )
 
-UseMixingFunction: TypeAlias = bool
-
 
 SMALL_COORDINATES: Final[LookupTableCoordinates] = LookupTableCoordinates(
     ti0=np.arange(0.0, 0.5, 0.05),
@@ -30,7 +28,7 @@ SMALL_COORDINATES: Final[LookupTableCoordinates] = LookupTableCoordinates(
 
 
 @pytest.fixture(scope="module")
-def expected_small_table_filepaths() -> dict[UseMixingFunction, Path]:
+def expected_small_table_filepaths():
     """Mapping of configurations to filepath of expected lookup tables."""
     return {
         True: Path(__file__).parent / "test_data" / "small_mixing_func_lut.nc",
@@ -39,7 +37,7 @@ def expected_small_table_filepaths() -> dict[UseMixingFunction, Path]:
 
 
 @pytest.fixture
-def calc_deficit_kwargs() -> dict[str, np.ndarray]:
+def calc_deficit_kwargs():
     """Test case arguments to the EV model deficit calculation."""
     return {
         "WS_ilk": np.array(
@@ -124,7 +122,7 @@ def calc_deficit_kwargs() -> dict[str, np.ndarray]:
 
 
 @pytest.fixture
-def expected_deficit() -> dict[UseMixingFunction, np.ndarray]:
+def expected_deficit():
     """Dictionary of expected array of wind speed deficit results."""
     return {
         True: np.array(
@@ -236,11 +234,11 @@ def expected_deficit() -> dict[UseMixingFunction, np.ndarray]:
 
 @pytest.mark.parametrize("use_mixing_function", [True, False])
 def test_calc_deficit_returns_correct_values(
-    use_mixing_function: bool,
-    expected_small_table_filepaths: dict[UseMixingFunction, Path],
-    calc_deficit_kwargs: dict[str, np.ndarray],
-    expected_deficit: dict[UseMixingFunction, np.ndarray],
-) -> None:
+    use_mixing_function,
+    expected_small_table_filepaths,
+    calc_deficit_kwargs,
+    expected_deficit,
+):
     """Assert the deficit model returns the correct values."""
     model = EddyViscosityDeficitModel(
         formulation=None,
@@ -252,10 +250,10 @@ def test_calc_deficit_returns_correct_values(
 
 @pytest.mark.parametrize("use_mixing_function", [True, False])
 def test_small_table_generation(
-    tmp_path: Path,
-    use_mixing_function: bool,
-    expected_small_table_filepaths: dict[UseMixingFunction, Path],
-) -> None:
+    tmp_path,
+    use_mixing_function,
+    expected_small_table_filepaths,
+):
     """Assert generator produces the expected small lookup tables.
 
     This test is undertaken on the small tables to avoid the larger
@@ -278,7 +276,7 @@ def test_small_table_generation(
 
 
 @pytest.mark.parametrize("use_mixing_function", [True, False])
-def test_different_formulations_give_close_results(use_mixing_function: bool) -> None:
+def test_different_formulations_give_close_results(use_mixing_function):
     """Assert deficit and speed formulations give close result tables."""
     coordinates = LookupTableCoordinates(
         ti0=np.arange(0.01, 0.3, 0.02),

@@ -10,7 +10,7 @@ from py_wake.turbulence_models.quarton_and_ainslie import (
 
 
 @pytest.fixture
-def calc_added_turbulence_kwargs() -> dict[str, np.ndarray]:
+def calc_added_turbulence_kwargs():
     """Test case arguments to the wake added turbulence calculation."""
     return {
         "WS_ilk": np.array(
@@ -112,7 +112,7 @@ def calc_added_turbulence_kwargs() -> dict[str, np.ndarray]:
 
 
 @pytest.fixture
-def expected_added_turbulence() -> np.ndarray:
+def expected_added_turbulence():
     """Expected array of added turbulence results."""
     return np.array(
         [
@@ -130,10 +130,7 @@ def expected_added_turbulence() -> np.ndarray:
     )
 
 
-def test_calc_added_turbulence(
-    calc_added_turbulence_kwargs: dict[str, np.ndarray],
-    expected_added_turbulence: np.ndarray,
-) -> None:
+def test_calc_added_turbulence(calc_added_turbulence_kwargs, expected_added_turbulence):
     """Assert the turbulence model returns the correct values."""
     model = QuartonAndAinslieTurbulenceModel()
     added_turbulence = model.calc_added_turbulence(**calc_added_turbulence_kwargs)
