@@ -5,9 +5,9 @@
 from pathlib import Path
 from typing import Final, NamedTuple, Optional
 
-import numpy as np
 import xarray as xr
 from numpy import newaxis as na
+from py_wake import np
 from py_wake.deficit_models.eddy_viscosity_formulations import (
     SimplifiedEddyViscosityDeficitFormulation,
     SimplifiedEddyViscosityFormulationProvider,

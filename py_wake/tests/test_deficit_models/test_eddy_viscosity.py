@@ -5,10 +5,10 @@
 from pathlib import Path
 from typing import Final, TypeAlias
 
-import numpy as np
 import pytest
 import xarray as xr
 import xarray.testing as xrt
+from py_wake import np
 from py_wake.deficit_models import eddy_viscosity_lookup_table_generator
 from py_wake.deficit_models.eddy_viscosity import EddyViscosityDeficitModel
 from py_wake.deficit_models.eddy_viscosity_formulations import (

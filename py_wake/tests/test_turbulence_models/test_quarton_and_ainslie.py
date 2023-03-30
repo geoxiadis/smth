@@ -2,8 +2,8 @@
 
 """
 
-import numpy as np
 import pytest
+from py_wake import np
 from py_wake.turbulence_models.quarton_and_ainslie import (
     QuartonAndAinslieTurbulenceModel,
 )

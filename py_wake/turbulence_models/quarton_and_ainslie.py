@@ -25,8 +25,8 @@ References:
 
 from typing import Any, Optional
 
-import numpy as np
 from numpy import newaxis as na
+from py_wake import np
 from py_wake.ground_models import GroundModel
 from py_wake.rotor_avg_models import RotorAvgModel, RotorCenter
 from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel

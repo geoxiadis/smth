@@ -31,7 +31,7 @@ References:
 
 from typing import Protocol
 
-import numpy as np
+from py_wake import np
 
 
 def mixing_function(x: np.ndarray) -> np.ndarray:

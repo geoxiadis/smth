@@ -6,9 +6,9 @@ import warnings
 from pathlib import Path
 from typing import Any, Final, Optional
 
-import numpy as np
 import xarray as xr
 from numpy import newaxis as na
+from py_wake import np
 from py_wake.deficit_models import (
     DeficitModel,
     WakeDeficitModel,
@@ -189,13 +189,13 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
             ws_ref_ilk = WS_ilk
 
         # Concert dimensionless deficit to dimensional deficit in 'm/s'
-        deficit = ws_ref_ilk[:, na] * fractional_deficit_ijlk
+        deficit_ijlk = ws_ref_ilk[:, na] * fractional_deficit_ijlk
 
         # Limit wake impacts to the maximum wake distance
-        deficit = np.where(dw_norm_ijlk <= self.maximum_wake_distance, deficit, 0.0)
+        deficit_ijlk = np.where(dw_norm_ijlk <= self.maximum_wake_distance, deficit_ijlk, 0.0)
 
         # Filter to compute deficit only for positive downstream distances
-        deficit = deficit * (dw_norm_ijlk > 0.0)
+        deficit_ijlk = deficit_ijlk * np.logical_or(dw_norm_ijlk > 0.0, np.isclose(dw_norm_ijlk, 0.0))
 
         if np.any(np.logical_and(dw_norm_ijlk < 1.95, fractional_deficit_ijlk > 0.05)):
             warnings.warn(
@@ -204,7 +204,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
                 "used for smaller distances"
             )
 
-        return deficit
+        return deficit_ijlk
 
     def wake_radius(
         self,
@@ -295,7 +295,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         # Generate input of points for interpolator (ijlk for 'ti0', 'ct' and 'dw')
         interpolator_input = np.stack((matched_ti, matched_ct, matched_dw), axis=-1)
         interpolator_input_shape = interpolator_input.shape
-        flat_dim = np.product(interpolator_input_shape[:-1])
+        flat_dim = int(np.product(interpolator_input_shape[:-1]))
         interpolator_input = interpolator_input.reshape((flat_dim, 3), order="C")
 
         # Interpolate dimensionless centreline velocity deficit
