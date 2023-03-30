@@ -8,6 +8,8 @@ from typing import Any, Final, Optional
 
 import xarray as xr
 from numpy import newaxis as na
+from scipy.interpolate import RegularGridInterpolator
+
 from py_wake import np
 from py_wake.deficit_models import (
     DeficitModel,
@@ -29,7 +31,6 @@ from py_wake.turbulence_models.quarton_and_ainslie import (
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel
 from py_wake.wind_farm_models import PropagateDownwind
 from py_wake.wind_turbines import WindTurbines
-from scipy.interpolate import RegularGridInterpolator
 
 DEFAULT_MAXIMUM_WAKE_DISTANCE: Final[float] = 50.0
 
@@ -251,7 +252,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         dw_ijlk: np.ndarray,
         D_src_il: np.ndarray,
         ct_ilk: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ):
         if np.min(ct_ilk) < 0.0:
             raise ValueError("negative thrust coefficient (ct) values are not valid")
         if np.max(ct_ilk) > 1.2:
