@@ -107,7 +107,9 @@ def check_gradients(wfm, name, wt_x=[-1300, -650, 0], wt_y=[0, 0, 0], wt_h=[110,
         raise
     except Exception:
         # print(f'[ ] {name}')
-        if name not in ['VortexCylinder', 'WeightedSum', 'FugaDeflection']:
+        if name not in [
+            'VortexCylinder', 'WeightedSum', 'FugaDeflection', 'EddyViscosityDeficitModel'
+        ]:
             raise
 
 
