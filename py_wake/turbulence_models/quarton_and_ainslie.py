@@ -151,24 +151,35 @@ class QuartonAndAinslieTurbulenceModel(TurbulenceModel):
             D_src_il=D_src_il,
             ct_ilk=ct_ilk,
         )
-        dw_norm_xn_ijlk = dw_ijlk / near_wake_length_ilk
+        dw_norm_xn_ijlk = dw_ijlk / near_wake_length_ilk[:, na, :, :]
         dw_norm_xn_ijlk = np.where(dw_norm_xn_ijlk > 0.1, dw_norm_xn_ijlk, 0.1)
-        added_centreline_ti_ijlk = (
+
+        added_ti_ijlk = (
             self.add_turbulence_factor
             * np.power(ct_ilk[:, na, :, :], 0.7)
             * np.power(ti_ref_ilk[:, na, :, :] * 100.0, 0.68)
             * np.power(dw_norm_xn_ijlk, self.add_turbulence_decay_exponent)
             * 0.01
         )
-        crosswind_fraction_ijlk = self._calc_crosswind_fraction_ijlk(
-            cw_ijlk=cw_ijlk,
-            D_dst_ijl=D_dst_ijl,
-            wake_radius_ijlk=wake_radius_ijlk,
-        )
-        added_ti_ijlk = (
-            added_centreline_ti_ijlk * crosswind_fraction_ijlk * (dw_ijlk > 0.0)
-        )
+
+        # Use "built-in" adjustment for cross-wind fraction only if the
+        # ``rotorAvgModel`` is ``None`` or a ``RotorCenter`` instance
+        if self.rotorAvgModel is None or isinstance(self.rotorAvgModel, RotorCenter):
+            crosswind_fraction_ijlk = self._calc_crosswind_fraction_ijlk(
+                cw_ijlk=cw_ijlk,
+                D_dst_ijl=D_dst_ijl,
+                wake_radius_ijlk=wake_radius_ijlk,
+            )
+            added_ti_ijlk = (
+                added_ti_ijlk * crosswind_fraction_ijlk
+            )
+
+        # Ensure added turbulence only downstream
+        added_ti_ijlk = added_ti_ijlk * (dw_ijlk > 0.0)
+
+        # Ensure added turbulence is positive
         added_ti_ijlk = np.maximum(added_ti_ijlk, 0.0)
+
         return added_ti_ijlk
 
     def _calc_crosswind_fraction_ijlk(
@@ -214,7 +225,6 @@ class QuartonAndAinslieTurbulenceModel(TurbulenceModel):
         D_src_il: np.ndarray,
         ct_ilk: np.ndarray,
         rotor_speed_ilk: np.ndarray = np.array([[[20.0]]]),
-        **_: Any,
     ) -> np.ndarray:
         """Calculate the estimate of the dimensional near wake length.
 
