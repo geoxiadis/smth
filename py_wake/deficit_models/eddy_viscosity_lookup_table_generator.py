@@ -3,7 +3,7 @@
 """
 
 from pathlib import Path
-from typing import Final, NamedTuple
+from typing import Final, NamedTuple, Optional
 
 import numpy as np
 import xarray as xr
@@ -38,7 +38,7 @@ def generate_lookup_table(
     ),
     use_mixing_function: bool = True,
     coordinates: LookupTableCoordinates = DEFAULT_LOOKUP_TABLE_COORDINATES,
-    output_filepath: Path | None = None,
+    output_filepath: Optional[Path] = None,
 ) -> xr.DataArray:
     """Generate an EV model lookup table.
 

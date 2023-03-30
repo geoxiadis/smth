@@ -23,7 +23,7 @@ References:
 
 """
 
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 from numpy import newaxis as na
@@ -61,8 +61,8 @@ class QuartonAndAinslieTurbulenceModel(TurbulenceModel):
     def __init__(
         self,
         addedTurbulenceSuperpositionModel: AddedTurbulenceSuperpositionModel = SqrMaxSum(),
-        rotorAvgModel: RotorAvgModel | None = RotorCenter(),
-        groundModel: GroundModel | None = None,
+        rotorAvgModel: Optional[RotorAvgModel] = RotorCenter(),
+        groundModel: Optional[GroundModel] = None,
         use_effective_ws: bool = True,
         use_effective_ti: bool = False,
     ) -> None:
@@ -284,8 +284,8 @@ class ModifiedQuartonAndAinslieTurbulenceModel(QuartonAndAinslieTurbulenceModel)
     def __init__(
         self,
         addedTurbulenceSuperpositionModel: AddedTurbulenceSuperpositionModel = SqrMaxSum(),
-        rotorAvgModel: RotorAvgModel | None = RotorCenter(),
-        groundModel: GroundModel | None = None,
+        rotorAvgModel: Optional[RotorAvgModel] = RotorCenter(),
+        groundModel: Optional[GroundModel] = None,
         use_effective_ws: bool = True,
         use_effective_ti: bool = False,
     ) -> None:

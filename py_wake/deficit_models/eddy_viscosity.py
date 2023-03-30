@@ -4,7 +4,7 @@
 
 import warnings
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, Optional
 
 import numpy as np
 import xarray as xr
@@ -43,16 +43,17 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
 
     def __init__(
         self,
-        rotorAvgModel: RotorAvgModel | None = GridRotorAvg(),
-        groundModel: GroundModel | None = None,
+        rotorAvgModel: Optional[RotorAvgModel] = GridRotorAvg(),
+        groundModel: Optional[GroundModel] = None,
         use_effective_ws: bool = False,
         use_effective_ti: bool = True,
         use_mixing_function: bool = True,
         normalise_ti_to_waked_ws: bool = True,
         maximum_wake_distance: float = DEFAULT_MAXIMUM_WAKE_DISTANCE,
-        formulation: SimplifiedEddyViscosityFormulationProvider
-        | None = SimplifiedEddyViscosityDeficitFormulation(),
-        lookup_table_filepath: Path | None = None,
+        formulation: Optional[SimplifiedEddyViscosityFormulationProvider] = (
+            SimplifiedEddyViscosityDeficitFormulation()
+        ),
+        lookup_table_filepath: Optional[Path] = None,
     ) -> None:
         """Initiate an ``EddyViscosityDeficitModel``.
 
