@@ -130,8 +130,18 @@ def expected_added_turbulence():
     )
 
 
-def test_calc_added_turbulence(calc_added_turbulence_kwargs, expected_added_turbulence):
+@pytest.mark.parametrize("use_effective_ws", [True, False])
+@pytest.mark.parametrize("use_effective_ti", [True, False])
+def test_calc_added_turbulence(
+    use_effective_ws,
+    use_effective_ti,
+    calc_added_turbulence_kwargs,
+    expected_added_turbulence
+):
     """Assert the turbulence model returns the correct values."""
-    model = QuartonAndAinslieTurbulenceModel()
+    model = QuartonAndAinslieTurbulenceModel(
+        use_effective_ws=use_effective_ws,
+        use_effective_ti=use_effective_ti,
+    )
     added_turbulence = model.calc_added_turbulence(**calc_added_turbulence_kwargs)
     assert np.allclose(added_turbulence, expected_added_turbulence)

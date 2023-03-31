@@ -10,7 +10,7 @@ import xarray as xr
 import xarray.testing as xrt
 from py_wake import np
 from py_wake.deficit_models import eddy_viscosity_lookup_table_generator
-from py_wake.deficit_models.eddy_viscosity import EddyViscosityDeficitModel
+from py_wake.deficit_models.eddy_viscosity import EddyViscosityModel, EddyViscosityDeficitModel
 from py_wake.deficit_models.eddy_viscosity_formulations import (
     SimplifiedEddyViscosityDeficitFormulation,
     SimplifiedEddyViscositySpeedFormulation,
@@ -18,7 +18,8 @@ from py_wake.deficit_models.eddy_viscosity_formulations import (
 from py_wake.deficit_models.eddy_viscosity_lookup_table_generator import (
     LookupTableCoordinates,
 )
-
+from py_wake.examples.data.hornsrev1 import HornsrevV80
+from py_wake.site import UniformSite
 
 SMALL_COORDINATES: Final[LookupTableCoordinates] = LookupTableCoordinates(
     ti0=np.arange(0.0, 0.5, 0.05),
@@ -122,7 +123,7 @@ def calc_deficit_kwargs():
 
 
 @pytest.fixture
-def expected_deficit():
+def expected_eddy_viscosity_deficit():
     """Dictionary of expected array of wind speed deficit results."""
     return {
         True: np.array(
@@ -232,20 +233,96 @@ def expected_deficit():
     }
 
 
+@pytest.mark.parametrize("use_effective_ws", [True, False])
+@pytest.mark.parametrize("use_effective_ti", [True, False])
 @pytest.mark.parametrize("use_mixing_function", [True, False])
 def test_calc_deficit_returns_correct_values(
+    use_effective_ws,
+    use_effective_ti,
     use_mixing_function,
     expected_small_table_filepaths,
     calc_deficit_kwargs,
-    expected_deficit,
+    expected_eddy_viscosity_deficit,
 ):
     """Assert the deficit model returns the correct values."""
     model = EddyViscosityDeficitModel(
+        use_effective_ws=use_effective_ws,
+        use_effective_ti=use_effective_ti,
+        use_mixing_function=use_mixing_function,
         formulation=None,
         lookup_table_filepath=expected_small_table_filepaths[use_mixing_function],
     )
     deficit = model.calc_deficit(**calc_deficit_kwargs)
-    assert np.allclose(deficit, expected_deficit[use_mixing_function])
+    assert np.allclose(deficit, expected_eddy_viscosity_deficit[use_mixing_function])
+
+
+def test_eddy_viscosity_no_formulation_or_lookup_table_raises_error():
+    with pytest.raises(
+        ValueError,
+        match=r".*either.*formulation.*lookup.*must be provided.*",
+    ):
+        EddyViscosityDeficitModel(
+            formulation=None,
+            lookup_table_filepath=None,
+        )
+
+
+def test_eddy_viscosity_invalid_negative_ct_raises_error():
+    with pytest.raises(ValueError, match=r".*negative.*not valid.*"):
+        model = EddyViscosityDeficitModel()
+        model.calc_deficit(
+            WS_ilk=np.array([[[10.0]]]),
+            WS_eff_ilk=np.array([[[10.0]]]),
+            TI_ilk=np.array([[[0.1]]]),
+            TI_eff_ilk=np.array([[[0.1]]]),
+            dw_ijlk=np.array([[[[250.0]]]]),
+            cw_ijlk=np.array([[[[200.0]]]]),
+            D_src_il=np.array([[[100.0]]]),
+            ct_ilk=np.array([[[-0.1]]]),
+        )
+
+
+def test_eddy_viscosity_invalid_high_ct_raises_error():
+    with pytest.raises(ValueError, match=r".*higher than 1.2 are not supported.*"):
+        model = EddyViscosityDeficitModel()
+        model.calc_deficit(
+            WS_ilk=np.array([[[10.0]]]),
+            WS_eff_ilk=np.array([[[10.0]]]),
+            TI_ilk=np.array([[[0.1]]]),
+            TI_eff_ilk=np.array([[[0.1]]]),
+            dw_ijlk=np.array([[[[250.0]]]]),
+            cw_ijlk=np.array([[[[200.0]]]]),
+            D_src_il=np.array([[[100.0]]]),
+            ct_ilk=np.array([[[1.5]]]),
+        )
+
+
+def test_eddy_viscosity_invalid_negative_ti_raises_error():
+    with pytest.raises(ValueError, match=r".*negative.*not valid.*"):
+        model = EddyViscosityDeficitModel()
+        model.calc_deficit(
+            WS_ilk=np.array([[[10.0]]]),
+            WS_eff_ilk=np.array([[[10.0]]]),
+            TI_ilk=np.array([[[-0.1]]]),
+            TI_eff_ilk=np.array([[[-0.1]]]),
+            dw_ijlk=np.array([[[[250.0]]]]),
+            cw_ijlk=np.array([[[[200.0]]]]),
+            D_src_il=np.array([[[100.0]]]),
+            ct_ilk=np.array([[[0.8]]]),
+        )
+
+
+def test_eddy_viscosity_wind_farm_model_calculates_correct_aep():
+    model = EddyViscosityModel(
+        site=UniformSite([1, 0, 0, 0], ti=0.075),
+        windTurbines=HornsrevV80(),
+    )
+    results = model(
+        x=np.array([0.0, 200.0, 300.0]),
+        y=np.array([0.0, 0.0, 200.0]),
+        h=np.array([60.0, 80.0, 100.0]),
+    )
+    assert np.isclose(results.aep().sum().values.item(), 46.952268386759414)
 
 
 @pytest.mark.parametrize("use_mixing_function", [True, False])
@@ -273,6 +350,62 @@ def test_small_table_generation(
         engine="h5netcdf",
     )
     xrt.assert_allclose(lookup_table, expected_lookup_table)
+
+
+def test_eddy_viscosity_lookup_table_generator_invalid_negative_ti_raises_error():
+    coordinates = LookupTableCoordinates(
+        ti0=np.arange(-0.01, 0.3, 0.02),
+        ct=np.arange(0.1, 0.9, 0.02),
+        dw=np.arange(2.0, 60.0, 0.1),
+    )
+    with pytest.raises(ValueError, match=r".*turbulence.*not valid.*"):
+        eddy_viscosity_lookup_table_generator.generate_lookup_table(
+            formulation=SimplifiedEddyViscosityDeficitFormulation(),
+            use_mixing_function=True,
+            coordinates=coordinates,
+        )
+
+
+def test_eddy_viscosity_lookup_table_generator_invalid_negative_ct_raises_error():
+    coordinates = LookupTableCoordinates(
+        ti0=np.arange(0.01, 0.3, 0.02),
+        ct=np.arange(-0.1, 0.9, 0.02),
+        dw=np.arange(2.0, 60.0, 0.1),
+    )
+    with pytest.raises(ValueError, match=r".*thrust.*not valid.*"):
+        eddy_viscosity_lookup_table_generator.generate_lookup_table(
+            formulation=SimplifiedEddyViscosityDeficitFormulation(),
+            use_mixing_function=True,
+            coordinates=coordinates,
+        )
+
+
+def test_eddy_viscosity_lookup_table_generator_invalid_small_dw_raises_error():
+    coordinates = LookupTableCoordinates(
+        ti0=np.arange(0.01, 0.3, 0.02),
+        ct=np.arange(0.1, 0.9, 0.02),
+        dw=np.arange(1.0, 60.0, 0.1),
+    )
+    with pytest.raises(ValueError, match=r".*not defined.*below.*2.*"):
+        eddy_viscosity_lookup_table_generator.generate_lookup_table(
+            formulation=SimplifiedEddyViscosityDeficitFormulation(),
+            use_mixing_function=True,
+            coordinates=coordinates,
+        )
+
+
+def test_eddy_viscosity_lookup_table_generator_invalid_coordinates_raises_error():
+    coordinates = LookupTableCoordinates(
+        ti0=np.arange(0.01, 0.3, 0.02),
+        ct=np.arange(0.1, 0.9, 0.02),
+        dw=np.array([20.0, 15.0, 10.0]),
+    )
+    with pytest.raises(ValueError, match=r".*must be monotonic increasing"):
+        eddy_viscosity_lookup_table_generator.generate_lookup_table(
+            formulation=SimplifiedEddyViscosityDeficitFormulation(),
+            use_mixing_function=True,
+            coordinates=coordinates,
+        )
 
 
 @pytest.mark.parametrize("use_mixing_function", [True, False])
