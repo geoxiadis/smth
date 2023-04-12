@@ -33,7 +33,7 @@ class SimpleWindTurbine(WindTurbine):
         self.Ur = (8 * Pg / (np.pi * rho * CP * D**2))**(1 / 3)  # [m/s] Rated wind speed
 
         def power(ws):
-            return np.minimum(Uin<=np.asarray(ws))*(np.asarray(ws)<=Uout)*np.minimum(Pg/(self.Ur**3-Uin**3)*(np.asarray(ws)**3-Uin**3), Pg)
+            return (Uin<=np.asarray(ws))*(np.asarray(ws)<=Uout)*np.minimum(Pg/(self.Ur**3-Uin**3)*(np.asarray(ws)**3-Uin**3), Pg)
 
         def ct(ws):
             return np.minimum(CT, CT*(self.Ur/np.asarray(ws))**(3.2))
