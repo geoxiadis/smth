@@ -59,21 +59,38 @@ Lastly, the remaining notebooks illustrate some relevant examples and exercises 
                
     .. toctree::
         :maxdepth: 1
-	:caption: Tutorials
+	:caption: Main Components
        
         notebooks/Quickstart
         notebooks/Site
         notebooks/WindTurbines
         notebooks/EngineeringWindFarmModels
+	notebooks/WakeDeficitModels
+	notebooks/SuperpositionModels
+	notebooks/BlockageDeficitModels
+	notebooks/RotorAverageModels
+	notebooks/DeflectionModels
+	notebooks/TurbulenceModels
+	notebooks/GroundModels
+
+    .. toctree::
+        :maxdepth: 1
+	:caption: Features
+       
         notebooks/RunWindFarmSimulation
         notebooks/gradients_parallellization
         notebooks/Optimization
         notebooks/YawMisalignment
         notebooks/Noise
+
+    .. toctree::
+        :maxdepth: 1
+	:caption: Examples
+       
         notebooks/exercises/CombineModels
         notebooks/exercises/Validation
         notebooks/exercises/Improve_layout
-        notebooks/exercises/WakeDeflection  
+        notebooks/exercises/WakeDeflection     
 
     .. toctree::
         :maxdepth: 1
