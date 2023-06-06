@@ -1,7 +1,7 @@
 from numpy import newaxis as na
 from py_wake.utils.gradients import erf
 from py_wake import np
-from scipy.special import gamma
+from py_wake.utils.gradients import gamma
 from py_wake.deficit_models.deficit_model import DeficitModel, WakeDeficitModel
 from py_wake.deficit_models.deficit_model import ConvectionDeficitModel
 from py_wake.ground_models.ground_models import Mirror
@@ -12,6 +12,7 @@ from py_wake.utils import gradients
 from py_wake.utils.model_utils import DeprecatedModel
 from py_wake.rotor_avg_models.rotor_avg_model import RotorCenter
 from py_wake.deficit_models.utils import ct2a_madsen
+from py_wake.utils.gradients import cabs
 
 
 class BastankhahGaussianDeficit(ConvectionDeficitModel):
@@ -464,7 +465,7 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
         - evolution of super gaussian "n" order function of downwind distance and turbulence intensity
 
     Description:
-        Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f; 
+        Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f;
         with a_f kept constant at 3.11
         Calibrated parameters taken from Table 2 and 3 in [1]
     """
@@ -473,7 +474,7 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
                  b_f=-0.68, c_f=2.41, use_effective_ws=False,
                  use_effective_ti=True, rotorAvgModel=None, groundModel=None):
         DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                                        use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
+                              use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
         self.a_s = a_s
         self.b_s = b_s
         self.c_s = c_s
@@ -490,22 +491,22 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
         return beta_ilk
 
     def sigma_ijlk(self, dw_ijlk, ct_ilk, D_src_il, **kwargs):
-        #compute normalized characteristic wake width
+        # compute normalized characteristic wake width
         TI_ref_ijlk = kwargs[self.TI_key][:, na, :, :]
         beta_ilk = self.beta_ilk(ct_ilk)
         sigma_ijlk = (self.a_s * TI_ref_ijlk + self.b_s) * (dw_ijlk / D_src_il[:, na, :, na]) + \
-                    self.c_s * np.sqrt(beta_ilk)[:, na, :, :]
+            self.c_s * np.sqrt(beta_ilk)[:, na, :, :]
         return sigma_ijlk
 
     def ct_func(self, ct_ilk, **_):
         return ct_ilk[:, na]
 
     def supG_n(self, dw_ijlk, D_src_il, ct_ilk, **kwargs):
-        #term inside exponent
+        # term inside exponent
         ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
         exp_TI_ijlk = self.b_f * (dw_ijlk / D_src_il[:, na, :, na])
 
-        #compute super gaussian n order
+        # compute super gaussian n order
         n = self.a_f(ctx_ijlk, **kwargs) * np.exp(exp_TI_ijlk) + self.c_f
         return n
 
@@ -517,8 +518,8 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
         a1 = 2 ** (2 / n - 1)
         a2 = 2 ** (4 / n - 2)
 
-        deficit_center_ijlk = a1 - np.sqrt(a2 - ((n * ctx_ijlk) / (16.0 * gamma(2 / n)* np.sign(sigma_ijlk) \
-                                                                   * (np.abs(sigma_ijlk) ** (4 / n)))))
+        deficit_center_ijlk = a1 - np.sqrt(a2 - ((n * ctx_ijlk) / (16.0 * gamma(2 / n) * np.sign(sigma_ijlk)
+                                                                   * (cabs(sigma_ijlk) ** (4 / n)))))
 
         return deficit_center_ijlk
 
@@ -535,10 +536,10 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
         exponent_factor_ijlk = -1 / (2 * sigma_sqrt_ijlk) * (cw_ijlk / D_src_il[:, na, :, na]) ** n
         shape_factor_ijlk = np.exp(exponent_factor_ijlk)
 
-        #rescaling with effective wind speed
+        # rescaling with effective wind speed
         deficit_ijlk = WS_ref_ijlk * deficit_center_ijlk * shape_factor_ijlk
         return deficit_ijlk
-    
+
     def wake_radius(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
         # according to Niayifar, the wake radius is twice sigma
         sigma_ijlk = self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
@@ -550,53 +551,53 @@ class BlondelSuperGaussianDeficit2023(BlondelSuperGaussianDeficit2020):
         Blondel and Cathelain (2020)
         An alternative form of the super-Gaussian wind turbine wake model
         Wind Energ. Sci., 5, 1225–1236, 2020 https://doi.org/10.5194/wes-5-1225-2020
-        
+
         With calibrated parameters taken from Table 1 in:
         Blondel (2023)
         Brief communication: A momentum-conserving superposition method applied to 
         the super-Gaussian wind turbine wake model
         Wind Energ. Sci., 8, 141–147, 2023, 2023 https://doi.org/10.5194/wes-8-141-2023
-          
+
     Features:
         - Wake profile transitions from top-hat at near wake to Gaussian at far wake
         - Characteristic wake width (sigma) function of turbulence intensity and CT
         - Evolution of super gaussian "n" order function of downwind distance and turbulence intensity
-        
+
     Description:
         Linear relationship between turbulence intensity and the Gaussian wake width given by
         the calibrated parameters: a_s, b_s, c_s
         Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f; 
     """
-    
+
     def __init__(self, a_s=0.28, b_s=0.01, c_s=[0.1, 0.1],
                  b_f=[-25.98, -1.06], c_f=2, use_effective_ws=False,
                  use_effective_ti=True, rotorAvgModel=None, groundModel=None):
         DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                                        use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
+                              use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
         self.a_s = a_s
         self.b_s = b_s
         self.c_s = c_s
         self.b_f = b_f
         self.c_f = c_f
-        
+
     def a_f(self, ct_ilk, **kwargs):
         a_f = -8.2635 * ct_ilk ** 3 + 8.5939 * ct_ilk ** 2 - 8.9691 * ct_ilk + 10.7286
         return a_f
-    
+
     def sigma_ijlk(self, dw_ijlk, ct_ilk, D_src_il, **kwargs):
-        #compute normalized characteristic wake width
+        # compute normalized characteristic wake width
         TI_ref_ijlk = kwargs[self.TI_key][:, na, :, :]      
         beta_ilk = self.beta_ilk(ct_ilk)
         sigma_ijlk = (self.a_s * TI_ref_ijlk + self.b_s) * (dw_ijlk / D_src_il[:, na, :, na]) + \
                       (self.c_s[0] * ct_ilk[:, na, :, :] + self.c_s[1]) * np.sqrt(beta_ilk)[:, na, :, :]
         return sigma_ijlk
-           
+
     def supG_n(self, dw_ijlk, D_src_il, ct_ilk, **kwargs):
         TI_ref_ijlk = kwargs[self.TI_key][:, na]
-        #term inside exponent
+        # term inside exponent
         ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
         exp_TI_ijlk = (1.68 * np.exp(self.b_f[0] * TI_ref_ijlk) + self.b_f[1]) * (dw_ijlk / D_src_il[:, na, :, na])
-        #compute super gaussian n order
+        # compute super gaussian n order
         n = self.a_f(ctx_ijlk, **kwargs) * np.exp(exp_TI_ijlk) + self.c_f
         return n
 

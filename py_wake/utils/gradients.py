@@ -20,7 +20,8 @@ from scipy.interpolate import UnivariateSpline as scipy_UnivariateSpline
 
 from py_wake.utils.numpy_utils import AutogradNumpy
 from autograd.numpy.numpy_vjps import unbroadcast_f
-
+from scipy.special import gamma as sgamma
+from autograd.scipy.special import gamma as agamma
 
 def asarray(x, dtype=None, order=None):
     if isinstance(x, (ArrayBox)):
@@ -374,3 +375,10 @@ def rad2deg(rad):
 
 def deg2rad(deg):
     return deg * np.pi / 180
+
+
+def gamma(x):
+    if isinstance(x, ArrayBox):
+        return agamma(x)
+    else:
+        return sgamma(x)
