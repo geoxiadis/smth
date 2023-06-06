@@ -7,7 +7,7 @@ from py_wake.deficit_models.fuga import FugaDeficit, Fuga
 from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, IEA37SimpleBastankhahGaussianDeficit,\
     ZongGaussianDeficit, NiayifarGaussianDeficit, BastankhahGaussian, ZongGaussian,\
     NiayifarGaussian, CarbajofuertesGaussianDeficit, TurboGaussianDeficit, IEA37SimpleBastankhahGaussian,\
-    BlondelSuperGaussuianDeficit2020, BlondelSuperGaussuianDeficit2023
+    BlondelSuperGaussianDeficit2020, BlondelSuperGaussianDeficit2023
 from py_wake.deficit_models.gcl import GCLDeficit, GCL, GCLLocal
 from py_wake.deficit_models.noj import NOJDeficit, NOJ, NOJLocalDeficit, NOJLocal, TurboNOJDeficit
 from py_wake.deficit_models import VortexDipole
