@@ -520,8 +520,8 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
         a1 = 2 ** (2 / n - 1)
         a2 = 2 ** (4 / n - 2)
 
-        deficit_center_ijlk = a1 - np.sqrt(a2 - ((n * ctx_ijlk) / (16.0 * gamma(2 / n) * np.sign(sigma_ijlk)
-                                                                   * (cabs(sigma_ijlk) ** (4 / n)))))
+        deficit_center_ijlk = a1 - np.sqrt(a2 - ((n * ctx_ijlk) / (16.0 * gamma(2 / n) * np.sign(sigma_ijlk) *
+                                                                   (cabs(sigma_ijlk) ** (4 / n)))))
 
         return deficit_center_ijlk
 
