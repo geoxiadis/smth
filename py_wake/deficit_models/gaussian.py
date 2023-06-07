@@ -91,7 +91,7 @@ class BastankhahGaussianDeficit(ConvectionDeficitModel):
         return deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk
 
 
-class BastankhahGaussian(PropagateDownwind):
+class BastankhahGaussian(PropagateDownwind, DeprecatedModel):
     """Predefined wind farm model"""
 
     def __init__(self, site, windTurbines, k=0.0324555, ceps=.2, ct2a=ct2a_madsen, use_effective_ws=False,
@@ -124,7 +124,7 @@ class BastankhahGaussian(PropagateDownwind):
                                                                                groundModel=groundModel),
                                    superpositionModel=superpositionModel, deflectionModel=deflectionModel,
                                    turbulenceModel=turbulenceModel)
-        DeprecatedModel.__init__(self, 'py_wake.literature.bastankhah_gaussian.Bastankhah_PorteAgel_2014')
+        DeprecatedModel.__init__(self, 'py_wake.literature.gaussian_models.Bastankhah_PorteAgel_2014')
 
 
 class NiayifarGaussianDeficit(BastankhahGaussianDeficit):
@@ -160,7 +160,7 @@ class NiayifarGaussianDeficit(BastankhahGaussianDeficit):
         return k_ilk
 
 
-class NiayifarGaussian(PropagateDownwind):
+class NiayifarGaussian(PropagateDownwind, DeprecatedModel):
     def __init__(self, site, windTurbines, a=[0.38, 4e-3], ceps=.2, superpositionModel=SquaredSum(),
                  deflectionModel=None, turbulenceModel=None, rotorAvgModel=None, groundModel=None):
         """
@@ -183,7 +183,7 @@ class NiayifarGaussian(PropagateDownwind):
                                                                              groundModel=groundModel),
                                    superpositionModel=superpositionModel, deflectionModel=deflectionModel,
                                    turbulenceModel=turbulenceModel)
-        DeprecatedModel.__init__(self, 'py_wake.literature.niayifar_gaussian.Niayifar_PorteAgel_2016')
+        DeprecatedModel.__init__(self, 'py_wake.literature.gaussian_models.Niayifar_PorteAgel_2016')
 
 
 class IEA37SimpleBastankhahGaussianDeficit(BastankhahGaussianDeficit):
@@ -347,7 +347,7 @@ class ZongGaussianDeficit(NiayifarGaussianDeficit):
         return sigmaD_ijlk * D_src_il[:, na, :, na]
 
 
-class ZongGaussian(PropagateDownwind):
+class ZongGaussian(PropagateDownwind, DeprecatedModel):
     def __init__(self, site, windTurbines, a=[0.38, 4e-3], deltawD=1. / np.sqrt(2), lam=7.5, B=3,
                  rotorAvgModel=None,
                  superpositionModel=SquaredSum(), deflectionModel=None, turbulenceModel=None, groundModel=None):
@@ -371,7 +371,7 @@ class ZongGaussian(PropagateDownwind):
                                                                          groundModel=groundModel),
                                    superpositionModel=superpositionModel, deflectionModel=deflectionModel,
                                    turbulenceModel=turbulenceModel)
-        DeprecatedModel.__init__(self, 'py_wake.literature.zong_gaussian.Zong_PorteAgel_2020')
+        DeprecatedModel.__init__(self, 'py_wake.literature.gaussian_models.Zong_PorteAgel_2020')
 
 
 class CarbajofuertesGaussianDeficit(ZongGaussianDeficit):
@@ -556,7 +556,7 @@ class BlondelSuperGaussianDeficit2023(BlondelSuperGaussianDeficit2020):
 
         With calibrated parameters taken from Table 1 in:
         Blondel (2023)
-        Brief communication: A momentum-conserving superposition method applied to 
+        Brief communication: A momentum-conserving superposition method applied to
         the super-Gaussian wind turbine wake model
         Wind Energ. Sci., 8, 141–147, 2023, 2023 https://doi.org/10.5194/wes-8-141-2023
 
@@ -568,7 +568,7 @@ class BlondelSuperGaussianDeficit2023(BlondelSuperGaussianDeficit2020):
     Description:
         Linear relationship between turbulence intensity and the Gaussian wake width given by
         the calibrated parameters: a_s, b_s, c_s
-        Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f; 
+        Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f;
     """
 
     def __init__(self, a_s=0.28, b_s=0.01, c_s=[0.1, 0.1],
@@ -591,7 +591,7 @@ class BlondelSuperGaussianDeficit2023(BlondelSuperGaussianDeficit2020):
         TI_ref_ijlk = kwargs[self.TI_key][:, na, :, :]
         beta_ilk = self.beta_ilk(ct_ilk)
         sigma_ijlk = (self.a_s * TI_ref_ijlk + self.b_s) * (dw_ijlk / D_src_il[:, na, :, na]) + \
-                      (self.c_s[0] * ct_ilk[:, na, :, :] + self.c_s[1]) * np.sqrt(beta_ilk)[:, na, :, :]
+                     (self.c_s[0] * ct_ilk[:, na, :, :] + self.c_s[1]) * np.sqrt(beta_ilk)[:, na, :, :]
         return sigma_ijlk
 
     def supG_n(self, dw_ijlk, D_src_il, ct_ilk, **kwargs):

@@ -10,6 +10,7 @@ from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel
 from warnings import catch_warnings, filterwarnings
 from py_wake.deficit_models.deficit_model import WakeRadiusTopHat
 from py_wake.deficit_models.utils import ct2a_madsen
+from py_wake.utils.model_utils import DeprecatedModel
 
 
 class NOJDeficit(NiayifarGaussianDeficit, WakeRadiusTopHat):
@@ -56,7 +57,7 @@ class NOJDeficit(NiayifarGaussianDeficit, WakeRadiusTopHat):
         raise NotImplementedError("calc_deficit_convection not implemented for NOJ")
 
 
-class NOJ(PropagateDownwind):
+class NOJ(PropagateDownwind, DeprecatedModel):
     def __init__(self, site, windTurbines, rotorAvgModel=AreaOverlapAvgModel(),
                  ct2a=ct2a_madsen, k=.1, superpositionModel=SquaredSum(), deflectionModel=None, turbulenceModel=None,
                  groundModel=None):
