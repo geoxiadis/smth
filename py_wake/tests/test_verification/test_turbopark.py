@@ -1,7 +1,7 @@
 import pytest
 
 import numpy as np
-from py_wake.literature import TurbOPark
+from py_wake.literature import Nygaard_2022
 from py_wake.site import XRSite
 from py_wake.site._site import UniformSite
 from py_wake.site.shear import PowerShear
