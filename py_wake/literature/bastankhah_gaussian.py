@@ -3,11 +3,18 @@ from py_wake.deficit_models.utils import ct2a_madsen
 from py_wake.superposition_models import SquaredSum
 from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit
 
-class BastankhahGaussian(PropagateDownwind):
-    """Implemented according to
-    Bastankhah M and Porté-Agel F.
-    A new analytical model for wind-turbine wakes.
-    J. Renew. Energy. 2014;70:116-23.
+
+class Bastankhah_PorteAgel_2014(PropagateDownwind):
+    """
+    Implemented according to:
+        Bastankhah M and Porté-Agel F.
+        A new analytical model for wind-turbine wakes.
+        J. Renew. Energy. 2014;70:116-23.
+
+    Description:
+        - Conservation of mass and momentum is applied with the assumption of a Gaussian shape for the wake profile
+        in the calculation of the wake deficit
+        - Only one parameter needed to determine the velocity distribution: the wake expansion parameter k
     """
 
     def __init__(self, site, windTurbines, k=0.0324555, ceps=.2, ct2a=ct2a_madsen, use_effective_ws=False,

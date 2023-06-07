@@ -1,10 +1,11 @@
 import numpy as np
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind
-from py_wake.superposition_models import LinearSum
+from py_wake.superposition_models import WeightedSum
 from py_wake.deficit_models import ZongGaussianDeficit
 from py_wake.turbulence_models.crespo import CrespoHernandez
 
-class ZongGaussian(PropagateDownwind):
+
+class Zong_PorteAgel_2020(PropagateDownwind):
     """
     Implemented according to:
         Haohua Zong and Fernando Porté-Agel
@@ -12,6 +13,7 @@ class ZongGaussian(PropagateDownwind):
         J. Fluid Mech. (2020), vol. 889, A8; doi:10.1017/jfm.2020.77
 
     Features:
+        - Conservation of mass and momentum and a Gaussian shape for the wake profile
         - Wake expansion function of local turbulence intensity
         - New wake width expression following the approach by Shapiro et al. (2018)
 
@@ -35,7 +37,7 @@ class ZongGaussian(PropagateDownwind):
 
     def __init__(self, site, windTurbines, a=[0.38, 4e-3], deltawD=1. / np.sqrt(2), lam=7.5, B=3,
                  rotorAvgModel=None,
-                 superpositionModel=LinearSum(), deflectionModel=None, turbulenceModel=CrespoHernandez(), groundModel=None,
+                 superpositionModel=WeightedSum(), deflectionModel=None, turbulenceModel=CrespoHernandez(), groundModel=None,
                  use_effective_ws=False, use_effective_ti=True):
         """
         Parameters

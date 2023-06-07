@@ -3,22 +3,24 @@ from py_wake.deficit_models import NiayifarGaussianDeficit
 from py_wake.turbulence_models.crespo import CrespoHernandez
 from py_wake.superposition_models import LinearSum
 
-class NiayifarGaussian(PropagateDownwind):
+
+class Niayifar_PorteAgel_2016(PropagateDownwind):
     """
     Implemented according to:
         Amin Niayifar and Fernando Porté-Agel
         Analytical Modeling of Wind Farms: A New Approach for Power Prediction
-        Energies 2016, 9, 741; doi:10.3390/en9090741
+        Energies 2016, 9, 741; doi:10.3390/en9090741 [1]
 
     Features:
+        - Conservation of mass and momentum and a Gaussian shape for the wake profile
         - Wake expansion function of local turbulence intensity
 
     Description:
-        The expansion rate 'k' varies linearly with local turbluence
-        intensity: k = a1 I + a2. The default constants are set
-        according to publications by Porte-Agel's group, which are based
-        on LES simulations. Lidar field measurements by Fuertes et al. (2018)
-        indicate that a = [0.35, 0.0] is also a valid selection.
+        - The expansion rate 'k' varies linearly with local turbluence intensity: k = a1 I + a2.
+        The default constants are set according to publications by Porte-Agel's group, which are based
+        on LES simulations. Lidar field measurements by Fuertes et al. (2018) indicate that a = [0.35, 0.0] is also a valid selection.
+        - Wake superposition is represented by linearly adding the wakes
+        - The Crespo Hernandez turbulence model is used to calculate the added streamwise turbulence intensity, Eq 14 in [1]
     """
 
     def __init__(self, site, windTurbines, a=[0.38, 4e-3], ceps=.2, superpositionModel=LinearSum(),

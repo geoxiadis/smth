@@ -12,7 +12,6 @@ from py_wake.utils import gradients
 from py_wake.utils.model_utils import DeprecatedModel
 from py_wake.rotor_avg_models.rotor_avg_model import RotorCenter
 from py_wake.deficit_models.utils import ct2a_madsen
-from py_wake.utils.gradients import cabs
 
 
 class BastankhahGaussianDeficit(ConvectionDeficitModel):
@@ -125,6 +124,7 @@ class BastankhahGaussian(PropagateDownwind):
                                                                                groundModel=groundModel),
                                    superpositionModel=superpositionModel, deflectionModel=deflectionModel,
                                    turbulenceModel=turbulenceModel)
+        DeprecatedModel.__init__(self, 'py_wake.literature.bastankhah_gaussian.Bastankhah_PorteAgel_2014')
 
 
 class NiayifarGaussianDeficit(BastankhahGaussianDeficit):
@@ -183,6 +183,7 @@ class NiayifarGaussian(PropagateDownwind):
                                                                              groundModel=groundModel),
                                    superpositionModel=superpositionModel, deflectionModel=deflectionModel,
                                    turbulenceModel=turbulenceModel)
+        DeprecatedModel.__init__(self, 'py_wake.literature.niayifar_gaussian.Niayifar_PorteAgel_2016')
 
 
 class IEA37SimpleBastankhahGaussianDeficit(BastankhahGaussianDeficit):
@@ -370,6 +371,7 @@ class ZongGaussian(PropagateDownwind):
                                                                          groundModel=groundModel),
                                    superpositionModel=superpositionModel, deflectionModel=deflectionModel,
                                    turbulenceModel=turbulenceModel)
+        DeprecatedModel.__init__(self, 'py_wake.literature.zong_gaussian.Zong_PorteAgel_2020')
 
 
 class CarbajofuertesGaussianDeficit(ZongGaussianDeficit):
@@ -586,7 +588,7 @@ class BlondelSuperGaussianDeficit2023(BlondelSuperGaussianDeficit2020):
 
     def sigma_ijlk(self, dw_ijlk, ct_ilk, D_src_il, **kwargs):
         # compute normalized characteristic wake width
-        TI_ref_ijlk = kwargs[self.TI_key][:, na, :, :]      
+        TI_ref_ijlk = kwargs[self.TI_key][:, na, :, :]
         beta_ilk = self.beta_ilk(ct_ilk)
         sigma_ijlk = (self.a_s * TI_ref_ijlk + self.b_s) * (dw_ijlk / D_src_il[:, na, :, na]) + \
                       (self.c_s[0] * ct_ilk[:, na, :, :] + self.c_s[1]) * np.sqrt(beta_ilk)[:, na, :, :]

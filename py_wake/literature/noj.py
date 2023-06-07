@@ -5,9 +5,15 @@ from py_wake.deficit_models.utils import ct2a_madsen
 from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel
 
 
-class NOJ(PropagateDownwind):
-    """ Implemented according to
-         Niels Otto Jensen, “A note on wind generator interaction.” (1983)
+class Jensen_1983(PropagateDownwind):
+    """
+    Implemented according to:
+        Niels Otto Jensen, “A note on wind generator interaction.” (1983)
+
+    Features:
+        - Top-hat shape for the wake profile
+        - Wake superposition is done with the squared sum model as default
+        - Given the top-hat shape, the Area Overlap Average model is used as default, which includes the wake radius
     """
 
     def __init__(self, site, windTurbines, rotorAvgModel=AreaOverlapAvgModel(),

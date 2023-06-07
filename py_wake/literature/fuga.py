@@ -2,7 +2,19 @@ from py_wake.wind_farm_models.engineering_models import PropagateDownwind
 from py_wake.superposition_models import LinearSum
 from py_wake.deficit_models.fuga import FugaDeficit
 
+
 class Fuga(PropagateDownwind):
+    """
+    Implemented according to:
+        Ott, S., & Nielsen, M. (2014).
+        Developments of the offshore wind turbine wake model Fuga.
+        DTU Wind Energy. DTU Wind Energy E No. 0046
+        
+    Description:
+        - Fuga is a linearized CFD model that can predict wake effects for offshore wind farms.
+        - It has the ability to work with different types of turbines for the same project, which makes it useful for inter farm interactions
+    """
+    
     def __init__(self, LUT_path, site, windTurbines,
                  rotorAvgModel=None, deflectionModel=None, turbulenceModel=None, remove_wriggles=False):
         """
