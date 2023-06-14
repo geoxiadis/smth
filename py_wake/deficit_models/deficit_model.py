@@ -25,8 +25,6 @@ class DeficitModel(ABC, RotorAvgAndGroundModelContainer):
     def args4deficit(self):
         args4deficit = RotorAvgAndGroundModelContainer.args4model.fget(self)  # @UndefinedVariable
         args4deficit |= method_args(self.calc_deficit)
-        if hasattr(self, 'calc_deficit_downwind'):
-            args4deficit |= method_args(self.calc_deficit_downwind)
         args4deficit |= method_args(self._calc_layout_terms)
         args4deficit |= self.additional_args
 
@@ -51,14 +49,6 @@ class DeficitModel(ABC, RotorAvgAndGroundModelContainer):
         -------
         deficit_jlk : array_like
         """
-
-    # def calc_deficit_downwind(self, yaw_ilk, **kwargs):
-    #     if np.any(yaw_ilk != 0):
-    #         deficit_normal = self.calc_deficit(yaw_ilk=yaw_ilk, **kwargs)
-    #         return deficit_normal
-    #         return np.cos(yaw_ilk[:, na]) * deficit_normal
-    #     else:
-    #         return self.calc_deficit(yaw_ilk=yaw_ilk, **kwargs)
 
     def __call__(self, **kwargs):
         return self.wrap(self.calc_deficit)(**kwargs)
