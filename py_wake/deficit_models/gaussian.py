@@ -526,10 +526,10 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
         return deficit_center_ijlk
 
     def calc_deficit(self, ct_ilk, dw_ijlk, cw_ijlk, D_src_il, **kwargs):
-        if self.WS_key == 'WS_jlk':
-            WS_ref_ijlk = kwargs[self.WS_key][na]
-        else:
-            WS_ref_ijlk = kwargs[self.WS_key][:, na]
+        # if self.WS_key == 'WS_jlk':
+        #     WS_ref_ijlk = kwargs[self.WS_key][na]
+        # else:
+        WS_ref_ijlk = kwargs[self.WS_key][:, na]
 
         n = self.supG_n(dw_ijlk=dw_ijlk, D_src_il=D_src_il, ct_ilk=ct_ilk, **kwargs)
         sigma_sqrt_ijlk = (self.sigma_ijlk(dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, D_src_il=D_src_il, **kwargs))**2

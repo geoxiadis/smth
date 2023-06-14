@@ -1,6 +1,8 @@
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
 from py_wake.superposition_models import LinearSum
 from py_wake.deficit_models.fuga import FugaDeficit
+from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
+from py_wake.tests.test_files import tfp
 
 
 class Ott_2014(PropagateDownwind):
@@ -81,3 +83,26 @@ class Ott_2014_Blockage(All2AllIterative):
                                   rotorAvgModel=rotorAvgModel, superpositionModel=LinearSum(),
                                   deflectionModel=deflectionModel, blockage_deficitModel=fuga_deficit,
                                   turbulenceModel=turbulenceModel, convergence_tolerance=convergence_tolerance)
+
+
+def main():
+    if __name__ == '__main__':
+
+        path = tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc'
+
+        site = Hornsrev1Site()
+        windTurbines = V80()
+        x, y = site.initial_position.T
+
+        for wf_model in [Ott_2014(path, site, windTurbines),
+                         Ott_2014_Blockage(path, site, windTurbines)]:
+
+            # run wind farm simulation
+            sim_res = wf_model(x, y)
+
+            # calculate AEP
+            aep = sim_res.aep().sum()
+            print(aep)
+
+
+main()

@@ -97,6 +97,7 @@ Lastly, the remaining notebooks illustrate some relevant examples and exercises 
 	:caption: Model Verification       
 
         notebooks/literature_verification/TurbOPark
+	notebooks/literature_verification/SuperGaussian
         
     .. toctree::
         :maxdepth: 2

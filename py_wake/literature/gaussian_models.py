@@ -5,6 +5,8 @@ from py_wake.superposition_models import SquaredSum, LinearSum, WeightedSum
 from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, NiayifarGaussianDeficit, ZongGaussianDeficit,\
     BlondelSuperGaussianDeficit2023, BlondelSuperGaussianDeficit2020
 from py_wake.turbulence_models.crespo import CrespoHernandez
+from py_wake.turbulence_models.stf import STF2017TurbulenceModel
+from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
 
 
 class Bastankhah_PorteAgel_2014(PropagateDownwind):
@@ -175,7 +177,7 @@ class Blondel_Cathelain_2020(PropagateDownwind):
     """
 
     def __init__(self, site, windTurbines, superpositionModel=SquaredSum(),
-                 deflectionModel=None, turbulenceModel=None, rotorAvgModel=None, groundModel=None,
+                 deflectionModel=None, turbulenceModel=STF2017TurbulenceModel(), rotorAvgModel=None, groundModel=None,
                  use_effective_ws=False, use_effective_ti=True):
         """
         Parameters
@@ -224,7 +226,7 @@ class Blondel_2023(PropagateDownwind):
     """
 
     def __init__(self, site, windTurbines, superpositionModel=SquaredSum(),
-                 deflectionModel=None, turbulenceModel=None, rotorAvgModel=None, groundModel=None,
+                 deflectionModel=None, turbulenceModel=STF2017TurbulenceModel(), rotorAvgModel=None, groundModel=None,
                  use_effective_ws=False, use_effective_ti=True):
         """
         Parameters
@@ -247,3 +249,27 @@ class Blondel_2023(PropagateDownwind):
                                                                                      use_effective_ti=use_effective_ti),
                                    superpositionModel=superpositionModel, deflectionModel=deflectionModel,
                                    turbulenceModel=turbulenceModel)
+
+
+def main():
+    if __name__ == '__main__':
+
+        site = Hornsrev1Site()
+        windTurbines = V80()
+        x, y = site.initial_position.T
+
+        for wf_model in [Bastankhah_PorteAgel_2014(site, windTurbines),
+                         Niayifar_PorteAgel_2016(site, windTurbines),
+                         Zong_PorteAgel_2020(site, windTurbines),
+                         Blondel_Cathelain_2020(site, windTurbines),
+                         Blondel_2023(site, windTurbines)]:
+
+            # run wind farm simulation
+            sim_res = wf_model(x, y)
+
+            # calculate AEP
+            aep = sim_res.aep().sum()
+            print(aep)
+
+
+main()

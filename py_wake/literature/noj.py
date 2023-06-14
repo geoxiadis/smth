@@ -3,6 +3,7 @@ from py_wake.superposition_models import SquaredSum
 from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.deficit_models.utils import ct2a_madsen
 from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel
+from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
 
 
 class Jensen_1983(PropagateDownwind):
@@ -43,3 +44,17 @@ class Jensen_1983(PropagateDownwind):
                                    superpositionModel=superpositionModel,
                                    deflectionModel=deflectionModel,
                                    turbulenceModel=turbulenceModel)
+
+
+def main():
+    if __name__ == '__main__':
+        site = Hornsrev1Site()
+        windTurbines = V80()
+        x, y = site.initial_position.T
+        wfm = Jensen_1983(site, windTurbines)
+        sim_res = wfm(x, y)
+        aep = sim_res.aep().sum()
+        print(aep)
+
+
+main()
