@@ -11,10 +11,10 @@ from numpy import newaxis as na
 from scipy.interpolate import RegularGridInterpolator
 
 from py_wake import np
-from py_wake.deficit_models import (
+from py_wake.deficit_models import eddy_viscosity_lookup_table_generator
+from py_wake.deficit_models.deficit_model import (
     DeficitModel,
     WakeDeficitModel,
-    eddy_viscosity_lookup_table_generator,
 )
 from py_wake.deficit_models.eddy_viscosity_formulations import (
     SimplifiedEddyViscosityDeficitFormulation,
