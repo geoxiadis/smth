@@ -253,6 +253,9 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         D_src_il: np.ndarray,
         ct_ilk: np.ndarray,
     ):
+        if np.min(WS_ilk) < 0.0 or np.min(WS_eff_ilk) < 0.0:
+            raise ValueError("negative wind speed values are not valid")
+
         if np.min(ct_ilk) < 0.0:
             raise ValueError("negative thrust coefficient (ct) values are not valid")
         if np.max(ct_ilk) > 1.2:
