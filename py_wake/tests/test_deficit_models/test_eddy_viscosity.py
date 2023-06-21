@@ -259,7 +259,7 @@ def test_calc_deficit_returns_correct_values(
 def test_eddy_viscosity_no_formulation_or_lookup_table_raises_error():
     with pytest.raises(
         ValueError,
-        match=r".*either.*formulation.*lookup.*must be provided.*",
+        match=r"either.*formulation.*lookup.*must be provided",
     ):
         EddyViscosityDeficitModel(
             formulation=None,
@@ -267,8 +267,23 @@ def test_eddy_viscosity_no_formulation_or_lookup_table_raises_error():
         )
 
 
+def test_eddy_viscosity_invalid_negative_ws_raises_error():
+    with pytest.raises(ValueError, match=r"negative wind speed.*not valid"):
+        model = EddyViscosityDeficitModel()
+        model.calc_deficit(
+            WS_ilk=np.array([[[-0.01]]]),  # Invalid
+            WS_eff_ilk=np.array([[[10.0]]]),
+            TI_ilk=np.array([[[0.1]]]),
+            TI_eff_ilk=np.array([[[0.1]]]),
+            dw_ijlk=np.array([[[[250.0]]]]),
+            cw_ijlk=np.array([[[[200.0]]]]),
+            D_src_il=np.array([[[100.0]]]),
+            ct_ilk=np.array([[[0.1]]]),
+        )
+
+
 def test_eddy_viscosity_invalid_negative_ct_raises_error():
-    with pytest.raises(ValueError, match=r".*negative.*not valid.*"):
+    with pytest.raises(ValueError, match=r"negative thrust coefficient.*not valid"):
         model = EddyViscosityDeficitModel()
         model.calc_deficit(
             WS_ilk=np.array([[[10.0]]]),
@@ -278,12 +293,12 @@ def test_eddy_viscosity_invalid_negative_ct_raises_error():
             dw_ijlk=np.array([[[[250.0]]]]),
             cw_ijlk=np.array([[[[200.0]]]]),
             D_src_il=np.array([[[100.0]]]),
-            ct_ilk=np.array([[[-0.1]]]),
+            ct_ilk=np.array([[[-0.1]]]),  # Invalid
         )
 
 
 def test_eddy_viscosity_invalid_high_ct_raises_error():
-    with pytest.raises(ValueError, match=r".*higher than 1.2 are not supported.*"):
+    with pytest.raises(ValueError, match=r"higher than 1.2 are not supported"):
         model = EddyViscosityDeficitModel()
         model.calc_deficit(
             WS_ilk=np.array([[[10.0]]]),
@@ -293,17 +308,17 @@ def test_eddy_viscosity_invalid_high_ct_raises_error():
             dw_ijlk=np.array([[[[250.0]]]]),
             cw_ijlk=np.array([[[[200.0]]]]),
             D_src_il=np.array([[[100.0]]]),
-            ct_ilk=np.array([[[1.5]]]),
+            ct_ilk=np.array([[[1.5]]]),  # Invalid
         )
 
 
 def test_eddy_viscosity_invalid_negative_ti_raises_error():
-    with pytest.raises(ValueError, match=r".*negative.*not valid.*"):
+    with pytest.raises(ValueError, match=r"negative turbulence intensity.*not valid"):
         model = EddyViscosityDeficitModel()
         model.calc_deficit(
             WS_ilk=np.array([[[10.0]]]),
             WS_eff_ilk=np.array([[[10.0]]]),
-            TI_ilk=np.array([[[-0.1]]]),
+            TI_ilk=np.array([[[-0.1]]]),  # Invalid
             TI_eff_ilk=np.array([[[-0.1]]]),
             dw_ijlk=np.array([[[[250.0]]]]),
             cw_ijlk=np.array([[[[200.0]]]]),

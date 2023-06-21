@@ -270,9 +270,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
             ti0_ilk = TI_ilk
 
         if np.min(ti0_ilk) < 0.0:
-            raise ValueError(
-                "negative effective turbulence intensity values are not valid"
-            )
+            raise ValueError("negative turbulence intensity values are not valid")
 
         # Normalise the effective turbulence intensity to the waked wind speed
         if self.normalise_ti_to_waked_ws:
