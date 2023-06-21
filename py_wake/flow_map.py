@@ -171,12 +171,12 @@ class FlowMap(FlowBox):
                 y = self.y.values
                 x = np.zeros_like(y) + self.plane[1]
                 z = self.simulationResult.windFarmModel.site.elevation(x, y)
-                c = ax.contourf(self.X, self.Y + z, data.isel(x=0), levels=levels, cmap=cmap)
+                c = ax.contourf(self.X / n, (self.Y + z) / n, data.isel(x=0), levels=levels, cmap=cmap)
             elif self.plane[0] == 'XZ':
                 x = self.x.values
                 y = np.zeros_like(x) + self.plane[1]
                 z = self.simulationResult.windFarmModel.site.elevation(x, y)
-                c = ax.contourf(self.X, self.Y + z, data.isel(y=0), levels=levels, cmap=cmap)
+                c = ax.contourf(self.X / n, (self.Y + z) / n, data.isel(y=0), levels=levels, cmap=cmap)
 
             if plot_colorbar:
                 plt.colorbar(c, label=clabel, ax=ax)
@@ -189,7 +189,7 @@ class FlowMap(FlowBox):
 
             # xarray gives strange levels
             # c = data.isel(h=0).plot(levels=levels, cmap=cmap, ax=ax, add_colorbar=plot_colorbar)
-            c = ax.contourf(self.X / n, self.Y / n, data.isel(h=0).data, levels=levels, cmap=cmap)
+            c = ax.contourf(self.X / n, self.Y / n, data.squeeze().values, levels=levels, cmap=cmap)
             if plot_colorbar:
                 plt.colorbar(c, label=clabel, ax=ax)
         else:
@@ -198,7 +198,7 @@ class FlowMap(FlowBox):
 
         if plot_windturbines:
             self.plot_windturbines(normalize_with=normalize_with, ax=ax)
-
+        plt.axis('equal')
         return c
 
     def plot_windturbines(self, normalize_with=1, ax=None):
@@ -214,10 +214,12 @@ class FlowMap(FlowBox):
             for l in range(x_ilk.shape[1]):
                 for k in range(x_ilk.shape[2]):
 
-                    wd = self.wd.isel(wd=l) - 90
+                    wd = self.wd.values[l] - 90
 
                     def get(n):
-                        shape = len(x_ilk), len(self.simulationResult.wd), len(self.simulationResult.ws)
+                        shape = (len(x_ilk),
+                                 len(np.atleast_1d(self.simulationResult.wd)),
+                                 len(np.atleast_1d(self.simulationResult.ws)))
                         if n not in self.simulationResult:
                             return 0
                         v = self.simulationResult[n].ilk(shape)
