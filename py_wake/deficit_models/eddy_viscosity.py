@@ -189,7 +189,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         else:
             ws_ref_ilk = WS_ilk
 
-        # Concert dimensionless deficit to dimensional deficit in 'm/s'
+        # Convert dimensionless deficit to dimensional deficit in 'm/s'
         deficit_ijlk = ws_ref_ilk[:, na] * fractional_deficit_ijlk
 
         # Limit wake impacts to the maximum wake distance
