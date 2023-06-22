@@ -12,9 +12,9 @@ class Jensen_1983(PropagateDownwind):
         Niels Otto Jensen, “A note on wind generator interaction.” (1983)
 
     Features:
-        - Top-hat shape for the wake profile
-        - Wake superposition is done with the squared sum model as default
-        - Given the top-hat shape, the Area Overlap Average model is used as default, which includes the wake radius
+        - Top-hat shape for the wake profile.
+        - Wake superposition is done with the squared sum model as default.
+        - Given the top-hat shape, the Area Overlap Average model is used as default, which includes the wake radius.
     """
 
     def __init__(self, site, windTurbines, rotorAvgModel=AreaOverlapAvgModel(),

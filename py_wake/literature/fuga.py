@@ -5,7 +5,7 @@ from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
 from py_wake.tests.test_files import tfp
 
 
-class Ott_2014(PropagateDownwind):
+class Ott_Nielsen_2014(PropagateDownwind):
     """
     Implemented according to:
         Ott, S., & Nielsen, M. (2014).
@@ -14,8 +14,7 @@ class Ott_2014(PropagateDownwind):
 
     Description:
         - Fuga is a linearized CFD model that can predict wake effects for offshore wind farms.
-        - It has the ability to work with different types of turbines for the same project,
-        which makes it useful for inter farm interactions
+        - It has the ability to work with different types of turbines for the same project, which makes it useful for inter farm interactions.
     """
 
     def __init__(self, LUT_path, site, windTurbines,
@@ -44,7 +43,7 @@ class Ott_2014(PropagateDownwind):
                                    deflectionModel=deflectionModel, turbulenceModel=turbulenceModel)
 
 
-class Ott_2014_Blockage(All2AllIterative):
+class Ott_Nielsen_2014_Blockage(All2AllIterative):
     """
     Implemented according to:
         Ott, S., & Nielsen, M. (2014).
@@ -53,9 +52,8 @@ class Ott_2014_Blockage(All2AllIterative):
 
     Description:
         - Fuga is a linearized CFD model that can predict wake effects for offshore wind farms.
-        - It has the ability to work with different types of turbines for the same project,
-        which makes it useful for inter farm interactions
-        - An additional blockage model is added and the All2AllIterative wind farm model is used to model blockage effects
+        - It has the ability to work with different types of turbines for the same project, which makes it useful for inter farm interactions.
+        - An additional blockage model is added and the All2AllIterative wind farm model is used to model blockage effects.
     """
 
     def __init__(self, LUT_path, site, windTurbines, rotorAvgModel=None,
@@ -94,8 +92,8 @@ def main():
         windTurbines = V80()
         x, y = site.initial_position.T
 
-        for wf_model in [Ott_2014(path, site, windTurbines),
-                         Ott_2014_Blockage(path, site, windTurbines)]:
+        for wf_model in [Ott_Nielsen_2014(path, site, windTurbines),
+                         Ott_Nielsen_2014_Blockage(path, site, windTurbines)]:
 
             # run wind farm simulation
             sim_res = wf_model(x, y)

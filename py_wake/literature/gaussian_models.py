@@ -17,9 +17,8 @@ class Bastankhah_PorteAgel_2014(PropagateDownwind):
         J. Renew. Energy. 2014;70:116-23.
 
     Description:
-        - Conservation of mass and momentum is applied with the assumption of a Gaussian shape for the wake profile
-        in the calculation of the wake deficit
-        - Only one parameter needed to determine the velocity distribution: the wake expansion parameter k
+        - Conservation of mass and momentum is applied with the assumption of a Gaussian shape for the wake profile in the calculation of the wake deficit.
+        - Only one parameter needed to determine the velocity distribution: the wake expansion parameter k.
     """
 
     def __init__(self, site, windTurbines, k=0.0324555, ceps=.2, ct2a=ct2a_madsen, use_effective_ws=False,
@@ -62,15 +61,14 @@ class Niayifar_PorteAgel_2016(PropagateDownwind):
         Energies 2016, 9, 741; doi:10.3390/en9090741 [1]
 
     Features:
-        - Conservation of mass and momentum and a Gaussian shape for the wake profile
-        - Wake expansion function of local turbulence intensity
+        - Conservation of mass and momentum and a Gaussian shape for the wake profile.
+        - Wake expansion function of local turbulence intensity.
 
     Description:
         - The expansion rate 'k' varies linearly with local turbluence intensity: k = a1 I + a2.
-        The default constants are set according to publications by Porte-Agel's group, which are based
-        on LES simulations. Lidar field measurements by Fuertes et al. (2018) indicate that a = [0.35, 0.0] is also a valid selection.
-        - Wake superposition is represented by linearly adding the wakes
-        - The Crespo Hernandez turbulence model is used to calculate the added streamwise turbulence intensity, Eq 14 in [1]
+        - The default constants are set according to publications by Porte-Agel's group, which are based on LES simulations. Lidar field measurements by Fuertes et al. (2018) indicate that a = [0.35, 0.0] is also a valid selection.
+        - Wake superposition is represented by linearly adding the wakes.
+        - The Crespo Hernandez turbulence model is used to calculate the added streamwise turbulence intensity, Eq 14 in [1].
     """
 
     def __init__(self, site, windTurbines, a=[0.38, 4e-3], ceps=.2, superpositionModel=LinearSum(),
@@ -108,9 +106,9 @@ class Zong_PorteAgel_2020(PropagateDownwind):
         J. Fluid Mech. (2020), vol. 889, A8; doi:10.1017/jfm.2020.77
 
     Features:
-        - Conservation of mass and momentum and a Gaussian shape for the wake profile
-        - Wake expansion function of local turbulence intensity
-        - New wake width expression following the approach by Shapiro et al. (2018)
+        - Conservation of mass and momentum and a Gaussian shape for the wake profile.
+        - Wake expansion function of local turbulence intensity.
+        - New wake width expression following the approach by Shapiro et al. (2018).
 
     Description:
         Extension of the Niayifar et al. (2016) implementation with adapted
@@ -166,14 +164,13 @@ class Blondel_Cathelain_2020(PropagateDownwind):
         Wind Energ. Sci., 5, 1225–1236, 2020 https://doi.org/10.5194/wes-5-1225-2020 [1]
 
     Features:
-        - Wake profile transitions from top-hat at near wake to Gaussian at far wake
-        - characteristic wake width (sigma) function of turbulence intensity and CT
-        - evolution of super gaussian "n" order function of downwind distance and turbulence intensity
+        - Wake profile transitions from top-hat at near wake to Gaussian at far wake.
+        - characteristic wake width (sigma) function of turbulence intensity and CT.
+        - evolution of super gaussian "n" order function of downwind distance and turbulence intensity.
 
     Description:
-        Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f;
-        with a_f kept constant at 3.11
-        Calibrated parameters taken from Table 2 and 3 in [1]
+        - Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f; with a_f kept constant at 3.11.
+        - Calibrated parameters taken from Table 2 and 3 in [1].
     """
 
     def __init__(self, site, windTurbines, superpositionModel=SquaredSum(),
@@ -215,14 +212,13 @@ class Blondel_2023(PropagateDownwind):
         Wind Energ. Sci., 8, 141–147, 2023, 2023 https://doi.org/10.5194/wes-8-141-2023
 
     Features:
-        - Wake profile transitions from top-hat at near wake to Gaussian at far wake
-        - Characteristic wake width (sigma) function of turbulence intensity and CT
-        - Evolution of super gaussian "n" order function of downwind distance and turbulence intensity
+        - Wake profile transitions from top-hat at near wake to Gaussian at far wake.
+        - Characteristic wake width (sigma) function of turbulence intensity and CT.
+        - Evolution of super gaussian "n" order function of downwind distance and turbulence intensity.
 
     Description:
-        Linear relationship between turbulence intensity and the Gaussian wake width given by
-        the calibrated parameters: a_s, b_s, c_s
-        Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f;
+        - Linear relationship between turbulence intensity and the Gaussian wake width given by the calibrated parameters: a_s, b_s, c_s.
+        - Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f;
     """
 
     def __init__(self, site, windTurbines, superpositionModel=SquaredSum(),
