@@ -335,8 +335,18 @@ class EddyViscosityModel(PropagateDownwind):
         The superposition model should generally be ``MaxSum`` if using
         the EV model in the way it is typically implemented. This
         requires that the wind speeds in the deficit model are scaled by
-        the free incident wind speed rather than the effective (waked)
-        wind speed.
+        the free incident wind speeds rather than the effective (waked)
+        wind speeds.
+
+        Note that the wake deficits are scaled by the source turbine
+        wind speeds and do not account for any speed-up (or speed-down)
+        effects from the source turbines to the target turbines. For
+        example if a wake velocity deficit of 1.0 m/s is calculated from
+        a turbine with a free wind speed of 10.0 m/s to a turbine with a
+        free wind speed 8.0 m/s, the applied deficit is still 1.0 m/s
+        and not scaled by the wind speed reduction. In extreme cases,
+        this can lead to negative wind speed predictions, which will
+        trigger the calculations to exit with an error.
 
         The EV model has not been tested in conjunction with a
         deflection model.
