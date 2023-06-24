@@ -222,8 +222,8 @@ class MinimalisticWindFarmModel_a_calibrated(WindFarmModel):
         z0 = 0.0001        #[m] Fixed roughness length
         n_sector = 360     #[-] Number of sectors to consider 
         
-        power = 0          #[Wh] Initialisation of the production
-        ws_eff = 0         #[m/s] Initialisation of the effective wind speed
+        power = 0          #[Wh] Initioalisation of the production
+        ws_eff = 0         #[m/s] Initioalisation of the effective wind speed
         
         # Initialisation of the Weibull parameters list
         A_ws=np.array(n_sector*[0.0])             # [m/s] Weibull scale parameter
@@ -254,8 +254,9 @@ class MinimalisticWindFarmModel_a_calibrated(WindFarmModel):
                                                   Area=area)
                 power = power + sector_frequency[i]*power_sector
                 ws_eff = ws_eff + sector_frequency[i]*ws_eff_sector
-	power = power*0.91 # to account for the additional losses        
-
+        
+        power = 0.91*power  # To account for the additional losses
+        
         # Create LocalWind2 to get the correct structure to return, this one will not be used after
         localWind2 = self.site.local_wind(x_ilk, y_ilk, h_i,wd=0,ws=10)
         
