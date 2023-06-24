@@ -254,7 +254,8 @@ class MinimalisticWindFarmModel_a_calibrated(WindFarmModel):
                                                   Area=area)
                 power = power + sector_frequency[i]*power_sector
                 ws_eff = ws_eff + sector_frequency[i]*ws_eff_sector
-        
+	power = power*0.91 # to account for the additional losses        
+
         # Create LocalWind2 to get the correct structure to return, this one will not be used after
         localWind2 = self.site.local_wind(x_ilk, y_ilk, h_i,wd=0,ws=10)
         
