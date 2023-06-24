@@ -222,8 +222,8 @@ class MinimalisticWindFarmModel_a_calibrated(WindFarmModel):
         z0 = 0.0001        #[m] Fixed roughness length
         n_sector = 360     #[-] Number of sectors to consider 
         
-        power = 0          #[Wh] Initioalisation of the production
-        ws_eff = 0         #[m/s] Initioalisation of the effective wind speed
+        power = 0          #[Wh] Initialisation of the production
+        ws_eff = 0         #[m/s] Initialisation of the effective wind speed
         
         # Initialisation of the Weibull parameters list
         A_ws=np.array(n_sector*[0.0])             # [m/s] Weibull scale parameter
