@@ -33,7 +33,7 @@ class SimpleWindTurbine(WindTurbine):
         self.Ur = (8 * Pg / (np.pi * rho * CP * D**2))**(1 / 3)  # [m/s] Rated wind speed
 
         def power(ws):
-            return (Uin<=np.asarray(ws))*(np.asarray(ws)<=Uout)*np.minimum(Pg/(self.Ur**3-Uin**3)*(np.asarray(ws)**3-Uin**3), Pg)
+            return np.minimum(Uin<=np.asarray(ws))*(np.asarray(ws)<=Uout)*np.minimum(Pg/(self.Ur**3-Uin**3)*(np.asarray(ws)**3-Uin**3), Pg)
 
         def ct(ws):
             return np.minimum(CT, CT*(self.Ur/np.asarray(ws))**(3.2))
@@ -109,6 +109,7 @@ def power_production_a_calibrated(Pg, CT, D, H, z0, Aw, kw, Nturb, Area):
     Ctau = np.pi * CT / (8 * sr * sr)                   # [-] Wake parameter
     alpha = 1 / (Ur**3 - Uin**3)                        # [W.m-3.s3]
     beta = -Uin**3 / (Ur**3 - Uin**3)                   # [W]
+    nu = np.sqrt(0.5*Ctau)*D/(kappa**2*H)*np.log(H/z0)  # [-] wake eddy viscosity
     
     # Determination of the correction factor a
     PolynomialFeature_model = joblib.load('PolynomialFeature_model')
@@ -139,13 +140,13 @@ def power_production_a_calibrated(Pg, CT, D, H, z0, Aw, kw, Nturb, Area):
         np.exp(-(Uin / Aw)**kw) - np.exp(-(Ur / Aw)**kw)) + np.exp(-(Ur / Aw)**kw) - np.exp(-(Uout / Aw)**kw)  # [-] Without wake effects
 
     # Mean velocity at hub height with wake effects
-    Uh = G / (1 + np.log(G / (f * H)) / kappa * np.sqrt(Ctau + (kappa / np.log(H / z0))**2))
+    Uh = G / (1 + np.log(G / (f * H)) / kappa * np.sqrt(Ctau + (kappa / np.log(H / z0*(1-D/(2*H))**(nu/(1+nu))))**2))
 
     # Auxiliary variables
     gam = np.log(G / (f * H))
     delta = np.log(H / z0)
     eps1 = (1 + gam / delta) / (1 + gam / kappa * np.sqrt(Ctau + (kappa / delta)**2))
-    eps2 = (1 + gam / delta) / (1 + gam / kappa * np.sqrt(Ctau * (Ur / Uout)**3.2 + (kappa / delta)**2))
+    eps2 = (1 + gam / delta) / (1 + gam / kappa * np.sqrt(Ctau * (Ur / Uh)**3.2 + (kappa / delta)**2))
 
     # Power production with wake effects
     eta = alpha * (eps1 * Aw)**3 * gamma(1 + 3 / kw) * (gammainc(1 + 3 / kw, (Ur / (eps1 * Aw))**kw) - gammainc(1 + 3 / kw, (Uin / (eps1 * Aw))**kw)) + \
@@ -253,8 +254,6 @@ class MinimalisticWindFarmModel_a_calibrated(WindFarmModel):
                                                   Area=area)
                 power = power + sector_frequency[i]*power_sector
                 ws_eff = ws_eff + sector_frequency[i]*ws_eff_sector
-        
-        power = 0.91*power
         
         # Create LocalWind2 to get the correct structure to return, this one will not be used after
         localWind2 = self.site.local_wind(x_ilk, y_ilk, h_i,wd=0,ws=10)
