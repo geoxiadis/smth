@@ -297,7 +297,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         # Generate input of points for interpolator (ijlk for 'ti0', 'ct' and 'dw')
         interpolator_input = np.stack((matched_ti, matched_ct, matched_dw), axis=-1)
         interpolator_input_shape = interpolator_input.shape
-        flat_dim = int(np.product(interpolator_input_shape[:-1]))
+        flat_dim = int(np.prod(interpolator_input_shape[:-1]))
         interpolator_input = interpolator_input.reshape((flat_dim, 3), order="C")
 
         # Interpolate dimensionless centreline velocity deficit
