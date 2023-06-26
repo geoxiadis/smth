@@ -328,8 +328,7 @@ class EddyViscosityModel(PropagateDownwind):
         superpositionModel: SuperpositionModel = MaxSum(),
         deflectionModel: DeflectionModel = None,
         turbulenceModel: TurbulenceModel = ModifiedQuartonAndAinslieTurbulenceModel(),
-        rotorAvgModel: RotorAvgModel = None,
-    ):
+    ) -> None:
         """Initiate an ``EddyViscosityModel``.
 
         The superposition model should generally be ``MaxSum`` if using
@@ -357,17 +356,12 @@ class EddyViscosityModel(PropagateDownwind):
         of the Quarton and Ainslie turbulence model, in original or
         modified form.
 
-        As a default, the rotor averaging models are set individually on
-        the deficit and turbulence models, and not on the wind farm
-        model.
-
         :param site: the site object to create the model for
         :param windTurbines: the wind turbines object
         :param superpositionModel: the wake deficit superposition model
             to use for combining the wake impacts from multiple turbines
         :param deflectionModel: the wake deficit deflection model to use
         :param turbulenceModel: the wake added turbulence model to use
-        :param rotorAvgModel: the rotor average model to use
         """
         super().__init__(
             site=site,
@@ -376,5 +370,4 @@ class EddyViscosityModel(PropagateDownwind):
             superpositionModel=superpositionModel,
             deflectionModel=deflectionModel,
             turbulenceModel=turbulenceModel,
-            rotorAvgModel=rotorAvgModel,
         )
