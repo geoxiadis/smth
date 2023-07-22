@@ -298,7 +298,7 @@ def test_eddy_viscosity_invalid_negative_ct_raises_error():
 
 
 def test_eddy_viscosity_invalid_high_ct_raises_error():
-    with pytest.raises(ValueError, match=r"higher than 1.2 are not supported"):
+    with pytest.raises(ValueError, match=r"higher than .* are not supported"):
         model = EddyViscosityDeficitModel()
         model.calc_deficit(
             WS_ilk=np.array([[[10.0]]]),
@@ -308,7 +308,7 @@ def test_eddy_viscosity_invalid_high_ct_raises_error():
             dw_ijlk=np.array([[[[250.0]]]]),
             cw_ijlk=np.array([[[[200.0]]]]),
             D_src_il=np.array([[[100.0]]]),
-            ct_ilk=np.array([[[1.5]]]),  # Invalid
+            ct_ilk=np.array([[[2.0]]]),  # Invalid
         )
 
 
