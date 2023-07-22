@@ -27,8 +27,8 @@ DEFAULT_LOOKUP_TABLE_COORDINATES: Final[
     LookupTableCoordinates
 ] = LookupTableCoordinates(
     ti0=np.arange(0.0, 0.51, 0.01),
-    ct=np.arange(0.0, 1.21, 0.01),
-    dw=np.arange(2.0, 51.0, 0.05),
+    ct=np.arange(0.0, 1.42, 0.02),
+    dw=np.arange(2.0, 51.0, 0.1),
 )
 
 

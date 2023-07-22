@@ -258,9 +258,9 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
 
         if np.min(ct_ilk) < 0.0:
             raise ValueError("negative thrust coefficient (ct) values are not valid")
-        if np.max(ct_ilk) > 1.2:
+        if np.max(ct_ilk) > 1.4:
             raise ValueError(
-                "thrust coefficient (ct) values higher than 1.2 are not supported"
+                "thrust coefficient (ct) values higher than 1.4 are not supported"
             )
 
         ti0_ilk: np.ndarray
