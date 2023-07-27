@@ -11,6 +11,10 @@ def get_input(dw_ijlk, hcw_ijlk, z_ijlk, ct_ilk, TI_ilk, h_ilk, D_src_il, **_):
     return dw_ijlk, hcw_ijlk, z_ijlk, ct_ilk, TI_ilk, ratio
 
 
+def get_output(output_ijlk, **_):
+    return output_ijlk
+
+
 def main():
     if __name__ == '__main__':
         import matplotlib.pyplot as plt
@@ -28,7 +32,7 @@ def main():
         model = TensorFlowModel.load_h5(example_data_path +
                                         'generic_rans_surrogate/deficits_extra_data_l5_n64_selu.hdf5')
 
-        deficit_model = SurrogateDeficitModel(model, get_input)
+        deficit_model = SurrogateDeficitModel(model, get_input, get_output)
         wfm = All2AllIterative(site, wt, deficit_model, blockage_deficitModel=deficit_model,
                                turbulenceModel=STF2017TurbulenceModel())
         sim_res = wfm([0], [0], wd=270, ws=10)
