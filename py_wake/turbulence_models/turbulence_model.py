@@ -3,6 +3,8 @@ from py_wake.superposition_models import AddedTurbulenceSuperpositionModel, Line
 from py_wake.utils.model_utils import check_model, method_args, RotorAvgAndGroundModelContainer, XRLUTModel
 from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel
 from py_wake.ground_models.ground_models import GroundModel
+import inspect
+import numpy as np
 
 
 class TurbulenceModel(ABC, RotorAvgAndGroundModelContainer):
@@ -59,3 +61,56 @@ class XRLUTTurbulenceModel(TurbulenceModel, XRLUTModel, ):
     @property
     def args4model(self):
         return TurbulenceModel.args4model.fget(self) | XRLUTModel.args4model.fget(self)  # @UndefinedVariable
+
+
+class SurrogateTurbulenceModel(TurbulenceModel):
+    """Deficit model based on py_wake.utils.tensorflow_surrogate_utils.TensorFlowModel"""
+
+    def __init__(self, surrogateModel, get_input, get_output=None,
+                 addedTurbulenceSuperpositionModel=LinearSum(), rotorAvgModel=None, groundModel=None):
+        """
+        Parameters
+        ----------
+        surrogateModel : SurrogateModel
+            Surrogate model, e.g. a TensorFlowModel
+        get_input : function or None, optional
+            if None (default): The get_input method of XRDeficitModel is used. This option requires that the
+            names of the input dimensions matches names of the default PyWake keyword arguments, e.g. dw_ijlk, WS_ilk,
+            D_src_il, etc, or user-specified custom inputs
+            if function: The names of the input for the function should match the names of the default PyWake
+            keyword arguments, e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
+            The function should output interpolation coordinates [x_ijlk, y_ijlk, ...], where (x,y,...) match
+            the order of the dimensions of the dataarray
+        get_output : function or None, optional
+            if None (default): The interpolated output is scaled with the local wind speed, WS_ilk,
+            or local effective wind speed, WS_eff_ilk, depending on the value of <use_effective_ws>.
+            if function: The function should take the argument output_ijlk and an optional set of PyWake inputs. The
+            names of the PyWake inputs should match the names of the default PyWake keyword arguments,
+            e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
+            The function should return deficit_ijlk
+        """
+        TurbulenceModel.__init__(self, addedTurbulenceSuperpositionModel, rotorAvgModel=rotorAvgModel,
+                                 groundModel=groundModel)
+
+        self.surrogateModel = surrogateModel
+        self.get_input = get_input
+        if get_output:
+            self.get_output = get_output
+        self._args4model = (set(inspect.getfullargspec(self.get_input).args) |
+                            set(inspect.getfullargspec(self.get_output).args)) - {'self', 'output_ijlk'}
+
+    @property
+    def args4deficit(self):
+        return TurbulenceModel.args4deficit.fget(self) | set(self._args4model)
+
+    def get_output(self, output_ijlk, **_):
+        """Default get_output function.
+        This function just returns the surrogate output"""
+        return output_ijlk
+
+    def calc_added_turbulence(self, **kwargs):
+        inputs = self.get_input(**kwargs)
+        max_dim = max([len(v.shape) for v in inputs])
+        shape = np.max([(v.shape + (1,) * max_dim)[:max_dim] for v in inputs], 0)
+        inputs = np.array([np.broadcast_to(v, shape).ravel() for v in inputs]).T
+        return self.get_output(self.surrogateModel.predict_output(inputs).reshape(shape), **kwargs)
