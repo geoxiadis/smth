@@ -200,3 +200,64 @@ class XRLUTDeficitModel(WakeDeficitModel, BlockageDeficitModel, XRLUTModel):
 
     def calc_deficit(self, **kwargs):
         return XRLUTModel.__call__(self, **kwargs)
+
+
+class SurrogateDeficitModel(WakeDeficitModel, BlockageDeficitModel):
+    """Deficit model based on surrogates_interface.surrogates.SurrogateModel"""
+
+    def __init__(self, surrogateModel, get_input, get_output=None,
+                 rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False):
+        """
+        Parameters
+        ----------
+        da : xarray.dataarray
+            dataarray containing lookup table.
+        get_input : function or None, optional
+            if None (default): The get_input method of XRDeficitModel is used. This option requires that the
+            names of the input dimensions matches names of the default PyWake keyword arguments, e.g. dw_ijlk, WS_ilk,
+            D_src_il, etc, or user-specified custom inputs
+            if function: The names of the input for the function should match the names of the default PyWake
+            keyword arguments, e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
+            The function should output interpolation coordinates [x_ijlk, y_ijlk, ...], where (x,y,...) match
+            the order of the dimensions of the dataarray
+        get_output : function or None, optional
+            if None (default): The interpolated output is scaled with the local wind speed, WS_ilk,
+            or local effective wind speed, WS_eff_ilk, depending on the value of <use_effective_ws>.
+            if function: The function should take the argument output_ijlk and an optional set of PyWake inputs. The
+            names of the PyWake inputs should match the names of the default PyWake keyword arguments,
+            e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
+            The function should return deficit_ijlk
+        method : {'linear' or 'nearest} or [{'linear' or 'nearest}, ...]
+            interpolation method
+        bounds : {'limit', 'check', 'ignore'}
+            how to handle out-of-bounds coordinate interpolation, see GridInterpolator
+        """
+        BlockageDeficitModel.__init__(self, upstream_only=True, rotorAvgModel=rotorAvgModel, groundModel=groundModel)
+        WakeDeficitModel.__init__(self, rotorAvgModel, groundModel, use_effective_ws, use_effective_ti)
+        self.surrogateModel = surrogateModel
+        self.get_input = get_input
+        if get_output:
+            self.get_output = get_output
+        self._args4model = (set(inspect.getfullargspec(self.get_input).args) |
+                            set(inspect.getfullargspec(self.get_output).args)) - {'self', 'output_ijlk'}
+
+    @property
+    def args4deficit(self):
+        return WakeDeficitModel.args4deficit.fget(self) | set(self._args4model)
+
+    def get_output(self, output_ijlk, **kwargs):
+        """Default get_output function.
+        This function just scales the interpolated values with the local wind speed, WS_ilk, or local effective
+        wind speed, WS_eff_ilk, depending on the value of <use_effective_ws>"""
+        return output_ijlk * kwargs[self.WS_key][:, na]
+
+    def calc_deficit(self, **kwargs):
+        inputs = self.get_input(**kwargs)
+        shape = np.max([v.shape for v in inputs], 0)
+        inputs = np.array([np.broadcast_to(v, shape).ravel() for v in inputs]).T
+        deficit = self.get_output(self.surrogateModel.predict_output(inputs).reshape(shape), **kwargs)
+        return deficit
+
+    def wake_radius(self, D_src_il, dw_ijlk, **_):
+        # Set at twice the source radius for now
+        return np.zeros_like(dw_ijlk) + D_src_il[:, na, :, na]
