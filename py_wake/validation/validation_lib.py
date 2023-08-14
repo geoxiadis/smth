@@ -183,6 +183,41 @@ def deficit_linestyle(deficit_name):
         ls = 'dashed'
     return ls
 
+def Gau_k_from_Iu(Iu):
+    # Calculate Gaussian wake model expansion parameter k from a fit with LES
+    # doi:10.1088/1742-6596/625/1/012039
+    if Iu < 0.065:
+        k = 0.4 * 0.065
+    elif 0.065 <= Iu and Iu <= 0.15:
+        k = 0.4 * Iu + 0.004
+    elif Iu > 0.15:
+        k = 0.4 * 0.15
+    # Remove rounding errors
+    k = int(k * 10 ** 6) / 10 ** 6
+    return k
+
+def NOJ_k_from_location(location):
+    # Calculate NOJ wake model expansion parameter k based on onshore and offshore location
+    if location == 'offshore':
+        k = 0.04
+    elif location == 'onshore':
+        k = 0.1
+    else:
+        print('Location', location, 'is undefined. Choose onshore of offshore.')
+    return k
+
+def Niayifar_ZONG_k_from_Iu(Iu):
+    #calculate zong gaussian wake model expansion parameter k from k=a_1*I+a_2 similar to Niayifar - Porte Agel
+    #doi:10.3390/en9090741
+    a1, a2 = 0.38, 4e-3
+    k = a1*Iu + a2
+    return int(k * 10 ** 6) / 10 ** 6
+
+def get_downstream_label(sDown_D):
+    # Convert downstream distance label at 2.5 - > 2p5 or 4.0 -> 4
+    s = str(sDown_D)
+    return (s.rstrip('0').rstrip('.') if '.' in s else s).replace('.', 'p')
+
 # -----------------------------------------------------
 # Single wake plotting funcions
 # -----------------------------------------------------
