@@ -1,16 +1,13 @@
 import numpy as np
-from py_wake.noise_models.iso import ISONoiseModel
-from py_wake.tests import npt
-from numpy import newaxis as na
-from py_wake.deficit_models.gaussian import BastankhahGaussian, BastankhahGaussianDeficit
+from py_wake.deficit_models.utils import ct2a_mom1d
 from py_wake.examples.data.swt_dd_142_4100_noise.swt_dd_142_4100 import SWT_DD_142_4100
+from py_wake.wind_farm_models.predefined import BastankhahGaussian
+from py_wake.flow_map import XYGrid
+from py_wake.noise_models.iso import ISONoiseModel
 from py_wake.site._site import UniformSite
+from py_wake.tests import npt
 from py_wake.utils.layouts import rectangle
 from py_wake.utils.plotting import setup_plot
-from py_wake.flow_map import XYGrid
-from py_wake.deficit_models.utils import ct2a_mom1d
-from py_wake.superposition_models import SquaredSum
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind
 
 
 def test_iso_noise_model():

@@ -9,13 +9,15 @@ import pandas as pd
 from py_wake import NOJ, examples
 from py_wake import np
 from py_wake.deficit_models.fuga import FugaDeficit
-from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit, BastankhahGaussian
+from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit
 from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit
+from py_wake.deficit_models.utils import ct2a_mom1d
 from py_wake.deflection_models.jimenez import JimenezWakeDeflection
 from py_wake.examples.data.hornsrev1 import HornsrevV80, Hornsrev1Site, wt_x, wt_y, V80
 from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
+from py_wake.wind_farm_models.predefined import BastankhahGaussian
 from py_wake.flow_map import HorizontalGrid
 from py_wake.literature.iea37_case_study1 import IEA37CaseStudy1
 from py_wake.rotor_avg_models.rotor_avg_model import CGIRotorAvg
@@ -32,9 +34,7 @@ from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
 from py_wake.wind_turbines import WindTurbines
 from py_wake.wind_turbines._wind_turbines import WindTurbine
 from py_wake.wind_turbines.power_ct_functions import PowerCtFunctionList, PowerCtTabular, PowerCtFunctions
-
 import xarray as xr
-from py_wake.deficit_models.utils import ct2a_mom1d
 
 
 WindFarmModel.verbose = False

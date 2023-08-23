@@ -65,7 +65,8 @@ class EngineeringWindFarmModel(WindFarmModel):
         self.inputModifierModels = inputModifierModels
 
         if isinstance(superpositionModel, WeightedSum):
-            assert isinstance(wake_deficitModel, ConvectionDeficitModel)
+            assert isinstance(
+                wake_deficitModel, ConvectionDeficitModel), f'{wake_deficitModel.__class__.__name__} is not a ConvectionDeficitModel which is required by WeightedSum'
             assert rotorAvgModel is None or isinstance(rotorAvgModel, RotorCenter), \
                 "WeightedSum only works with RotorCenter"
         # TI_eff requires a turbulence model

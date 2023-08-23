@@ -3,7 +3,6 @@ from py_wake import np
 from numpy import newaxis as na
 from py_wake.utils.gradients import cabs
 from autograd.numpy.numpy_boxes import ArrayBox
-from py_wake.deficit_models.deficit_model import WakeRadiusTopHat
 
 
 class AreaOverlapAvgModel(RotorAvgModel):
@@ -12,7 +11,10 @@ class AreaOverlapAvgModel(RotorAvgModel):
         func(cw_ijlk=cw_ijlk * 0., **kwargs)
 
     def __call__(self, func, wake_radius_ijlk, cw_ijlk, D_dst_ijl, **kwargs):
-        assert isinstance(func.__self__, WakeRadiusTopHat), \
+        from py_wake.deficit_models.deficit_model import WakeRadiusTopHat
+        from py_wake.deficit_models.engineering_wake_model import TopHatWakeDeficit
+        assert (isinstance(func.__self__, WakeRadiusTopHat) or
+                isinstance(func.__self__, TopHatWakeDeficit)), \
             """AreaOverlapAvgModel uses the wake_radius from the wake_deficitModel.
             I.e. using it makes only sense on wake and turbulence models with a tophat shape
             that is limited by the wake width"""

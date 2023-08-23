@@ -1,14 +1,16 @@
-from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
-from py_wake.site._site import UniformWeibullSite
-from py_wake.tests import npt
-from py_wake import NOJ, IEA37SimpleBastankhahGaussian
-from py_wake.examples.data import hornsrev1
+import warnings
+
+import pytest
+
 from py_wake import np
 from py_wake.aep_calculator import AEPCalculator
-from py_wake.turbulence_models.stf import STF2017TurbulenceModel
-import pytest
-import warnings
 from py_wake.deficit_models.utils import ct2a_mom1d
+from py_wake.examples.data import hornsrev1
+from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
+from py_wake.wind_farm_models.predefined import NOJ, IEA37SimpleBastankhahGaussian
+from py_wake.site._site import UniformWeibullSite
+from py_wake.tests import npt
+from py_wake.turbulence_models.stf import STF2017TurbulenceModel
 
 
 @pytest.fixture(autouse=True)

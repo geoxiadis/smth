@@ -3,12 +3,15 @@ import pytest
 import matplotlib.pyplot as plt
 from py_wake import np
 from py_wake.deficit_models.deficit_model import WakeDeficitModel, BlockageDeficitModel, WakeRadiusTopHat
-from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit,\
-    BastankhahGaussianDeficit, BastankhahGaussian
+from py_wake.deficit_models.fuga import FugaMultiLUTDeficit
+from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit, BastankhahGaussianDeficit
 from py_wake.deficit_models.no_wake import NoWakeDeficit
+from py_wake.deficit_models.noj import NOJ
 from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit
+from py_wake.deficit_models.utils import ct2a_mom1d
 from py_wake.examples.data.hornsrev1 import V80
 from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines
+from py_wake.wind_farm_models.predefined import BastankhahGaussian
 from py_wake.flow_map import HorizontalGrid, XYGrid, YZGrid
 from py_wake.rotor_avg_models import gauss_quadrature, PolarGridRotorAvg, \
     polar_gauss_quadrature, EqGridRotorAvg, GQGridRotorAvg, CGIRotorAvg, GridRotorAvg, WSPowerRotorAvg
@@ -18,12 +21,9 @@ from py_wake.site._site import UniformSite
 from py_wake.superposition_models import SquaredSum, LinearSum, WeightedSum
 from py_wake.tests import npt
 from py_wake.turbulence_models.stf import STF2017TurbulenceModel
+from py_wake.turbulence_models.turbulence_model import TurbulenceModel
 from py_wake.utils.model_utils import get_models
 from py_wake.wind_farm_models.engineering_models import All2AllIterative, PropagateDownwind, EngineeringWindFarmModel
-from py_wake.turbulence_models.turbulence_model import TurbulenceModel
-from py_wake.deficit_models.fuga import FugaMultiLUTDeficit
-from py_wake.deficit_models.noj import NOJ
-from py_wake.deficit_models.utils import ct2a_mom1d
 
 
 EngineeringWindFarmModel.verbose = False

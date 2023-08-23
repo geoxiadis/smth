@@ -1,35 +1,38 @@
+import warnings
+
+from numpy import newaxis as na
 import pytest
 
 import matplotlib.pyplot as plt
 from py_wake import np
+from py_wake.deficit_models import VortexDipole
 from py_wake.deficit_models.deficit_model import WakeDeficitModel, BlockageDeficitModel
+from py_wake.deficit_models.deprecated.gaussian import ZongGaussianDeficit, NiayifarGaussianDeficit,\
+    CarbajofuertesGaussianDeficit, TurboGaussianDeficit
 from py_wake.deficit_models.fuga import FugaDeficit, Fuga
 from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, IEA37SimpleBastankhahGaussianDeficit,\
-    ZongGaussianDeficit, NiayifarGaussianDeficit, BastankhahGaussian, ZongGaussian,\
-    NiayifarGaussian, CarbajofuertesGaussianDeficit, TurboGaussianDeficit, IEA37SimpleBastankhahGaussian,\
-    BlondelSuperGaussianDeficit2020, BlondelSuperGaussianDeficit2023
+    BlondelSuperGaussianDeficit2020, BlondelSuperGaussianDeficit2023, LinearExpansionGaussianWakeDeficit
 from py_wake.deficit_models.gcl import GCLDeficit, GCL, GCLLocal
-from py_wake.deficit_models.noj import NOJDeficit, NOJ, NOJLocalDeficit, NOJLocal, TurboNOJDeficit
-from py_wake.deficit_models import VortexDipole
+from py_wake.deficit_models.no_wake import NoWakeDeficit
+from py_wake.deficit_models.noj import NOJDeficit, NOJLocalDeficit, TurboNOJDeficit
+from py_wake.deficit_models.utils import ct2a_mom1d, ct2a_madsen
 from py_wake.examples.data.hornsrev1 import Hornsrev1Site
 from py_wake.examples.data.iea37 import iea37_path
 from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
 from py_wake.examples.data.iea37.iea37_reader import read_iea37_windfarm
+from py_wake.wind_farm_models.predefined import NOJ, NOJLocal, BastankhahGaussian, IEA37SimpleBastankhahGaussian,\
+    ZongGaussian, NiayifarGaussian
 from py_wake.flow_map import HorizontalGrid, XYGrid, YZGrid
+from py_wake.rotor_avg_models.rotor_avg_model import CGIRotorAvg
+from py_wake.site._site import UniformSite
 from py_wake.superposition_models import SquaredSum, WeightedSum
 from py_wake.tests import npt
 from py_wake.tests.test_files import tfp
 from py_wake.turbulence_models.gcl_turb import GCLTurbulence
 from py_wake.turbulence_models.stf import STF2017TurbulenceModel
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
 from py_wake.utils.model_utils import get_models
-from numpy import newaxis as na
-from py_wake.deficit_models.no_wake import NoWakeDeficit
-from py_wake.rotor_avg_models.rotor_avg_model import CGIRotorAvg
-import warnings
-from py_wake.deficit_models.utils import ct2a_mom1d
+from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
 from py_wake.wind_turbines._wind_turbines import WindTurbine
-from py_wake.site._site import UniformSite
 
 
 class GCLLocalDeficit(GCLDeficit):
@@ -53,6 +56,12 @@ class GCLLocalDeficit(GCLDeficit):
                                                                 24190.84895, 37081.91938, 41369.66605, 23488.54863, 12938.48451,
                                                                 14065.00719, 30469.75602, 71831.78532, 16886.85274, 11540.51872,
                                                                 7490.70156])),
+        (LinearExpansionGaussianWakeDeficit(ct2a=ct2a_mom1d, k=0.0324555, ceps=.2,
+                                            use_effective_ws=False, use_effective_ti=False, rotorAvgModel=None, groundModel=None),
+            (355971.9717035484, [9143.74048, 8156.71681, 11311.92915, 13955.06316, 19807.65346,
+                                 25196.64182, 39006.65223, 41463.31044, 23042.22602, 12978.30551,
+                                 14899.26913, 32320.21637, 67039.04091, 17912.40907, 12225.04134,
+                                 7513.75582])),
 
         (BastankhahGaussianDeficit(ct2a=ct2a_mom1d), (355971.9717035484,
                                                       [9143.74048, 8156.71681, 11311.92915, 13955.06316, 19807.65346,
@@ -191,6 +200,9 @@ def test_huge_distance_blockage(deficitModel):
       [3.09, 3.09, 9., 9., 5.54, 5.54, 5.54, 5.54, 5.54, 5.54, 6.73, 6.73, 6.73, 6.73, 6.73, 6.73, 6.73]),
      (TurboNOJDeficit(ct2a=ct2a_mom1d),
       [3.51, 3.51, 3.51, 7.45, 7.45, 7.45, 7.45, 7.45, 7.13, 7.13, 7.13, 7.96, 7.96, 7.96, 7.96, 7.96, 7.96]),
+     (LinearExpansionGaussianWakeDeficit(ct2a=ct2a_mom1d, k=0.0324555, ceps=.2,
+                                         use_effective_ws=False, use_effective_ti=False, rotorAvgModel=None, groundModel=None),
+      [0.18, 3.6, 7.27, 8.32, 7.61, 6.64, 5.96, 6.04, 6.8, 7.69, 8.08, 7.87, 7.59, 7.46, 7.55, 7.84, 8.19]),
      (BastankhahGaussianDeficit(ct2a=ct2a_mom1d),
       [0.18, 3.6, 7.27, 8.32, 7.61, 6.64, 5.96, 6.04, 6.8, 7.69, 8.08, 7.87, 7.59, 7.46, 7.55, 7.84, 8.19]),
      (IEA37SimpleBastankhahGaussianDeficit(),
@@ -251,6 +263,9 @@ def test_deficitModel_wake_map(deficitModel, ref):
         (NOJDeficit(), [100., 75., 150., 100., 100.]),
         (NOJLocalDeficit(), [71., 46., 92., 71., 61.5]),
         (TurboNOJDeficit(), [99.024477, 61.553917, 123.107833, 92.439673, 97.034049]),
+        (LinearExpansionGaussianWakeDeficit(ct2a=ct2a_madsen, k=0.0324555, ceps=.2,
+                                            use_effective_ws=False, use_effective_ti=False, rotorAvgModel=None, groundModel=None),
+         [83.336286, 57.895893, 115.791786, 75.266662, 83.336286]),
         (BastankhahGaussianDeficit(), [83.336286, 57.895893, 115.791786, 75.266662, 83.336286]),
         (IEA37SimpleBastankhahGaussianDeficit(), [103.166178, 67.810839, 135.621678, 103.166178, 103.166178]),
         (FugaDeficit(LUT_path=tfp + 'fuga/2MW/Z0=0.00408599Zi=00400Zeta0=0.00E+00.nc'), [100, 50, 100, 100, 100]),
@@ -329,11 +344,19 @@ def test_wake_radius_not_implemented():
 @pytest.mark.parametrize(
     'deficitModel,aep_ref',
     # test that the result is equal to last run (no evidens that  these number are correct)
-    [(BastankhahGaussianDeficit(ct2a=ct2a_mom1d), (345846.3355259293,
-                                                   [8835.30563, 7877.90062, 11079.66832, 13565.65235, 18902.99769,
-                                                    24493.53897, 38205.75284, 40045.9948, 22264.97018, 12662.90784,
-                                                    14650.96535, 31289.90349, 65276.92307, 17341.39229, 12021.3049,
-                                                    7331.15717])),
+    [(LinearExpansionGaussianWakeDeficit(ct2a=ct2a_mom1d, k=0.0324555, ceps=.2,
+                                         use_effective_ws=False, use_effective_ti=False, rotorAvgModel=None, groundModel=None),
+      (345846.3355259293,
+       [8835.30563, 7877.90062, 11079.66832, 13565.65235, 18902.99769,
+        24493.53897, 38205.75284, 40045.9948, 22264.97018, 12662.90784,
+        14650.96535, 31289.90349, 65276.92307, 17341.39229, 12021.3049,
+        7331.15717])),
+     (BastankhahGaussianDeficit(ct2a=ct2a_mom1d),
+      (345846.3355259293,
+       [8835.30563, 7877.90062, 11079.66832, 13565.65235, 18902.99769,
+        24493.53897, 38205.75284, 40045.9948, 22264.97018, 12662.90784,
+        14650.96535, 31289.90349, 65276.92307, 17341.39229, 12021.3049,
+        7331.15717])),
      (ZongGaussianDeficit(ct2a=ct2a_mom1d, eps_coeff=0.35),
       (342944.4057168523, [8674.44232, 7806.22033, 11114.78804, 13549.48197, 18895.50866,
                            24464.34244, 38326.85532, 39681.61999, 21859.59465, 12590.25899,
@@ -370,7 +393,10 @@ def test_IEA37_ex16_convection(deficitModel, aep_ref):
 @pytest.mark.parametrize(
     'deficitModel,ref',
     # test that the result is equal to last run (no evidens that  these number are correct)
-    [(BastankhahGaussianDeficit(ct2a=ct2a_mom1d),
+    [(LinearExpansionGaussianWakeDeficit(ct2a=ct2a_mom1d, k=0.0324555, ceps=.2,
+                                         use_effective_ws=False, use_effective_ti=False, rotorAvgModel=None, groundModel=None),
+      [0.17, 3.55, 7.61, 8.12, 7.58, 6.63, 5.93, 6.04, 6.65, 7.35, 7.69, 7.65, 7.54, 7.45, 7.55, 7.84, 8.19]),
+     (BastankhahGaussianDeficit(ct2a=ct2a_mom1d),
       [0.17, 3.55, 7.61, 8.12, 7.58, 6.63, 5.93, 6.04, 6.65, 7.35, 7.69, 7.65, 7.54, 7.45, 7.55, 7.84, 8.19]),
      (ZongGaussianDeficit(ct2a=ct2a_mom1d, eps_coeff=0.35),
       [6.34, 7.05, 7.9, 8.15, 7.45, 6.19, 5.21, 5.26, 6.38, 7.32, 7.7, 7.54, 7.34, 7.18, 7.32, 7.69, 8.14]),

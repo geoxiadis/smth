@@ -1,27 +1,29 @@
-from py_wake import np
-from py_wake.site.shear import PowerShear
-from py_wake.site.xrsite import XRSite, GlobalWindAtlasSite
-import xarray as xr
-from py_wake.tests import npt
-import pytest
-import matplotlib.pyplot as plt
+from urllib.error import HTTPError, URLError
+import warnings
+
 from numpy import newaxis as na
-from py_wake.tests.test_files import tfp
+import pytest
+
+import matplotlib.pyplot as plt
+from py_wake import np
+from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit
+from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
 from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
 from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
-from py_wake.wind_turbines import WindTurbines
-from py_wake.deficit_models.gaussian import BastankhahGaussian, BastankhahGaussianDeficit
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind
-from py_wake.superposition_models import LinearSum
-from py_wake.tests.check_speed import timeit
-from py_wake.site._site import LocalWind
-from py_wake.utils import weibull
-from py_wake.deficit_models.noj import NOJ
+from py_wake.wind_farm_models.predefined import NOJ, BastankhahGaussian
 from py_wake.flow_map import XYGrid
-import warnings
-from urllib.error import HTTPError, URLError
-from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
+from py_wake.site._site import LocalWind
+from py_wake.site.shear import PowerShear
+from py_wake.site.xrsite import XRSite, GlobalWindAtlasSite
+from py_wake.superposition_models import LinearSum
+from py_wake.tests import npt
+from py_wake.tests.check_speed import timeit
+from py_wake.tests.test_files import tfp
+from py_wake.utils import weibull
 from py_wake.utils.gradients import fd, autograd, cs
+from py_wake.wind_farm_models.engineering_models import PropagateDownwind
+from py_wake.wind_turbines import WindTurbines
+import xarray as xr
 
 
 f = [0.035972, 0.039487, 0.051674, 0.070002, 0.083645, 0.064348,
