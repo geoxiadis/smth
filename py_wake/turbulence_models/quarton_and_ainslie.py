@@ -208,13 +208,14 @@ class QuartonAndAinslieTurbulenceModel(TurbulenceModel):
         # directly, but is currently not possible as it requires a
         # WakeRadiusTopHat to work. This should be possible to solve and
         # can replace this temporary solution in due course.
-        return np.sqrt(
-            self.area_overlap_avg_model.overlapping_area_factor(
-                wake_radius_ijlk=wake_radius_ijlk,
-                cw_ijlk=cw_ijlk,
-                D_dst_ijl=D_dst_ijl,
-            )
+        overlapping_area_factor = self.area_overlap_avg_model.overlapping_area_factor(
+            wake_radius_ijlk=wake_radius_ijlk,
+            cw_ijlk=cw_ijlk,
+            D_dst_ijl=D_dst_ijl,
         )
+        overlapping_area_factor = np.maximum(overlapping_area_factor, 0.0)
+        overlapping_area_factor = np.minimum(overlapping_area_factor, 1.0)
+        return np.sqrt(overlapping_area_factor)
 
     @staticmethod
     def calc_near_wake_length_ilk(
