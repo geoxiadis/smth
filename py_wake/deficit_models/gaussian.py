@@ -1,612 +1,396 @@
+from py_wake.deficit_models.deprecated import gaussian as gaussian_deprecated
 from numpy import newaxis as na
-from py_wake.utils.gradients import erf
+
 from py_wake import np
-from py_wake.utils.gradients import gamma
 from py_wake.deficit_models.deficit_model import DeficitModel, WakeDeficitModel
-from py_wake.deficit_models.deficit_model import ConvectionDeficitModel
-from py_wake.ground_models.ground_models import Mirror
+from py_wake.deficit_models.engineering_wake_model import EngineeringDeficitModel, LinearExpansionModel
 from py_wake.superposition_models import SquaredSum
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind
 from py_wake.utils.gradients import cabs
-from py_wake.utils import gradients
-from py_wake.utils.model_utils import DeprecatedModel
-from py_wake.rotor_avg_models.rotor_avg_model import RotorCenter
+from py_wake.utils.gradients import gamma
+from py_wake.utils.model_utils import DeprecatedModel, MissingModel
+
+
+from py_wake.deficit_models import deprecated
 from py_wake.deficit_models.utils import ct2a_madsen
+from py_wake.rotor_avg_models.rotor_avg_model import RotorCenter
+from py_wake.deficit_models.deficit_model import ConvectionDeficitModel
 
 
-class BastankhahGaussianDeficit(ConvectionDeficitModel):
-    """Implemented according to
+class LinearExpansionGaussianWakeDeficit(EngineeringDeficitModel, LinearExpansionModel, ConvectionDeficitModel):
+    """Centerline wake factor and expansion offset implemented according to
     Bastankhah M and Porté-Agel F.
     A new analytical model for wind-turbine wakes.
     J. Renew. Energy. 2014;70:116-23.
+
+    The wake radius is twice sigma according to Niayifar
     """
 
-    def __init__(self, ct2a=ct2a_madsen, k=0.0324555, ceps=.2,
-                 use_effective_ws=False, rotorAvgModel=None, groundModel=None):
-        ConvectionDeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                                        use_effective_ws=use_effective_ws)
-        self._k = k
+    def __init__(self, ct2a, k, ceps, rotorAvgModel, groundModel, use_effective_ws, use_effective_ti):
+        EngineeringDeficitModel.__init__(self, ct2a,
+                                         rotorAvgModel=rotorAvgModel, groundModel=groundModel,
+                                         use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
+        LinearExpansionModel.__init__(self, k=k)
         self._ceps = ceps
-        self.ct2a = ct2a
 
-    def k_ilk(self, **kwargs):
-        return np.array([[[self._k]]])
+    def shape_factor(self, cw_ijlk, sigma_sqr_ijlk, **_):
+        exponent_ijlk = -1 / (2 * sigma_sqr_ijlk) * cw_ijlk**2
+        return np.exp(exponent_ijlk)
 
-    def epsilon_ilk(self, ct_ilk, **_):
+    def calc_deficit(self, **kwargs):
+        sigma_sqr_ijlk = (self.wake_radius(**kwargs) / 2)**2
+        return EngineeringDeficitModel.calc_deficit(self, sigma_sqr_ijlk=sigma_sqr_ijlk, **kwargs)
+
+    @property
+    def args4model(self):
+        return (LinearExpansionModel.args4model.fget(self) |
+                EngineeringDeficitModel.args4model.fget(self))  # @UndefinedVariable
+
+    def expansion_offset(self, D_src_il, ct_ilk, **_):
         # not valid for CT >= 1.
         sqrt1ct_ilk = np.sqrt(1 - np.minimum(0.999, ct_ilk))
         beta_ilk = 1 / 2 * (1 + sqrt1ct_ilk) / sqrt1ct_ilk
+        epsilon_ilk = self._ceps * np.sqrt(beta_ilk)
 
-        return self._ceps * np.sqrt(beta_ilk)
+        return epsilon_ilk[:, na] * D_src_il[:, na, :, na]
 
-    def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
-        # dimensional wake expansion
-        return self.k_ilk(**kwargs)[:, na] * dw_ijlk + \
-            self.epsilon_ilk(ct_ilk)[:, na] * D_src_il[:, na, :, na]
+    def center_wake_factor(self, dw_ijlk, D_src_il, ct_ilk, sigma_sqr_ijlk, **_):
+        return 2. * self.ct2a(ct_ilk[:, na] * D_src_il[:, na, :, na]**2 / (8. * sigma_sqr_ijlk)) * (dw_ijlk > 0)
+
+    def wake_radius(self, dw_ijlk, **kwargs):
+        # according to Niayifar, the wake radius is twice sigma
+        return 2 * LinearExpansionModel.wake_radius(self, dw_ijlk, **kwargs)
 
     def ct_func(self, ct_ilk, **_):
         return ct_ilk[:, na]
 
-    def _calc_deficit(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
-        if self.WS_key == 'WS_jlk':
-            WS_ref_ijlk = kwargs[self.WS_key][na]
-        else:
-            WS_ref_ijlk = kwargs[self.WS_key][:, na]
-
-        # dimensional wake expansion
-        sigma_sqr_ijlk = (self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs))**2
-
-        ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
-        deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1,
-                                                       2. * self.ct2a(ctx_ijlk * D_src_il[:, na, :, na]**2 /
-                                                                      (8. * sigma_sqr_ijlk)))
-
-        return WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk, ctx_ijlk
-
-    def calc_deficit(self, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **kwargs):
-        _, sigma_sqr_ijlk, deficit_centre_ijlk, _ = self._calc_deficit(D_src_il, dw_ijlk, ct_ilk, **kwargs)
-
-        # term inside exp()
-        exponent_ijlk = -1 / (2 * sigma_sqr_ijlk) * cw_ijlk**2
-
-        # Point deficit
-        deficit_ijlk = deficit_centre_ijlk * np.exp(exponent_ijlk)
-        return deficit_ijlk
-
-    def wake_radius(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
-        # according to Niayifar, the wake radius is twice sigma
-        sigma_ijlk = self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
-        return 2. * sigma_ijlk
-
-    def calc_deficit_convection(self, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **kwargs):
+    def calc_deficit_convection(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
         if self.groundModel or (self.rotorAvgModel and not isinstance(self.rotorAvgModel, RotorCenter)):
             raise NotImplementedError(
                 "calc_deficit_convection (WeightedSum) cannot be used in combination with rotorAvgModels and GroundModels")
-        WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk, ctx_ijlk = self._calc_deficit(
-            D_src_il, dw_ijlk, ct_ilk, **kwargs)
+        sigma_sqr_ijlk = (self.wake_radius(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs) / 2)**2
+        deficit_centre_ijlk = self.center_wake_factor(dw_ijlk, D_src_il, ct_ilk, sigma_sqr_ijlk)
+        ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
         # Convection velocity
-        uc_ijlk = WS_ref_ijlk * (1. - self.ct2a(ctx_ijlk * D_src_il[:, na, :, na]**2 / (8. * sigma_sqr_ijlk)))
-        sigma_sqr_ijlk = np.broadcast_to(sigma_sqr_ijlk, deficit_centre_ijlk.shape)
+        uc_ijlk = (1. - self.ct2a(ctx_ijlk * D_src_il[:, na, :, na]**2 / (8. * sigma_sqr_ijlk)))
 
-        return deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk
-
-
-class BastankhahGaussian(PropagateDownwind, DeprecatedModel):
-    """Predefined wind farm model"""
-
-    def __init__(self, site, windTurbines, k=0.0324555, ceps=.2, ct2a=ct2a_madsen, use_effective_ws=False,
-                 rotorAvgModel=None, superpositionModel=SquaredSum(),
-                 deflectionModel=None, turbulenceModel=None, groundModel=None):
-        """
-        Parameters
-        ----------
-        site : Site
-            Site object
-        windTurbines : WindTurbines
-            WindTurbines object representing the wake generating wind turbines
-        k : float
-            Wake expansion factor
-        rotorAvgModel : RotorAvgModel, optional
-            Model defining one or more points at the down stream rotors to
-            calculate the rotor average wind speeds from.\n
-            if None, default, the wind speed at the rotor center is used
-        superpositionModel : SuperpositionModel, default SquaredSum
-            Model defining how deficits sum up
-        deflectionModel : DeflectionModel, default None
-            Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
-        turbulenceModel : TurbulenceModel, default None
-            Model describing the amount of added turbulence in the wake
-        """
-        PropagateDownwind.__init__(self, site, windTurbines,
-                                   wake_deficitModel=BastankhahGaussianDeficit(ct2a=ct2a, k=k, ceps=ceps,
-                                                                               use_effective_ws=use_effective_ws,
-                                                                               rotorAvgModel=rotorAvgModel,
-                                                                               groundModel=groundModel),
-                                   superpositionModel=superpositionModel, deflectionModel=deflectionModel,
-                                   turbulenceModel=turbulenceModel)
-        DeprecatedModel.__init__(self, 'py_wake.literature.gaussian_models.Bastankhah_PorteAgel_2014')
-
-
-class NiayifarGaussianDeficit(BastankhahGaussianDeficit):
-    """
-    Implemented according to:
-        Amin Niayifar and Fernando Porté-Agel
-        Analytical Modeling of Wind Farms: A New Approach for Power Prediction
-        Energies 2016, 9, 741; doi:10.3390/en9090741
-
-    Features:
-        - Wake expansion function of local turbulence intensity
-
-    Description:
-        The expansion rate 'k' varies linearly with local turbluence
-        intensity: k = a1 I + a2. The default constants are set
-        according to publications by Porte-Agel's group, which are based
-        on LES simulations. Lidar field measurements by Fuertes et al. (2018)
-        indicate that a = [0.35, 0.0] is also a valid selection.
-
-    """
-
-    def __init__(self, ct2a=ct2a_madsen, a=[0.38, 4e-3], ceps=.2, use_effective_ws=False, use_effective_ti=True,
-                 rotorAvgModel=None, groundModel=None):
-        DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                              use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
-        self._ceps = ceps
-        self.a = a
-        self.ct2a = ct2a
-
-    def k_ilk(self, **kwargs):
-        TI_ref_ilk = kwargs[self.TI_key]
-        k_ilk = self.a[0] * TI_ref_ilk + self.a[1]
-        return k_ilk
-
-
-class NiayifarGaussian(PropagateDownwind, DeprecatedModel):
-    def __init__(self, site, windTurbines, a=[0.38, 4e-3], ceps=.2, superpositionModel=SquaredSum(),
-                 deflectionModel=None, turbulenceModel=None, rotorAvgModel=None, groundModel=None):
-        """
-        Parameters
-        ----------
-        site : Site
-            Site object
-        windTurbines : WindTurbines
-            WindTurbines object representing the wake generating wind turbines
-        superpositionModel : SuperpositionModel, default SquaredSum
-            Model defining how deficits sum up
-        deflectionModel : DeflectionModel, default None
-            Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
-        turbulenceModel : TurbulenceModel, default None
-            Model describing the amount of added turbulence in the wake
-        """
-        PropagateDownwind.__init__(self, site, windTurbines,
-                                   wake_deficitModel=NiayifarGaussianDeficit(a=a, ceps=ceps,
-                                                                             rotorAvgModel=rotorAvgModel,
-                                                                             groundModel=groundModel),
-                                   superpositionModel=superpositionModel, deflectionModel=deflectionModel,
-                                   turbulenceModel=turbulenceModel)
-        DeprecatedModel.__init__(self, 'py_wake.literature.gaussian_models.Niayifar_PorteAgel_2016')
-
-
-class IEA37SimpleBastankhahGaussianDeficit(BastankhahGaussianDeficit):
-    """Implemented according to
-    https://github.com/byuflowlab/iea37-wflo-casestudies/blob/master/iea37-wakemodel.pdf
-
-    Equivalent to BastankhahGaussian for beta=1/sqrt(8) ~ ct=0.9637188
-    """
-
-    def __init__(self, rotorAvgModel=None, groundModel=None):
-        BastankhahGaussianDeficit.__init__(self, k=0.0324555, groundModel=groundModel, rotorAvgModel=rotorAvgModel)
-
-    def sigma_ijlk(self, WS_ilk, dw_ijlk, D_src_il, **_):
-        # dimensional wake expansion
-        eps = 1e-10
-        return self.k_ilk(WS_ilk=WS_ilk) * dw_ijlk * (dw_ijlk > eps) + (D_src_il / np.sqrt(8.))[:, na, :, na]
-
-    def _calc_layout_terms(self, WS_ilk, D_src_il, dw_ijlk, cw_ijlk, **_):
-        eps = 1e-10
-        sigma_ijlk = self.sigma_ijlk(WS_ilk, dw_ijlk, D_src_il)
-        self.layout_factor_ijlk = WS_ilk[:, na] * (np.exp(-0.5 * (cw_ijlk / sigma_ijlk)**2))
-        self.denominator_ijlk = 8. * (sigma_ijlk / D_src_il[:, na, :, na])**2
-
-    def calc_deficit(self, WS_ilk, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **_):
-        if not self.deficit_initalized:
-            self._calc_layout_terms(WS_ilk, D_src_il, dw_ijlk, cw_ijlk)
-
-        # ct_factor_ijlk = (1. - ct_ilk[:, na] / self.denominator_ijlk)
-        # # deficit_ijlk
-        # return self.layout_factor_ijlk * (1 - np.sqrt(ct_factor_ijlk))
-
-        return self.layout_factor_ijlk * (1 - np.sqrt((1. - ct_ilk[:, na] / self.denominator_ijlk)))
-
-
-class IEA37SimpleBastankhahGaussian(PropagateDownwind, DeprecatedModel):
-    """Predefined wind farm model"""
-
-    def __init__(self, site, windTurbines,
-                 rotorAvgModel=None, superpositionModel=SquaredSum(),
-                 deflectionModel=None, turbulenceModel=None):
-        """
-        Parameters
-        ----------
-        site : Site
-            Site object
-        windTurbines : WindTurbines
-            WindTurbines object representing the wake generating wind turbines
-        rotorAvgModel : RotorAvgModel, optional
-            Model defining one or more points at the down stream rotors to
-            calculate the rotor average wind speeds from.\n
-            if None, default, the wind speed at the rotor center is used
-        superpositionModel : SuperpositionModel, default SquaredSum
-            Model defining how deficits sum up
-        deflectionModel : DeflectionModel, default None
-            Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
-        turbulenceModel : TurbulenceModel, default None
-            Model describing the amount of added turbulence in the wake
-        """
-        PropagateDownwind.__init__(self, site, windTurbines,
-                                   wake_deficitModel=IEA37SimpleBastankhahGaussianDeficit(),
-                                   rotorAvgModel=rotorAvgModel, superpositionModel=superpositionModel,
-                                   deflectionModel=deflectionModel, turbulenceModel=turbulenceModel)
-        DeprecatedModel.__init__(self, 'py_wake.literature.iea37_case_study1.IEA37CaseStudy1')
-
-
-class ZongGaussianDeficit(NiayifarGaussianDeficit):
-    """
-    Implemented according to:
-        Haohua Zong and Fernando Porté-Agel
-        "A momentum-conserving wake superposition method for wind farm power prediction"
-        J. Fluid Mech. (2020), vol. 889, A8; doi:10.1017/jfm.2020.77
-
-    Features:
-        - Wake expansion function of local turbulence intensity
-        - New wake width expression following the approach by Shapiro et al. (2018)
-
-    Description:
-        Extension of the Niayifar et al. (2016) implementation with adapted
-        Shapiro wake model components, namely a gradual growth of the thrust
-        force and an expansion factor not falling below the rotor diameter.
-        Shapiro modelled the pressure and thrust force as a combined momentum
-        source, that are distributed in the streamwise direction with a Gaussian
-        kernel with a certain characteristic length. As a result the induction
-        changes following an error function. Zong chose to use a characteristic
-        length of D/sqrt(2) and applies it directly to the thrust not the induction
-        as Shapiro. This leads to the full thrust being active only 2D downstream of
-        the turbine. Zong's wake width expression is inspired by Shapiro's, however
-        the start of the linear wake expansion region (far-wake) was related to
-        the near-wake length by Vermeulen (1980). The epsilon factor that in the
-        original Gaussian model was taken to be a function of CT is now a constant
-        as proposed by Bastankhah (2016), as the near-wake length now effectively
-        dictates the origin of the far-wake.
-
-    """
-
-    def __init__(self, ct2a=ct2a_madsen, a=[0.38, 4e-3], deltawD=1. / np.sqrt(2), eps_coeff=1. / np.sqrt(8.), lam=7.5, B=3,
-                 use_effective_ws=False, use_effective_ti=True, rotorAvgModel=None, groundModel=None):
-        DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                              use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
-        self.a = a
-        self.deltawD = deltawD
-        # different from Zong, as he effectively took it from Bastankhah 2016, so here
-        # we use the original definition for consistency. In Zong eps_coeff=0.35.
-        self.eps_coeff = eps_coeff
-        self.lam = lam
-        self.B = B
-        self.ct2a = ct2a
-
-    def nw_length(self, ct_ilk, D_src_il, TI_eff_ilk, **_):
-        """
-        Implementation of Vermeulen (1980) near-wake length according to:
-            Amin Niayifar and Fernando Porté-Agel
-            Analytical Modeling of Wind Farms: A New Approach for Power Prediction
-            Energies 2016, 9, 741; doi:10.3390/en9090741
-
-        """
-        # major factors
-        lam, B = self.lam, self.B
-        ct_ilk = np.minimum(ct_ilk, 0.999)
-        m_ilk = 1. / np.sqrt(1. - ct_ilk)
-        r0_ilk = D_src_il[:, :, na] / 2. * np.sqrt((m_ilk + 1.) / 2.)
-        # wake expansion
-        dr_alpha_ilk = 2.5 * TI_eff_ilk + 5e-3
-        dr_m_ilk = (1. - m_ilk) * np.sqrt(1.49 + m_ilk) / (9.76 * (1. + m_ilk))
-        dr_lambda = 1.2e-2 * B * lam
-        # total expansion rate
-        drdx_ilk = np.sqrt(dr_alpha_ilk**2 + dr_m_ilk**2 + dr_lambda**2)
-        # fitted factor
-        n_ilk = np.sqrt(0.214 + 0.144 * m_ilk) * (1. - np.sqrt(0.134 + 0.124 * m_ilk)) / \
-            ((1. - np.sqrt(0.214 + 0.144 * m_ilk)) * (np.sqrt(0.134 + 0.124 * m_ilk)))
-        # Near-wake length
-        xnw_ilk = n_ilk * r0_ilk / drdx_ilk
-
-        return xnw_ilk
-
-    def ct_func(self, ct_ilk, dw_ijlk, D_src_il, **_):
-        # Slow growth of deficit until 2D downstream. Note that here we are using the
-        # formulation originally proposed by Shapiro, but with the factor implied by
-        # the relationship Zong used.
-        ctx_ijlk = ct_ilk[:, na] * (1. + erf(dw_ijlk / (np.sqrt(2.) *
-                                                        self.deltawD * D_src_il[:, na, :, na]))) / 2.
-        return ctx_ijlk
-
-    def epsilon_ilk(self, ct_ilk, **_):
-        return self.eps_coeff * np.ones_like(ct_ilk)
-
-    def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
-        TI_ref_ilk = kwargs[self.TI_key]
-        # near-wake length
-        xnw_ilk = self.nw_length(ct_ilk, D_src_il, TI_ref_ilk)
-        # wake growth rate
-        k_ilk = self.k_ilk(**kwargs)
-        # wake spreading
-        # initial size is here a combination of epsilon and the near-wake (needed modification, to ensure
-        # the intial wake width is identical to the original formulation. Zong just used a fixed value)
-        # non-dimensional wake expansion
-        # logaddexp(0,x) ~ log(1+exp(x)) without overflow
-        sigmaD_ijlk = (self.epsilon_ilk(ct_ilk)[:, na] + k_ilk[:, na, :, :] *
-                       gradients.logaddexp(0, (dw_ijlk - xnw_ilk[:, na, :, :]) / D_src_il[:, na, :, na]))
-
-        return sigmaD_ijlk * D_src_il[:, na, :, na]
-
-
-class ZongGaussian(PropagateDownwind, DeprecatedModel):
-    def __init__(self, site, windTurbines, a=[0.38, 4e-3], deltawD=1. / np.sqrt(2), lam=7.5, B=3,
-                 rotorAvgModel=None,
-                 superpositionModel=SquaredSum(), deflectionModel=None, turbulenceModel=None, groundModel=None):
-        """
-        Parameters
-        ----------
-        site : Site
-            Site object
-        windTurbines : WindTurbines
-            WindTurbines object representing the wake generating wind turbines
-        superpositionModel : SuperpositionModel, default SquaredSum
-            Model defining how deficits sum up
-        deflectionModel : DeflectionModel, default None
-            Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
-        turbulenceModel : TurbulenceModel, default None
-            Model describing the amount of added turbulence in the wake
-        """
-        PropagateDownwind.__init__(self, site, windTurbines,
-                                   wake_deficitModel=ZongGaussianDeficit(a=a, deltawD=deltawD, lam=lam, B=B,
-                                                                         rotorAvgModel=rotorAvgModel,
-                                                                         groundModel=groundModel),
-                                   superpositionModel=superpositionModel, deflectionModel=deflectionModel,
-                                   turbulenceModel=turbulenceModel)
-        DeprecatedModel.__init__(self, 'py_wake.literature.gaussian_models.Zong_PorteAgel_2020')
-
-
-class CarbajofuertesGaussianDeficit(ZongGaussianDeficit):
-    """
-    Modified Zong version with Gaussian constants from:
-        Fernando Carbajo Fuertes, Corey D. Markfor and Fernando Porté-Agel
-        "Wind TurbineWake Characterization with Nacelle-MountedWind Lidars
-        for Analytical Wake Model Validation"
-        Remote Sens. 2018, 10, 668; doi:10.3390/rs10050668
-
-    Features:
-        - Empirical correlation for epsilon
-        - New constants for wake expansion factor equation
-
-    Description:
-        Carbajo Fuertes et al. derived Gaussian wake model parameters from
-        nacelle liadar measurements from a 2.5MW turbine and found a
-        variation of epsilon with wake expansion, this in fact identical
-        to the formulation by Zong, only that the near-wake length is fixed
-        for Carbajo Fuertes at xth = 1.91 x/D. We took the relationships
-        found by them and incorporated them into the Zong formulation.
-
-    """
-
-    def __init__(self, ct2a=ct2a_madsen, a=[0.35, 0], deltawD=1. / np.sqrt(2), use_effective_ws=False, use_effective_ti=True,
-                 rotorAvgModel=None, groundModel=None):
-        DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                              use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
-        self.a = a
-        self.deltawD = deltawD
-        self.ct2a = ct2a
-
-    def epsilon_ilk(self, ct_ilk, **_):
-        return 0.34 * np.ones_like(ct_ilk)
-
-    def nw_length(self, ct_ilk, *args, **kwargs):
-        return 1.91 * np.ones_like(ct_ilk)
-
-
-class TurboGaussianDeficit(NiayifarGaussianDeficit):
-    """Implemented similar to Ørsted's TurbOPark model (https://github.com/OrstedRD/TurbOPark/blob/main/TurbOPark%20description.pdf)"""
-
-    def __init__(self, ct2a=ct2a_madsen, A=.04, cTI=[1.5, 0.8], ceps=.25, use_effective_ws=False,
-                 use_effective_ti=False, rotorAvgModel=None, groundModel=Mirror()):
-        """
-        Parameters
-        ----------
-        groundModel : GroundModel or None, optional
-            if None (default), the Mirror groundModel is used
-        """
-        DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                              use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
-        self.A = A
-        self.cTI = cTI
-        self._ceps = ceps
-        self.ct2a = ct2a
-
-    def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
-        # dimensional wake expansion
-        # expression unchanged from original formulation, however the intial wake width needs to
-        # be adjusted to agree with the Gaussian model formulation. It is replaced by the original
-        # formulation by Bastankhah
-        # ----TurboNOJ identical part
-        TI_ref_ilk = kwargs[self.TI_key]
-        c1, c2 = self.cTI
-        # constants related to ambient turbulence
-        alpha_ilk = c1 * TI_ref_ilk
-        # avoid zero division
-        ct_ilk = np.maximum(ct_ilk, 1e-20)
-        beta_ilk = c2 * TI_ref_ilk / np.sqrt(ct_ilk)
-
-        fac_ilk = self.A * TI_ref_ilk * D_src_il[..., na] / beta_ilk
-        term1_ijlk = np.sqrt((alpha_ilk[:, na] + beta_ilk[:, na] * dw_ijlk / D_src_il[:, na, :, na])**2 + 1)
-        term2_ilk = np.sqrt(1 + alpha_ilk**2)
-        term3_ijlk = (term1_ijlk + 1) * alpha_ilk[:, na]
-        term4_ijlk = (term2_ilk[:, na] + 1) * (alpha_ilk[:, na] +
-                                               beta_ilk[:, na] * cabs(dw_ijlk) / D_src_il[:, na, :, na])
-
-        expansion_ijlk = fac_ilk[:, na] * (term1_ijlk - term2_ilk[:, na] - np.log(term3_ijlk / term4_ijlk))
-
-        return expansion_ijlk + self.epsilon_ilk(ct_ilk)[:, na] * D_src_il[:, na, :, na]
-
-
-class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
-    """Implemented according to:
-        Blondel and Cathelain (2020)
-        An alternative form of the super-Gaussian wind turbine wake model
-        Wind Energ. Sci., 5, 1225–1236, 2020 https://doi.org/10.5194/wes-5-1225-2020 [1]
-
-    Features:
-        - Wake profile transitions from top-hat at near wake to Gaussian at far wake
-        - characteristic wake width (sigma) function of turbulence intensity and CT
-        - evolution of super gaussian "n" order function of downwind distance and turbulence intensity
-
-    Description:
-        Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f;
-        with a_f kept constant at 3.11
-        Calibrated parameters taken from Table 2 and 3 in [1]
-    """
-
-    def __init__(self, a_s=0.17, b_s=0.005, c_s=0.2,
-                 b_f=-0.68, c_f=2.41, use_effective_ws=False,
-                 use_effective_ti=True, rotorAvgModel=None, groundModel=None):
-        DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                              use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
-        self.a_s = a_s
-        self.b_s = b_s
-        self.c_s = c_s
-        self.b_f = b_f
-        self.c_f = c_f
-
-    def a_f(self, ct_ilk, **kwargs):
-        return 3.11
-
-    def beta_ilk(self, ct_ilk, **_):
-        # not valid for CT >= 1.
-        sqrt1ct_ilk = np.sqrt(1 - np.minimum(0.999, ct_ilk))
-        beta_ilk = 1 / 2 * (1 + sqrt1ct_ilk) / sqrt1ct_ilk
-        return beta_ilk
-
-    def sigma_ijlk(self, dw_ijlk, ct_ilk, D_src_il, **kwargs):
-        # compute normalized characteristic wake width
-        TI_ref_ijlk = kwargs[self.TI_key][:, na, :, :]
-        beta_ilk = self.beta_ilk(ct_ilk)
-        sigma_ijlk = (self.a_s * TI_ref_ijlk + self.b_s) * (dw_ijlk / D_src_il[:, na, :, na]) + \
-            self.c_s * np.sqrt(beta_ilk)[:, na, :, :]
-        return sigma_ijlk
-
-    def ct_func(self, ct_ilk, **_):
-        return ct_ilk[:, na]
-
-    def supG_n(self, dw_ijlk, D_src_il, ct_ilk, **kwargs):
-        # term inside exponent
-        ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
-        exp_TI_ijlk = self.b_f * (dw_ijlk / D_src_il[:, na, :, na])
-
-        # compute super gaussian n order
-        n = self.a_f(ctx_ijlk, **kwargs) * np.exp(exp_TI_ijlk) + self.c_f
-        return n
-
-    def _calc_deficit(self, ct_ilk, dw_ijlk, D_src_il, **kwargs):
-        # compute max velocity deficit at center of wake
-        n = self.supG_n(dw_ijlk, D_src_il, ct_ilk, **kwargs)
-        sigma_ijlk = self.sigma_ijlk(dw_ijlk, ct_ilk, D_src_il, **kwargs)
-        ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
-        a1 = 2 ** (2 / n - 1)
-        a2 = 2 ** (4 / n - 2)
-
-        deficit_center_ijlk = a1 - np.sqrt(a2 - ((n * ctx_ijlk) / (16.0 * gamma(2 / n) * np.sign(sigma_ijlk) *
-                                                                   (cabs(sigma_ijlk) ** (4 / n)))))
-
-        return deficit_center_ijlk
-
-    def calc_deficit(self, ct_ilk, dw_ijlk, cw_ijlk, D_src_il, **kwargs):
-        # if self.WS_key == 'WS_jlk':
-        #     WS_ref_ijlk = kwargs[self.WS_key][na]
-        # else:
         WS_ref_ijlk = kwargs[self.WS_key][:, na]
 
-        n = self.supG_n(dw_ijlk=dw_ijlk, D_src_il=D_src_il, ct_ilk=ct_ilk, **kwargs)
-        sigma_sqrt_ijlk = (self.sigma_ijlk(dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, D_src_il=D_src_il, **kwargs))**2
-        deficit_center_ijlk = self._calc_deficit(ct_ilk, dw_ijlk, D_src_il, **kwargs)
-
-        exponent_factor_ijlk = -1 / (2 * sigma_sqrt_ijlk) * (cw_ijlk / D_src_il[:, na, :, na]) ** n
-        shape_factor_ijlk = np.exp(exponent_factor_ijlk)
-
-        # rescaling with effective wind speed
-        deficit_ijlk = WS_ref_ijlk * deficit_center_ijlk * shape_factor_ijlk
-        return deficit_ijlk
-
-    def wake_radius(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
-        # according to Niayifar, the wake radius is twice sigma
-        sigma_ijlk = self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
-        return 2. * sigma_ijlk
+        return deficit_centre_ijlk * WS_ref_ijlk, uc_ijlk * WS_ref_ijlk, sigma_sqr_ijlk
 
 
-class BlondelSuperGaussianDeficit2023(BlondelSuperGaussianDeficit2020):
-    """Implemented according to:
-        Blondel and Cathelain (2020)
-        An alternative form of the super-Gaussian wind turbine wake model
-        Wind Energ. Sci., 5, 1225–1236, 2020 https://doi.org/10.5194/wes-5-1225-2020
+class BastankhahGaussianDeficit(gaussian_deprecated.BastankhahGaussianDeficit, DeprecatedModel):
+    def __init__(self, *args, **kwargs):
+        deprecated.gaussian.BastankhahGaussianDeficit.__init__(self, *args, **kwargs)
+        DeprecatedModel.__init__(self, "py_wake.deficit_models.deprecated.gaussian.BastankhahGaussianDeficit")
 
-        With calibrated parameters taken from Table 1 in:
-        Blondel (2023)
-        Brief communication: A momentum-conserving superposition method applied to
-        the super-Gaussian wind turbine wake model
-        Wind Energ. Sci., 8, 141–147, 2023, 2023 https://doi.org/10.5194/wes-8-141-2023
 
-    Features:
-        - Wake profile transitions from top-hat at near wake to Gaussian at far wake
-        - Characteristic wake width (sigma) function of turbulence intensity and CT
-        - Evolution of super gaussian "n" order function of downwind distance and turbulence intensity
+# class BastankhahGaussian(examples_wind_farm_models.BastankhahGaussian, DeprecatedModel):
+#     def __init__(self, *args, **kwargs):
+#         examples_wind_farm_models.BastankhahGaussian.__init__(self, *args, **kwargs)
+#         DeprecatedModel.__init__(self, "py_wake.examples_wind_farm_models.BastankhahGaussian")
 
-    Description:
-        Linear relationship between turbulence intensity and the Gaussian wake width given by
-        the calibrated parameters: a_s, b_s, c_s
-        Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f;
-    """
+class BastankhahGaussian(MissingModel):
+    def __init__(self, *args, **kwargs):
+        MissingModel.__init__(self, "py_wake.examples_wind_farm_models.BastankhahGaussian")
 
-    def __init__(self, a_s=0.28, b_s=0.01, c_s=[0.1, 0.1],
-                 b_f=[-25.98, -1.06], c_f=2, use_effective_ws=False,
-                 use_effective_ti=True, rotorAvgModel=None, groundModel=None):
-        DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                              use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
-        self.a_s = a_s
-        self.b_s = b_s
-        self.c_s = c_s
-        self.b_f = b_f
-        self.c_f = c_f
 
-    def a_f(self, ct_ilk, **kwargs):
-        a_f = -8.2635 * ct_ilk ** 3 + 8.5939 * ct_ilk ** 2 - 8.9691 * ct_ilk + 10.7286
-        return a_f
+# class NiayifarGaussianDeficit(BastankhahGaussianDeficit):
+#     """
+#     Implemented according to:
+#         Amin Niayifar and Fernando Porté-Agel
+#         Analytical Modeling of Wind Farms: A New Approach for Power Prediction
+#         Energies 2016, 9, 741; doi:10.3390/en9090741
+#
+#     Features:
+#         - Wake expansion function of local turbulence intensity
+#
+#     Description:
+#         The expansion rate 'k' varies linearly with local turbluence
+#         intensity: k = a1 I + a2. The default constants are set
+#         according to publications by Porte-Agel's group, which are based
+#         on LES simulations. Lidar field measurements by Fuertes et al. (2018)
+#         indicate that a = [0.35, 0.0] is also a valid selection.
+#
+#     """
+#
+#     def __init__(self, ct2a=ct2a_madsen, a=[0.38, 4e-3], ceps=.2, use_effective_ws=False, use_effective_ti=True,
+#                  rotorAvgModel=None, groundModel=None):
+#         DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
+#                               use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
+#         self._ceps = ceps
+#         self.a = a
+#         self.ct2a = ct2a
+#
+#     def k_ilk(self, **kwargs):
+#         TI_ref_ilk = kwargs[self.TI_key]
+#         k_ilk = self.a[0] * TI_ref_ilk + self.a[1]
+#         return k_ilk
 
-    def sigma_ijlk(self, dw_ijlk, ct_ilk, D_src_il, **kwargs):
-        # compute normalized characteristic wake width
-        TI_ref_ijlk = kwargs[self.TI_key][:, na, :, :]
-        beta_ilk = self.beta_ilk(ct_ilk)
-        sigma_ijlk = (self.a_s * TI_ref_ijlk + self.b_s) * (dw_ijlk / D_src_il[:, na, :, na]) + \
-                     (self.c_s[0] * ct_ilk[:, na, :, :] + self.c_s[1]) * np.sqrt(beta_ilk)[:, na, :, :]
-        return sigma_ijlk
 
-    def supG_n(self, dw_ijlk, D_src_il, ct_ilk, **kwargs):
-        TI_ref_ijlk = kwargs[self.TI_key][:, na]
-        # term inside exponent
-        ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
-        exp_TI_ijlk = (1.68 * np.exp(self.b_f[0] * TI_ref_ijlk) + self.b_f[1]) * (dw_ijlk / D_src_il[:, na, :, na])
-        # compute super gaussian n order
-        n = self.a_f(ctx_ijlk, **kwargs) * np.exp(exp_TI_ijlk) + self.c_f
-        return n
+class NiayifarGaussianDeficit(deprecated.gaussian.NiayifarGaussianDeficit, DeprecatedModel):
+    def __init__(self, *args, **kwargs):
+        deprecated.gaussian.NiayifarGaussianDeficit.__init__(self, *args, **kwargs)
+        DeprecatedModel.__init__(self, "py_wake.deficit_models.deprecated.gaussian.NiayifarGaussianDeficit")
+
+
+# class NiayifarGaussian(examples_wind_farm_models.NiayifarGaussian, DeprecatedModel):
+#     def __init__(self, *args, **kwargs):
+#         examples_wind_farm_models.NiayifarGaussian.__init__(self, *args, **kwargs)
+#         DeprecatedModel.__init__(self, "py_wake.examples_wind_farm_models.NiayifarGaussian")
+class NiayifarGaussian(MissingModel):
+    def __init__(self, *args, **kwargs):
+        MissingModel.__init__(self, "py_wake.examples_wind_farm_models.NiayifarGaussian")
+
+# class IEA37SimpleBastankhahGaussianDeficit(BastankhahGaussianDeficit):
+#     """Implemented according to
+#     https://github.com/byuflowlab/iea37-wflo-casestudies/blob/master/iea37-wakemodel.pdf
+#
+#     Equivalent to BastankhahGaussian for beta=1/sqrt(8) ~ ct=0.9637188
+#     """
+#
+#     def __init__(self, rotorAvgModel=None, groundModel=None):
+#         BastankhahGaussianDeficit.__init__(self, ct2a=ct2a_mom1d, k=0.0324555,
+#                                            groundModel=groundModel, rotorAvgModel=rotorAvgModel,
+#                                            use_effective_ws=False)
+#
+#     def expansion_offset(self, D_src_il, ct_ilk, **_):
+#         return (D_src_il / np.sqrt(8.))[:, na, :, na]
+
+
+class IEA37SimpleBastankhahGaussianDeficit(deprecated.gaussian.IEA37SimpleBastankhahGaussianDeficit, DeprecatedModel):
+    def __init__(self, *args, **kwargs):
+        deprecated.gaussian.IEA37SimpleBastankhahGaussianDeficit.__init__(self, *args, **kwargs)
+        DeprecatedModel.__init__(
+            self, "py_wake.deficit_models.deprecated.gaussian.IEA37SimpleBastankhahGaussianDeficit")
+
+# class IEA37SimpleBastankhahGaussian(examples_wind_farm_models.IEA37SimpleBastankhahGaussian, DeprecatedModel):
+#     def __init__(self, *args, **kwargs):
+#         examples_wind_farm_models.IEA37SimpleBastankhahGaussian.__init__(self, *args, **kwargs)
+#         DeprecatedModel.__init__(self, "py_wake.examples_wind_farm_models.IEA37SimpleBastankhahGaussian")
+
+
+class IEA37SimpleBastankhahGaussian(MissingModel):
+    def __init__(self, *args, **kwargs):
+        MissingModel.__init__(self, "py_wake.examples_wind_farm_models.IEA37SimpleBastankhahGaussian")
+
+# class ZongGaussianDeficit(NiayifarGaussianDeficit):
+#     """
+#     Implemented according to:
+#         Haohua Zong and Fernando Porté-Agel
+#         "A momentum-conserving wake superposition method for wind farm power prediction"
+#         J. Fluid Mech. (2020), vol. 889, A8; doi:10.1017/jfm.2020.77
+#
+#     Features:
+#         - Wake expansion function of local turbulence intensity
+#         - New wake width expression following the approach by Shapiro et al. (2018)
+#
+#     Description:
+#         Extension of the Niayifar et al. (2016) implementation with adapted
+#         Shapiro wake model components, namely a gradual growth of the thrust
+#         force and an expansion factor not falling below the rotor diameter.
+#         Shapiro modelled the pressure and thrust force as a combined momentum
+#         source, that are distributed in the streamwise direction with a Gaussian
+#         kernel with a certain characteristic length. As a result the induction
+#         changes following an error function. Zong chose to use a characteristic
+#         length of D/sqrt(2) and applies it directly to the thrust not the induction
+#         as Shapiro. This leads to the full thrust being active only 2D downstream of
+#         the turbine. Zong's wake width expression is inspired by Shapiro's, however
+#         the start of the linear wake expansion region (far-wake) was related to
+#         the near-wake length by Vermeulen (1980). The epsilon factor that in the
+#         original Gaussian model was taken to be a function of CT is now a constant
+#         as proposed by Bastankhah (2016), as the near-wake length now effectively
+#         dictates the origin of the far-wake.
+#
+#     """
+#
+#     def __init__(self, ct2a=ct2a_madsen, a=[0.38, 4e-3], deltawD=1. / np.sqrt(2), eps_coeff=1. / np.sqrt(8.), lam=7.5, B=3,
+#                  use_effective_ws=False, use_effective_ti=True, rotorAvgModel=None, groundModel=None):
+#         NiayifarGaussianDeficit.__init__(self, ct2a=ct2a, a=a,
+#                                          use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti,
+#                                          rotorAvgModel=rotorAvgModel, groundModel=groundModel)
+#         self.deltawD = deltawD
+#         # different from Zong, as he effectively took it from Bastankhah 2016, so here
+#         # we use the original definition for consistency. In Zong eps_coeff=0.35.
+#         self.eps_coeff = eps_coeff
+#         self.lam = lam
+#         self.B = B
+#
+#     def nw_length(self, ct_ilk, D_src_il, TI_eff_ilk, **_):
+#         """
+#         Implementation of Vermeulen (1980) near-wake length according to:
+#             Amin Niayifar and Fernando Porté-Agel
+#             Analytical Modeling of Wind Farms: A New Approach for Power Prediction
+#             Energies 2016, 9, 741; doi:10.3390/en9090741
+#
+#         """
+#         # major factors
+#         lam, B = self.lam, self.B
+#         ct_ilk = np.minimum(ct_ilk, 0.999)
+#         m_ilk = 1. / np.sqrt(1. - ct_ilk)
+#         r0_ilk = D_src_il[:, :, na] / 2. * np.sqrt((m_ilk + 1.) / 2.)
+#         # wake expansion
+#         dr_alpha_ilk = 2.5 * TI_eff_ilk + 5e-3
+#         dr_m_ilk = (1. - m_ilk) * np.sqrt(1.49 + m_ilk) / (9.76 * (1. + m_ilk))
+#         dr_lambda = 1.2e-2 * B * lam
+#         # total expansion rate
+#         drdx_ilk = np.sqrt(dr_alpha_ilk**2 + dr_m_ilk**2 + dr_lambda**2)
+#         # fitted factor
+#         n_ilk = np.sqrt(0.214 + 0.144 * m_ilk) * (1. - np.sqrt(0.134 + 0.124 * m_ilk)) / \
+#             ((1. - np.sqrt(0.214 + 0.144 * m_ilk)) * (np.sqrt(0.134 + 0.124 * m_ilk)))
+#         # Near-wake length
+#         xnw_ilk = n_ilk * r0_ilk / drdx_ilk
+#
+#         return xnw_ilk
+#
+#     def wake_radius(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
+#         TI_ref_ilk = kwargs[self.TI_key]
+#         # near-wake length
+#         xnw_ilk = self.nw_length(ct_ilk=ct_ilk, D_src_il=D_src_il, TI_eff_ilk=TI_ref_ilk)
+#         # wake growth rate
+#         k_ilk = self.expansion_factor(**kwargs)
+#         # wake spreading
+#         # initial size is here a combination of epsilon and the near-wake (needed modification, to ensure
+#         # the intial wake width is identical to the original formulation. Zong just used a fixed value)
+#         # non-dimensional wake expansion
+#         # logaddexp(0,x) ~ log(1+exp(x)) without overflow
+#         sigmaD_ijlk = (self.eps_coeff + k_ilk[:, na, :, :] *
+#                        gradients.logaddexp(0, (dw_ijlk - xnw_ilk[:, na, :, :]) / D_src_il[:, na, :, na]))
+#
+#         return sigmaD_ijlk * D_src_il[:, na, :, na]
+#
+#     def center_wake_factor(self, dw_ijlk, D_src_il, ct_ilk, sigma_sqr_ijlk, **_):
+#         # Modify ct to slow growth of deficit until 2D downstream. Note that here we are using the
+#         # formulation originally proposed by Shapiro, but with the factor implied by
+#         # the relationship Zong used.
+#         ctx_ijlk = ct_ilk[:, na] * (1. + erf(dw_ijlk / (np.sqrt(2.) *
+#                                                         self.deltawD * D_src_il[:, na, :, na]))) / 2.
+#
+#         # same as BastankhahGaussianDeficit.center_wake_factor but with j-dependent ct
+#         return 2. * self.ct2a(ctx_ijlk * D_src_il[:, na, :, na]**2 / (8. * sigma_sqr_ijlk)) * (dw_ijlk > 0)
+
+
+class ZongGaussianDeficit(deprecated.gaussian.ZongGaussianDeficit, DeprecatedModel):
+    def __init__(self, *args, **kwargs):
+        deprecated.gaussian.ZongGaussianDeficit.__init__(self, *args, **kwargs)
+        DeprecatedModel.__init__(self, "py_wake.deficit_models.deprecated.gaussian.ZongGaussianDeficit")
+
+
+# class ZongGaussian(examples_wind_farm_models.ZongGaussian, DeprecatedModel):
+#     def __init__(self, *args, **kwargs):
+#         examples_wind_farm_models.ZongGaussian.__init__(self, *args, **kwargs)
+#         DeprecatedModel.__init__(self, "py_wake.examples_wind_farm_models.ZongGaussian")
+class ZongGaussian(MissingModel):
+    def __init__(self, *args, **kwargs):
+        MissingModel.__init__(self, "py_wake.examples_wind_farm_models.ZongGaussian")
+# class CarbajofuertesGaussianDeficit(ZongGaussianDeficit):
+#     """
+#     Modified Zong version with Gaussian constants from:
+#         Fernando Carbajo Fuertes, Corey D. Markfor and Fernando Porté-Agel
+#         "Wind TurbineWake Characterization with Nacelle-MountedWind Lidars
+#         for Analytical Wake Model Validation"
+#         Remote Sens. 2018, 10, 668; doi:10.3390/rs10050668
+#
+#     Features:
+#         - Empirical correlation for epsilon
+#         - New constants for wake expansion factor equation
+#
+#     Description:
+#         Carbajo Fuertes et al. derived Gaussian wake model parameters from
+#         nacelle liadar measurements from a 2.5MW turbine and found a
+#         variation of epsilon with wake expansion, this in fact identical
+#         to the formulation by Zong, only that the near-wake length is fixed
+#         for Carbajo Fuertes at xth = 1.91 x/D. We took the relationships
+#         found by them and incorporated them into the Zong formulation.
+#
+#     """
+#
+#     def __init__(self, ct2a=ct2a_madsen, a=[0.35, 0], deltawD=1. / np.sqrt(2), use_effective_ws=False, use_effective_ti=True,
+#                  rotorAvgModel=None, groundModel=None):
+#         DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
+#                               use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
+#         self.k = a
+#         self.deltawD = deltawD
+#         self.ct2a = ct2a
+#
+#     def expansion_offset(self, D_src_il, ct_ilk, **_):
+#         epsilon_ilk = 0.34 * np.ones_like(ct_ilk)
+#         return epsilon_ilk * D_src_il[:, na, :, na]
+#
+#     def nw_length(self, ct_ilk, *args, **kwargs):
+#         return 1.91 * np.ones_like(ct_ilk)
+
+
+class CarbajofuertesGaussianDeficit(deprecated.gaussian.CarbajofuertesGaussianDeficit, DeprecatedModel):
+    def __init__(self, *args, **kwargs):
+        deprecated.gaussian.CarbajofuertesGaussianDeficit.__init__(self, *args, **kwargs)
+        DeprecatedModel.__init__(self, "py_wake.deficit_models.deprecated.gaussian.CarbajofuertesGaussianDeficit")
+
+#
+# class TurboGaussianDeficit(NiayifarGaussianDeficit):
+#     """Implemented similar to Ørsted's TurbOPark model (https://github.com/OrstedRD/TurbOPark/blob/main/TurbOPark%20description.pdf)"""
+#
+#     def __init__(self, ct2a=ct2a_madsen, A=.04, cTI=[1.5, 0.8], ceps=.25, use_effective_ws=False,
+#                  use_effective_ti=False, rotorAvgModel=None, groundModel=Mirror()):
+#         """
+#         Parameters
+#         ----------
+#         groundModel : GroundModel or None, optional
+#             if None (default), the Mirror groundModel is used
+#         """
+#         NiayifarGaussianDeficit.__init__(self, ct2a=ct2a, ceps=ceps,
+#                                          use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti,
+#                                          rotorAvgModel=rotorAvgModel, groundModel=groundModel)
+#         self.A = A
+#         self.cTI = cTI
+#
+#     def expansion_factor(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
+#         # dimensional wake expansion
+#         # expression unchanged from original formulation, however the intial wake width needs to
+#         # be adjusted to agree with the Gaussian model formulation. It is replaced by the original
+#         # formulation by Bastankhah
+#         # ----TurboNOJ identical part
+#         TI_ref_ilk = kwargs[self.TI_key]
+#         c1, c2 = self.cTI
+#         # constants related to ambient turbulence
+#         alpha_ilk = c1 * TI_ref_ilk
+#         # avoid zero division
+#         ct_ilk = np.maximum(ct_ilk, 1e-20)
+#         beta_ilk = c2 * TI_ref_ilk / np.sqrt(ct_ilk)
+#
+#         fac_ilk = self.A * TI_ref_ilk * D_src_il[..., na] / beta_ilk
+#         term1_ijlk = np.sqrt((alpha_ilk[:, na] + beta_ilk[:, na] * dw_ijlk / D_src_il[:, na, :, na])**2 + 1)
+#         term2_ilk = np.sqrt(1 + alpha_ilk**2)
+#         term3_ijlk = (term1_ijlk + 1) * alpha_ilk[:, na]
+#         term4_ijlk = (term2_ilk[:, na] + 1) * (alpha_ilk[:, na] +
+#                                                beta_ilk[:, na] * cabs(dw_ijlk) / D_src_il[:, na, :, na])
+#
+#         expansion_ijlk = fac_ilk[:, na] * (term1_ijlk - term2_ilk[:, na] - np.log(term3_ijlk / term4_ijlk))
+#
+#         return expansion_ijlk / dw_ijlk  # + self.epsilon_ilk(ct_ilk)[:, na] * D_src_il[:, na, :, na]
+
+
+class TurboGaussianDeficit(deprecated.gaussian.TurboGaussianDeficit, DeprecatedModel):
+    def __init__(self, *args, **kwargs):
+        deprecated.gaussian.TurboGaussianDeficit.__init__(self, *args, **kwargs)
+        DeprecatedModel.__init__(self, "py_wake.deficit_models.deprecated.gaussian.TurboGaussianDeficit")
+
+
+class BlondelSuperGaussianDeficit2020(deprecated.gaussian.BlondelSuperGaussianDeficit2020, DeprecatedModel):
+    def __init__(self, *args, **kwargs):
+        deprecated.gaussian.BlondelSuperGaussianDeficit2020.__init__(self, *args, **kwargs)
+        DeprecatedModel.__init__(self, "py_wake.deficit_models.deprecated.gaussian.BlondelSuperGaussianDeficit2020")
+
+
+class BlondelSuperGaussianDeficit2023(deprecated.gaussian.BlondelSuperGaussianDeficit2023, DeprecatedModel):
+    def __init__(self, *args, **kwargs):
+        deprecated.gaussian.BlondelSuperGaussianDeficit2023.__init__(self, *args, **kwargs)
+        DeprecatedModel.__init__(self, "py_wake.deficit_models.deprecated.gaussian.BlondelSuperGaussianDeficit2023")
 
 
 def main():
     if __name__ == '__main__':
         import matplotlib.pyplot as plt
+        from py_wake.wind_farm_models.engineering_models import PropagateDownwind
         from py_wake.deficit_models.noj import NOJDeficit, TurboNOJDeficit
         from py_wake.turbulence_models.stf import STF2017TurbulenceModel
         from py_wake.superposition_models import LinearSum

@@ -83,7 +83,15 @@ class XRLUTModel(Model):
 
 class DeprecatedModel():
     def __init__(self, new_model):
-        warnings.warn(f"""The {self.__class__.__name__} model is not representative of the setup used in the literature. For this, use {new_model} instead""", stacklevel=2)
+        warnings.warn(
+            f"""The {self.__class__.__name__} model is not representative of the setup used in the literature. For this, use {new_model} instead""",
+            stacklevel=2)
+
+
+class MissingModel():
+    def __init__(self, new_model):
+        raise Exception(
+            f"""The {self.__class__.__name__} model has been removed, use {new_model} instead""")
 
 
 class ModelMethodWrapper():
@@ -132,20 +140,24 @@ class RotorAvgAndGroundModelContainer():
 def get_exclude_dict():
     from py_wake.deficit_models.deficit_model import ConvectionDeficitModel, WakeDeficitModel,\
         BlockageDeficitModel
+    from py_wake.deficit_models.engineering_wake_model import EngineeringDeficitModel, TopHatWakeDeficit
+    from py_wake.deficit_models.gaussian import LinearExpansionGaussianWakeDeficit
     from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
     from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, NodeRotorAvgModel
     from py_wake.wind_farm_models.engineering_models import EngineeringWindFarmModel, PropagateDownwind
 
     from py_wake.superposition_models import LinearSum
-    from py_wake.deficit_models.noj import NOJDeficit
+    from py_wake.deficit_models.deprecated.noj import NOJDeficit
     from py_wake.turbulence_models.turbulence_model import XRLUTTurbulenceModel
     from py_wake.ground_models.ground_models import NoGround
     from py_wake.site.jit_streamline_distance import JITStreamlineDistance
+    from py_wake.wind_farm_models.predefined import PredefinedWindFarmModel
     return {
-        "WindFarmModel": ([EngineeringWindFarmModel], [], PropagateDownwind),
+        "WindFarmModel": ([EngineeringWindFarmModel], [PredefinedWindFarmModel], PropagateDownwind),
         "DeficitModel": ([ConvectionDeficitModel, BlockageDeficitModel, WakeDeficitModel, XRLUTDeficitModel],
                          [RotorAvgModel], NOJDeficit),
-        "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel], [RotorAvgModel], NOJDeficit),
+        "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel, EngineeringDeficitModel,
+                              LinearExpansionGaussianWakeDeficit, TopHatWakeDeficit], [RotorAvgModel], NOJDeficit),
         "RotorAvgModel": ([NodeRotorAvgModel], [], None),
         "SuperpositionModel": ([], [], LinearSum),
         "BlockageDeficitModel": ([XRLUTDeficitModel], [], None),
@@ -173,7 +185,10 @@ def get_models(base_class, exclude_None=False):
 
     model_lst = []
     base_class_module = inspect.getmodule(base_class)
-    for loader, module_name, is_pkg in pkgutil.walk_packages([os.path.dirname(base_class_module.__file__)]):
+    import py_wake
+    for loader, module_name, is_pkg in pkgutil.walk_packages([os.path.dirname(base_class_module.__file__),
+                                                              os.path.dirname(py_wake.literature.__file__),
+                                                              ]):
         if 'test' in module_name:
             continue
         module_name = base_class_module.__package__ + '.' + module_name
@@ -191,7 +206,7 @@ def get_models(base_class, exclude_None=False):
         except ModuleNotFoundError:  # pragma: no cover
             pass
 
-    if default is not None:
+    if default is not None and default in model_lst:
         model_lst.remove(model_lst[[m.__name__ for m in model_lst].index(default.__name__)])
     model_lst.insert(0, default)
     if exclude_None and None in model_lst:

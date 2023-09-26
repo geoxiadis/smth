@@ -4,6 +4,6 @@ from .gaussian_models import Bastankhah_PorteAgel_2014
 from .fuga import Ott_Nielsen_2014
 from .fuga import Ott_Nielsen_2014_Blockage
 from .gaussian_models import Niayifar_PorteAgel_2016
-from .noj import Jensen_1983
+from .jensen_1983 import Jensen_1983_TophatDeficit
 from .gaussian_models import Zong_PorteAgel_2020
 from .gaussian_models import Blondel_Cathelain_2020

@@ -6,7 +6,7 @@ from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, NiayifarG
     BlondelSuperGaussianDeficit2023, BlondelSuperGaussianDeficit2020
 from py_wake.turbulence_models.crespo import CrespoHernandez
 from py_wake.turbulence_models.stf import STF2017TurbulenceModel
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
+from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80, wt16_x, wt16_y
 
 
 class Bastankhah_PorteAgel_2014(PropagateDownwind):
@@ -221,18 +221,18 @@ def main():
         site = Hornsrev1Site()
         windTurbines = V80()
         x, y = site.initial_position.T
-
+        import time
         for wf_model in [Bastankhah_PorteAgel_2014(site, windTurbines),
                          Niayifar_PorteAgel_2016(site, windTurbines),
                          Zong_PorteAgel_2020(site, windTurbines),
                          Blondel_Cathelain_2020(site, windTurbines, turbulenceModel=CrespoHernandez())]:
-
+            t = time.time()
             # run wind farm simulation
-            sim_res = wf_model(x, y)
+            sim_res = wf_model(wt16_x, wt16_y)
 
             # calculate AEP
             aep = sim_res.aep().sum()
-            print(aep)
+            print(wf_model.__class__.__name__, time.time() - t, aep)
 
 
 main()

@@ -65,7 +65,7 @@ class GCLHillDeflection(DeflectionModel):
 def main():
     if __name__ == '__main__':
         import matplotlib.pyplot as plt
-        from py_wake.deficit_models.gaussian import ZongGaussian
+        from py_wake.wind_farm_models.predefined import ZongGaussian
         from py_wake.site.xrsite import UniformSite
         from py_wake.examples.data.hornsrev1 import V80
         from py_wake.flow_map import XYGrid

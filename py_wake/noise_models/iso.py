@@ -201,7 +201,7 @@ class ISONoiseModel:
 def main():
     if __name__ == '__main__':
         import matplotlib.pyplot as plt
-        from py_wake.deficit_models.gaussian import ZongGaussian
+        from py_wake.wind_farm_models.predefined import ZongGaussian
         from py_wake.flow_map import XYGrid
         from py_wake.turbulence_models.crespo import CrespoHernandez
 

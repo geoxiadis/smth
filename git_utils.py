@@ -9,7 +9,7 @@ import subprocess
 
 def _run_git_cmd(cmd, git_repo_path=None):
     git_repo_path = git_repo_path or os.getcwd()
-    if not os.path.isdir(os.path.join(git_repo_path, ".git")):
+    if not os.path.exists(os.path.join(git_repo_path, ".git")):
         raise Warning("'%s' does not appear to be a Git repository." % git_repo_path)
     try:
         process = subprocess.Popen(cmd,
@@ -17,9 +17,9 @@ def _run_git_cmd(cmd, git_repo_path=None):
                                    stderr=subprocess.PIPE,
                                    universal_newlines=True,
                                    cwd=os.path.abspath(git_repo_path))
-        stdout,stderr = process.communicate()
+        stdout, stderr = process.communicate()
         if process.returncode != 0:
-            raise EnvironmentError("%s\n%s"%(stdout, stderr))
+            raise EnvironmentError("%s\n%s" % (stdout, stderr))
         return stdout.strip()
 
     except EnvironmentError as e:

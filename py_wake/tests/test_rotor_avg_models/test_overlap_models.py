@@ -1,17 +1,21 @@
-import matplotlib.pyplot as plt
+import warnings
+
 import pytest
 
+import matplotlib.pyplot as plt
 from py_wake import np
 from py_wake.deficit_models.deficit_model import WakeRadiusTopHat, BlockageDeficitModel
-from py_wake.deficit_models.gaussian import ZongGaussian, BastankhahGaussianDeficit
-from py_wake.deficit_models.noj import NOJ, NOJDeficit
+from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit
+from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.examples.data.dtu10mw._dtu10mw import ct_curve
 from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
 from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines
+from py_wake.wind_farm_models.predefined import ZongGaussian, NOJ
 from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel
 from py_wake.rotor_avg_models.gaussian_overlap_model import GaussianOverlapAvgModel
 from py_wake.rotor_avg_models.rotor_avg_model import EqGridRotorAvg
 from py_wake.site._site import UniformSite
+from py_wake.superposition_models import WeightedSum, SquaredSum
 from py_wake.tests import npt
 from py_wake.turbulence_models.crespo import CrespoHernandez
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel
@@ -19,8 +23,6 @@ from py_wake.utils.model_utils import get_models
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
 from py_wake.wind_turbines._wind_turbines import WindTurbines
 from py_wake.wind_turbines.power_ct_functions import PowerCtFunction
-from py_wake.superposition_models import WeightedSum, SquaredSum
-import warnings
 
 
 def test_overlapping_area_factor_shapes():

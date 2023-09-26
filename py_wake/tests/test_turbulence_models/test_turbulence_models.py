@@ -1,31 +1,33 @@
+from numpy import newaxis as na
 import pytest
 
-from py_wake import np
+import matplotlib.pyplot as plt
 from py_wake import NOJ
+from py_wake import np
+from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit
 from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.deficit_models.noj import NOJDeficit
+from py_wake.deficit_models.utils import ct2a_mom1d
+from py_wake.examples.data.hornsrev1 import Hornsrev1Site
 from py_wake.examples.data.iea37._iea37 import IEA37Site
 from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines
+from py_wake.wind_farm_models.predefined import BastankhahGaussian
 from py_wake.flow_map import HorizontalGrid
+from py_wake.rotor_avg_models.rotor_avg_model import EqGridRotorAvg, GQGridRotorAvg, CGIRotorAvg
 from py_wake.site._site import UniformSite
 from py_wake.superposition_models import LinearSum, MaxSum
 from py_wake.superposition_models import SquaredSum
 from py_wake.tests import npt
 from py_wake.tests.test_deficit_models.test_noj import NibeA0
+from py_wake.turbulence_models.crespo import CrespoHernandez
+from py_wake.turbulence_models.gcl_turb import GCLTurbulence
 from py_wake.turbulence_models.stf import STF2005TurbulenceModel, STF2017TurbulenceModel, IECWeight
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel, XRLUTTurbulenceModel
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
-from py_wake.turbulence_models.gcl_turb import GCLTurbulence
-import matplotlib.pyplot as plt
-from py_wake.turbulence_models.crespo import CrespoHernandez
-from py_wake.deficit_models.gaussian import BastankhahGaussian, IEA37SimpleBastankhahGaussianDeficit
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site
-from py_wake.rotor_avg_models.rotor_avg_model import EqGridRotorAvg, GQGridRotorAvg, CGIRotorAvg
-from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
 from py_wake.utils.model_utils import get_models
-from numpy import newaxis as na
+from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
+from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
 import xarray as xr
-from py_wake.deficit_models.utils import ct2a_mom1d
+
 
 WindFarmModel.verbose = False
 

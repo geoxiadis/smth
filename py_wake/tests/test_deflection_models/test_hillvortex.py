@@ -1,15 +1,16 @@
-from py_wake import np
 import matplotlib.pyplot as plt
-from py_wake.deficit_models.gaussian import BastankhahGaussian, ZongGaussian, ZongGaussianDeficit
+from py_wake import np
+from py_wake.deficit_models.gaussian import ZongGaussianDeficit
 from py_wake.deflection_models import GCLHillDeflection
 from py_wake.examples.data.hornsrev1 import V80
+from py_wake.wind_farm_models.predefined import ZongGaussian, BastankhahGaussian
 from py_wake.flow_map import XYGrid
 from py_wake.site.xrsite import UniformSite
+from py_wake.tests import npt
+from py_wake.tests.check_speed import timeit
 from py_wake.turbulence_models.crespo import CrespoHernandez
 from py_wake.wind_turbines._wind_turbines import WindTurbine
 from py_wake.wind_turbines.power_ct_functions import PowerCtFunction
-from py_wake.tests import npt
-from py_wake.tests.check_speed import timeit
 
 
 def test_torque_result():
