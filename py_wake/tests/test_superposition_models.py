@@ -121,14 +121,9 @@ def test_diff_wake_blockage_superposition():
     npt.assert_array_almost_equal(sim_res.WS_eff.squeeze(), [10 - (4 - i) * .3 - np.sqrt(i * 2**2) for i in range(5)])
 
 
-def test_WeightedSum_blockage():
+def test_WeightedSum_ambient_ws():
     site = IEA37Site(16)
-    x, y = site.initial_position.T
     windTurbines = IEA37_WindTurbines()
-
-    wfm = All2AllIterative(site, windTurbines, wake_deficitModel=BastankhahGaussianDeficit(),
-                           # blockage_deficitModel=SelfSimilarityDeficit(),
-                           superpositionModel=WeightedSum())
-    wfm(x, y, wd=270)  # .flow_map().plot_wake_map()
-    # import matplotlib.pyplot as plt
-    # plt.show()
+    with pytest.raises(AssertionError, match='Weighted sum needs the local effective wind speed'):
+        All2AllIterative(site, windTurbines, wake_deficitModel=BastankhahGaussianDeficit(),
+                         superpositionModel=WeightedSum())
