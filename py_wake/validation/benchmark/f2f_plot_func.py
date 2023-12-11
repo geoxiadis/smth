@@ -18,7 +18,7 @@ from py_wake.examples.data.roedsand2 import SWT2p3_93
 from py_wake.wind_turbines import WindTurbines
 
 data_path = os.path.dirname(validation_utils.__file__) + '/data/'
-luts_path = os.path.dirname(validation_utils.__file__) + '/validation/fuga_files'
+luts_path = os.path.dirname(validation_utils.__file__) + '/fuga_files'
 
 # Loading measurements and RANS models, set up labels and colors
 datafile = data_path + 'NystedRoedsand2_WFdata_WFeff.dat'
@@ -46,7 +46,7 @@ path_NystedRoedsand = luts_path + '/Nysted_Roedsand/*.nc'
 # =============================================================================
 
 
-def plotF2FCase(wffm_list, wm_labels, linewidth, cRANS, colors, plotGAonly=False, save_plot=False, fullrose=False):
+def plotF2FCase(wffm_list, wm_labels, linewidth, colors, plotGAonly=False, save_plot=False, fullrose=False):
     """
     Plot the impact of the Nysted wind farm on the efficiency of Rødsand II
 
@@ -200,7 +200,7 @@ def plotF2FCase(wffm_list, wm_labels, linewidth, cRANS, colors, plotGAonly=False
         if not plotGAonly:
             power_ilk = wakemodel(wt_x, wt_y, ws=8, wd=wdir).power_ilk
             power_models_nr.append(power_ilk)
-        # else:
+        else:
         # Gaussian Averaging
             power_ilk = wakemodel(wt_x, wt_y, ws=8, wd=wdir).power_ilk
             powerGA = np.zeros(power_ilk.shape)
