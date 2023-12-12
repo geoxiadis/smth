@@ -253,7 +253,10 @@ def deficitPlotWFCases(WFcases, wffm_list, wm_labels, linewidth, cLES, cRANS, co
                              bbox_to_anchor=(-0.1, 0.84, 0.5, 0.4), numpoints=1, scatterpoints=1)
 
                 if save_plot is True:
-                    filename = case['name'] + '_wd' + str(int(wd)) + '_' + plot['name'] + '.png'
+                    if os.path.isdir('report/figures'):
+                        shutil.rmtree('report/figures')
+                    os.mkdir('report/figures')
+                    filename = case['name'] + '_wd' + str(int(wd)) + '_' + plot['name'] + '.pdf'
                     fig.savefig(filename)
                     shutil.copyfile(filename, 'report/figures/' + filename)
                 else:

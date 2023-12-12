@@ -233,6 +233,9 @@ def plotF2FCase(wffm_list, wm_labels, linewidth, colors, plotGAonly=False, save_
     fig.legend(lines, labels, ncol=ncol, loc='upper center', bbox_to_anchor=(0, 0, 1.05, 0.93), numpoints=1, scatterpoints=1)
 
     if save_plot is True:
+        if os.path.isdir('report/figures'):
+            shutil.rmtree('report/figures')
+        os.mkdir('report/figures')
         filename = 'Nysted_Roedsand2_WFeff_rect.' + 'pdf'
         fig.savefig(filename)
         shutil.copyfile(filename, 'report/figures/' + filename)

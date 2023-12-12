@@ -200,6 +200,9 @@ def deficitPlotSingleWakeCases(SingleWakeCases, wffm_list, wm_labels, linewidth,
         fig.legend(lines, labels, ncol=ncol, loc='upper center', bbox_to_anchor=(0, 0, 1.05, 0.93), numpoints=1, scatterpoints=1)
 
         if save_plot is True:
+            if os.path.isdir('report/figures'):
+                shutil.rmtree('report/figures')
+            os.mkdir('report/figures')
             filename = case['name'] + '.pdf'
             fig.savefig(filename)
             shutil.copyfile(filename, 'report/figures/' + filename)
@@ -354,26 +357,29 @@ def plotSingleWake_SWiFT(StabilityCases, wffm_list, wm_labels, wm_colors, linewi
             ax[i].set_xlim(-1.5, 1.5)
             ax[i].grid(True)
 
-        ax[0].set_ylabel('$(U-U_0)/U_0$', rotation=90)
-        ax[0].yaxis.labelpad = 20
-        plt.xlabel('$y/D$')
+            ax[0].set_ylabel('$(U-U_0)/U_0$', rotation=90)
+            ax[0].yaxis.labelpad = 20
+            plt.xlabel('$y/D$')
+    
+            fig.tight_layout(rect=[0, 0, 1, 0.85])
+    
+            lines, labels = ax[1].get_legend_handles_labels()
+    
+            ncol = Nmodels + Nwfmodels + 1
+    
+            fig.legend(lines, labels, ncol=ncol, loc='upper center', bbox_to_anchor=(0, 0, 1, 0.93),
+                       numpoints=1, scatterpoints=1)
 
-        fig.tight_layout(rect=[0, 0, 1, 0.85])
-
-        lines, labels = ax[1].get_legend_handles_labels()
-
-        ncol = Nmodels + Nwfmodels + 1
-
-        fig.legend(lines, labels, ncol=ncol, loc='upper center', bbox_to_anchor=(0, 0, 1, 0.93),
-                   numpoints=1, scatterpoints=1)
-
-        if save_plot is True:
-            outfile = 'SWiFT_' + case['case_name'] + '_hub' + '.' + 'pdf'
-            fig.savefig(outfile)
-            shutil.copyfile(outfile, 'report/figures/' + outfile)
-        else:
-            fig.suptitle(case['case_name'] + ' condition')
-            plt.show()
+            if save_plot is True:
+                if os.path.isdir('report/figures'):
+                    shutil.rmtree('report/figures')
+                os.mkdir('report/figures')
+                outfile = 'SWiFT_' + case['case_name'] + '_hub' + '.' + 'pdf'
+                fig.savefig(outfile)
+                shutil.copyfile(outfile, 'report/figures/' + outfile)
+            else:
+                fig.suptitle(case['case_name'] + ' condition')
+                plt.show()
 
 # =============================================================================
 # %% Single Wake cases - Integrated velocity deficit
@@ -450,6 +456,9 @@ def barPlotSingleWakeCases(SingleWakeCases, UdefCases, wm_labels, cLES, cRANS, c
                numpoints=1, scatterpoints=1)
 
     if save_plot is True:
+        if os.path.isdir('report/figures'):
+            shutil.rmtree('report/figures')
+        os.mkdir('report/figures')
         filename = 'IntegratedVelocityDeficit.pdf'
         fig.savefig(filename)
         shutil.copyfile(filename, 'report/figures/' + filename)
