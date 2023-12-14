@@ -163,8 +163,37 @@ The following engineering wake models of PyWake are tested:
         \item Quadratic wake summation.
         \item The wake expansion parameter $k$ is 0.04 and 0.1 for the offshore and onshore cases, respectively.
     \end{itemize}
+    \item NIAY - Gaussian wake model by \citet{Niayifar2016}. An extension of the wake model by Bastankhah and Porté-Agel, with:
+    \begin{itemize}
+        \item Linear wake summation.
+        \item Crespo Hernandez turbulence model.
+        \item 	Wake expansion parameter $k$ varies linearly with the local turbulence intensity, such that $k = a_1*I_{u,H,\infty} + a_2$. The constants $a1$ and $a2$ are based on Lidar measurements by Fuertes et al. (2018), where $a1 = 0.38$ and $a2 = 0.004$.
+    \end{itemize}
+    \item ZONG - Gaussian wake model by \citet{Zong2020}. Extended Gaussian wake model from Niayifar et al (2016), with:
+    \begin{itemize}
+        \item Weighted sum wake summation.
+        \item Crespo Hernandez turbulence model.
+        \item Wake expansion parameter $k$ varies linearly with the local turbulence intensity, such that $k = a_1*I_{u,H,\infty} + a_2$, where $a1 = 0.38$ and $a2 = 0.004$.
+        \item Redefinition of the wake width ($\sigma$) which includes an implementation of the near-wake length based on Vermeulen (1980).
+    \end{itemize}
+    \item FUGA - Linearized RANS solver based on a set of look up tables, with:
+    \begin{itemize}
+        \item Linear wake summation.
+        \item Look-up tables are created from the turbine’s diameter and hub height, as well as the reference roughness length of the selected site.
+    \end{itemize}
+    \item TURB - similar to Ørsted's TurbOPark model based on Gaussian wake model of Bastankhah and Porté-Agel, with:
+    \begin{itemize}
+        \item Quadratic wake summation.
+        \item Wake expansion calibration parameter $A = 0.04$.
+    \end{itemize}
+    \item SUPG - Super Gaussian wake deficit model by \citet{Blondel2020}, with:
+    \begin{itemize}
+        \item Linear wake summation.
+        \item The wake expansion is represented by the super gaussian order $n$, which transitions the wake profile from top-hat to gaussian.
+        \item The wake width expression ($\sigma$) is a function of the turbulence intensity and CT.
+    \end{itemize}
 \end{itemize}
-
+\newpage
 The following higher fidelity wake models are used as references:
 \begin{itemize}
     \item LES - Large-eddy simulations from \citet{Laan13b}.
@@ -174,40 +203,42 @@ The following higher fidelity wake models are used as references:
 
 \section{Test cases}
 The test cases used to validate the wake models are listed in Table \ref{tab:cases}.
-The first six test case are based on field measurements of the velocity deficit of single wind turbine wakes.
-Cases 7-13 are based on Supervisory Control And Data Acquisition (SCADA) measurements of the power in wind turbines rows within wind farms.
+The first nine test case are based on field measurements of the velocity deficit of single wind turbine wakes.
+Cases 10-16 are based on Supervisory Control And Data Acquisition (SCADA) measurements of the power in wind turbines rows within wind farms.
 Details of the single wake and wind farm cases and be found in \citet{Laan13b} and \citet{Laan14c}, respectively.
 Note that Table \ref{tab:cases} lists the total ambient turbulence intensity $I_{H,\infty}$, which is about 80\% of the stream-wise turbulence intensity.
 
 \begin{table}[h!]
 \centering
 \small
+\resizebox{\columnwidth}{!}{%
 \begin{tabular}{lllccccccc}
-\multicolumn{8}{c}{Single wake cases}\\
-\hline
-Case & Description & Measurement data & $I_{H,\infty}$ & $C_T$  &   $U_{H,\infty}$     & $D$  & $z_H$ \\
-     &	           &		      &	 [\%]	        & [-]      & [m/s] 		& [m]  & [m] \\
-\hline
-1 & Wieringermeer West 		& Met. mast, 4.5 years, $3.5D$ 		& 8.0  & 0.63  & 10.7 & 80 & 80\\
-2 & Wieringermeer East  	& Met. mast, 4.5 years, $2.5D$ 		& 6.0  & 0.63  & 10.9 & 80 & 80\\
-3 & Nibe B 			& Met. mast, 2 years, $2.5,4,7.5D$ 	& 8.0 & 0.89  &  8.5 & 40 & 45\\
-4 & Nordtank 500 		& Lidar, 102x10 minutes, $2, 5D^*$		& 11.2 & 0.70  & 7.45 & 41 & 36\\ 
-5 & NREL-5MW Low $I_{H,\infty}$ & -  					& 4.0 & 0.79 &8.0 & 126 & 90\\ 
-6 & NREL-5MW High $I_{H,\infty}$& -  					& 12.8 & 0.79 &8.0 & 126 & 90\\
-\hline
-\multicolumn{8}{c}{Wind farm cases}\\
-\hline
-Case & Description & Measurement data (SCADA) & $I_{H,\infty}$ & $s$  &   $U_{H,\infty}$     & $D$  & $z_H$ & \\
-     &	           &		      &	 [\%]	      &  [$D$]      & [m/s] 		& [m]  & [m] \\
-\hline
-7 & Wieringermeer 		& wd=275\degree$\pm$2.5\degree  & 9.6 & 3.8 & 8.35			& 80	& 80 	 	\\
-8 & Lillgrund south-west aligned  &wd=222\degree$\pm$2.5\degree, rows B and D  & 4.8 & 4.3	& 9			& 92.6	& 65 	\\
-9 & Lillgrund south-west staggered &wd=207\degree$\pm$2.5\degree, rows B and D & 4.8 &  & 9			& 92.6	& 65    \\
-10 & Lillgrund south-east aligned  &wd=120\degree$\pm$2.5\degree, rows 4 and 6 & 4.8 	& 3.2 & 9			& 92.6	& 65 	\\
-11 & Lillgrund south-east staggered &wd=105\degree$\pm$2.5\degree, rows 4 and 6 & 4.8 &   	& 9			& 92.6	& 65 	 \\
-12 & Lillgrund efficiency           & all wd $\pm$1.5\degree & 4.8 &         & 9                     & 92.6  & 65     \\
-13 & Horns Rev I                    &wd=270\degree$\pm$2.5\degree, rows 2-7     & 5.6 	& 7.0 & 8			& 80.0	& 70 	\\
-\end{tabular}
+\multicolumn{8}{c}{\textbf{Single Wake Cases}} \\ \hline
+Case & Description & Measurement Data & $I_{H,\infty}$ & $C_T$  &   $U_{H,\infty}$     & $D$  & $z_H$ \\      &	           &		      &	 [\%]	        & [-]      & [m/s] 		& [m]  & [m] \\ \hline
+1 & Wieringermeer West & Met. mast, 4.5 years, $3.5D$ & 8.0 & 0.63 & 10.7 & 80 & 80 \\
+2 & Wieringermeer East & Met. mast, 4.5 years, $2.5D$ & 6.0 & 0.63 & 10.9 & 80 & 80 \\
+3 & Nibe B & Met. mast, 2 years, $2.5,4,7.5D$ & 8.0 & 0.89 & 8.5 & 40 & 45 \\
+4 & Nordtank 500 & Lidar, 102x10 minutes, $2, 5D^*$ & 11.2 & 0.70 & 7.45 & 41 & 36 \\
+5 & NREL-5MW Low $I_{H,\infty}$ & - & 4.0 & 0.79 & 8.0 & 126 & 90 \\
+6 & NREL-5MW High $I_{H,\infty}$ & - & 12.8 & 0.79 & 8.0 & 126 & 90 \\
+7 & SWiFT Neutral & Lidar, 6x10 min, 1-4D & 8.8 & - & 8.7 & 27 & 32.1 \\
+8 & SWiFT Stable & Lidar, 6x10 min, 1-4D & 2.9 & - & 4.8 & 27 & 32.1 \\
+9 & SWiFT Unstable & Lidar, 5x10 min, 3D & 10 & - & 6.7 & 27 & 32.1 \\ \hline
+\multicolumn{8}{c}{\textbf{Wind Farm Cases}} \\ \hline
+Case & Description & Measurement Data (SCADA) & $I_{H,\infty}$  & s  &   $U_{H,\infty}$     & $D$  & $z_H$ & \\
+      &	           &		      &	 [\%]	      &  [$D$]      & [m/s] 		& [m]  & [m] \\ \hline
+10 & Wieringermeer & wd=275\degree$\pm$2.5\degree & 9.6 & 3.8 & 8.35 & 80 & 80 \\
+11 & Lillgrund south-west aligned & wd=222\degree$\pm$2.5\degree, rows B and D & 4.8 & 4.3 & 9 & 92.6 & 65 \\
+12 & Lillgrund south-west staggered & wd=207\degree$\pm$2.5\degree, rows B and D & 4.8 &  & 9 & 92.6 & 65 \\
+13 & Lillgrund south-east aligned & wd=120\degree$\pm$2.5\degree, rows 4 and 6 & 4.8 & 3.2 & 9 & 92.6 & 65 \\
+14 & Lillgrund south-east staggered & wd=105\degree$\pm$2.5\degree, rows 4 and 6 & 4.8 &  & 9 & 92.6 & 65 \\
+15 & Lillgrund efficiency & all wd $\pm$1.5\degree & 4.8 &  & 9 & 92.6 & 65 \\
+16 & Horns Rev I & wd=270\degree$\pm$2.5\degree, rows 2-7 & 5.6 & 7.0 & 8 & 80.0 & 70 \\ \hline
+\multicolumn{8}{c}{\textbf{Farm to Farm Cases}} \\ \hline
+Case & Description & Measurement Data (SCADA) & $I_{H,\infty}$ & $C_T$  &   $U_{H,\infty}$     & $D$  & $z_H$ \\      &	           &		      &	 [\%]	        & [-]      & [m/s] 		& [m]  & [m] \\ \hline
+17 & Nysted + Rødsand II & wd=57-110\degree & 7 & - & 8 & - & 68.5 
+\end{tabular}%
+}
 \caption{Summary of test cases. $I_{H,\infty}$ is the ambient total turbulence intensity at hub height based on the turbulent kinetic energy, $C_T$ is the thrust coefficient, $U_{H,\infty}$ is the free-stream velocity at hub height, $D$ is the rotor diameter, $z_H$ is the hub height, $s$ is the effective inter wind turbine spacing in a wind farm for a row-aligned wind direction (wd).}\label{tab:cases}
 \end{table}
 
@@ -247,7 +278,7 @@ The results of the measurements include errors bars, representing the statistica
 This procedure makes the errors quite small if the number of 10 min. is large.
 Note that the standard deviations of the Nibe single wake case are not available.
 
-\subsubsection{Single wake cases}
+\subsubsection{Single Wake Cases}
 The LES results in the single wake cases are shown as shaded areas, which represent the statistical uncertainty of the mean of six consecutive 10 min. bins (1 hour LES data).
 
 \begin{figure}[h!]
@@ -295,12 +326,35 @@ The LES results in the single wake cases are shown as shaded areas, which repres
 
 \begin{figure}[h!]
 \centering
+\includegraphics[scale=0.7,trim=0 0 0 0,clip=true]{figures/SWiFT_neutral_hub.pdf}
+\caption{Case 7: SWiFT neutral}
+\label{fig:Case7}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[scale=0.7,trim=0 0 0 0,clip=true]{figures/SWiFT_stable_hub.pdf}
+\caption{Case 8: SWiFT stable}
+\label{fig:Case8}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
+\includegraphics[scale=0.7,trim=0 0 0 0,clip=true]{figures/SWiFT_unstable_hub.pdf}
+\caption{Case 9: SWiFT unstable.}
+\label{fig:Case9}
+\end{figure}
+
+\begin{figure}[h!]
+\centering
 \includegraphics[scale=0.7,trim=0 0 0 0,clip=true]{figures/VelocityDeficit.pdf}
 \caption{Integrated velocity deficit ($1/\int{dy}\int{[1-U/U_0]dy}$) of single wake cases (Cases 1-6).}
 \label{fig:SingleWakeCasesVelDef}
 \end{figure}
 
-\subsubsection{Wind farm cases}
+
+
+\subsubsection{Wind Farm Cases}
 The models results in the wind farm cases are post processed by a Gaussian filter, which represents the uncertainty of measured reference wind direction, as discussed by \citet{Gaumond13}.
 The chosen standard deviation for each case is based on \citet{Laan14c}, where the standard deviation in the Horns Rev I wind farm is a linearly increasing with the distance to the location of the measured reference wind direction.
 The Gaussian averaged (GA) post processed results are shown by dashed lines in Figures \ref{fig:Case7}-\ref{fig:Case13}.
@@ -374,13 +428,6 @@ The Gaussian averaged (GA) post processed results are shown by dashed lines in F
 \end{figure}
 
 
-\begin{figure}[h!]
-\centering
-\includegraphics[scale=0.7,trim=0 10 0 0,clip=true]{figures/Lillgrund_WFeff.pdf}
-\caption{Case 12: Lillgrund wind farm efficiency.}
-\label{fig:Case12}
-\end{figure}
-
 \clearpage
 \begin{table}[h!]
 \centering
@@ -397,7 +444,19 @@ The Gaussian averaged (GA) post processed results are shown by dashed lines in F
 \label{fig:Case13}
 \end{figure}
 
-  
+\subsubsection{Farm to Farm Cases}
+In the provided example, three atmospheric inflow models are employed for the wind farm cluster with and without the Nysted wind farm. The simulations can be used to calculate the impact of Nysted on the wind farm efficiency of Rødsand II for three different inflow models. 
+
+
+\begin{figure}[h!]
+\centering
+\includegraphics[scale=0.7,trim=0 0 0 0,clip=true]{figures/NystedRoedsand2_WFeff_rect.pdf}
+\caption{Case 17: Wind farm efficiency with and without the effects of Rødsand II on Nystad.}
+\label{fig:Case13}
+\end{figure}
+
+\newpage
+
 \bibliographystyle{plainnat}
 \bibliography{bibliography}%\addcontentsline{toc}{section}{References}
 
