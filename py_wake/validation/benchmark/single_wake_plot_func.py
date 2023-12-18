@@ -255,11 +255,7 @@ def plotSingleWake_SWiFT(StabilityCases, wffm_list, wm_labels, wm_colors, linewi
     #  Loading Lidar data for each case: stable, neutral and unstable and each downstream distance
     # =============================================================================
 
-    turbmodel1 = turbmodels[0]
-    turbmodel2 = turbmodels[1]
-
     for case in StabilityCases:
-
         datafiles = []
         modelfiles = []
         modelfilesdown1 = []
@@ -271,28 +267,22 @@ def plotSingleWake_SWiFT(StabilityCases, wffm_list, wm_labels, wm_colors, linewi
                 datafiles.append(lidarfile)
             else:
                 datafiles.append('')
-            filename = data_path + 'SWiFT_' + case['case_name'] + '_RANS_' + turbmodel1 + '_hub_' + label + 'D.dat'
+            filename = data_path + 'SWiFT_' + case['case_name'] + '_RANS_' + turbmodels[0] + '_hub_' + label + 'D.dat'
             modelfilesdown1.append(filename)
-            filename = data_path + 'SWiFT_' + case['case_name'] + '_RANS_' + turbmodel2 + '_hub_' + label + 'D.dat'
+            filename = data_path + 'SWiFT_' + case['case_name'] + '_RANS_' + turbmodels[1] + '_hub_' + label + 'D.dat'
             modelfilesdown2.append(filename)
         modelfiles.append(modelfilesdown1)
         modelfiles.append(modelfilesdown2)
         modelcolors = ['g', 'c']
-
-        nDown = len(sDown_D)
-        Nmodels = len(modelfiles)
-        Nwfmodels = len(wffm_list)
-
         modeldashes = [(5, 0)] * len(modelfiles)
 
         # =============================================================================
         # Plotting
         # =============================================================================
 
-        fig, ax = plt.subplots(1, nDown, sharex=False, sharey=False, figsize=(6 * nDown, 5), facecolor='white')
-        # Trick for common x and y labels:
-        fig.add_subplot(111, frameon=False)
-        plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+        fig, ax = plt.subplots(1, len(sDown_D), sharex=False, sharey=False,
+                               figsize=(6 * len(sDown_D), 5), facecolor='white')
+        # plt.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
 
         # =============================================================================
         # References, based on measurements
@@ -303,25 +293,26 @@ def plotSingleWake_SWiFT(StabilityCases, wffm_list, wm_labels, wm_colors, linewi
         dataiU = 1     # index to get value of wind speed in lidar data file
         dataiUstd = 4  # index to get value of wind speed standard deviation in lidar data file
         dataNbins = 1  # number of bins
-
-        for i in range(nDown):
+        for i in range(len(sDown_D)):
             if datafiles[i] != '':
                 data = np.genfromtxt(datafiles[i], skip_header=True, delimiter=',')
-
                 # Number of bins is a constant
                 ldata = ax[i].errorbar(data[:, 0] - datawd0,
-                                       data[:, dataiU] / dataU0, yerr=data[:, dataiUstd] / dataU0 /
-                                       np.sqrt(dataNbins), color='k', elinewidth=1.0,
-                                       linewidth=0, marker='o', zorder=0, markersize=4, label='Data')
+                                       data[:, dataiU] / dataU0,
+                                       yerr=data[:, dataiUstd] / dataU0 / np.sqrt(dataNbins),
+                                       color='k', elinewidth=1.0, linewidth=0,
+                                       marker='o', zorder=0, markersize=4, label='Data')
 
         # =============================================================================
         # RANS,  based on EllipSys3D AD k-epsilon-fP
         # =============================================================================
 
-            for j in range(Nmodels):
+            for j in range(len(modelfiles)):
                 model = np.genfromtxt(modelfiles[j][i], skip_header=True)
-                lm, = ax[i].plot(model[:, 0], model[:, 1], modelcolors[j], linewidth=linewidth,
-                                 dashes=modeldashes[j], label='RANS')
+
+                lm, = ax[i].plot(model[:, 0],
+                                 model[:, 1],
+                                 modelcolors[j], linewidth=linewidth, dashes=modeldashes[j], label='RANS')
 
         # =============================================================================
         # Engineering Wind Farm Models
@@ -336,11 +327,8 @@ def plotSingleWake_SWiFT(StabilityCases, wffm_list, wm_labels, wm_colors, linewi
                 wakemodels.append(wfm(**kwargs))
 
         # Getting velocity deficit at a horizontal plane at the wind turbine's hub height for each downstream distance
-
         # TODO: check if fuga works with flow_blox
-
             for k, wakemodel in enumerate(wakemodels):
-
                 U_def = wakemodel(x=[0.0],
                                   y=[0.0],
                                   wd=[270.0],
@@ -349,37 +337,33 @@ def plotSingleWake_SWiFT(StabilityCases, wffm_list, wm_labels, wm_colors, linewi
                                                                                            len(model[:, 0])),
                                                                              h=h).WS_eff.squeeze()
 
-                l1, = ax[i].plot(model[:, 0], (U_def - case['U0']) / case['U0'],
+                l1, = ax[i].plot(model[:, 0],
+                                 (U_def - case['U0']) / case['U0'],
                                  wm_colors[k], linewidth=linewidth, label=wm_labels[k])
-
-            title = '%s %g %s' % ('$x=', sDown_D[i], 'D$')
-            ax[i].set_title(title)
+            ax[i].set_title(fr'$x={sDown_D[i]}D$')
             ax[i].set_xlim(-1.5, 1.5)
             ax[i].grid(True)
+            ax[0].set_ylabel(r'$(U-U_0)/U_0$', rotation=90)
+            fig.supxlabel(r'$y/D$')
 
-            ax[0].set_ylabel('$(U-U_0)/U_0$', rotation=90)
-            ax[0].yaxis.labelpad = 20
-            plt.xlabel('$y/D$')
-    
             fig.tight_layout(rect=[0, 0, 1, 0.85])
-    
             lines, labels = ax[1].get_legend_handles_labels()
     
-            ncol = Nmodels + Nwfmodels + 1
+            ncol = len(modelfiles) + len(wffm_list) + 1
     
             fig.legend(lines, labels, ncol=ncol, loc='upper center', bbox_to_anchor=(0, 0, 1, 0.93),
                        numpoints=1, scatterpoints=1)
 
-            if save_plot is True:
-                if os.path.isdir('report/figures'):
-                    shutil.rmtree('report/figures')
-                os.mkdir('report/figures')
-                outfile = 'SWiFT_' + case['case_name'] + '_hub' + '.' + 'pdf'
-                fig.savefig(outfile)
-                shutil.copyfile(outfile, 'report/figures/' + outfile)
-            else:
-                fig.suptitle(case['case_name'] + ' condition')
-                plt.show()
+        if save_plot is True:
+            if os.path.isdir('report/figures'):
+                shutil.rmtree('report/figures')
+            os.mkdir('report/figures')
+            outfile = 'SWiFT_' + case['case_name'] + '_hub' + '.' + 'pdf'
+            fig.savefig(outfile)
+            shutil.copyfile(outfile, 'report/figures/' + outfile)
+        else:
+            fig.suptitle(case['case_name'] + ' condition')
+            plt.show()
 
 # =============================================================================
 # %% Single Wake cases - Integrated velocity deficit
