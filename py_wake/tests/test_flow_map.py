@@ -16,6 +16,7 @@ from py_wake.literature.iea37_case_study1 import IEA37CaseStudy1
 from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind
 from py_wake.superposition_models import SquaredSum
+import warnings
 
 
 @pytest.fixture(autouse=True)
@@ -256,17 +257,17 @@ def test_min_ws_eff_line():
     fm = wfm(x, y, yaw=yaw_ilk, tilt=0, wd=270, ws=10).flow_map(
         XYGrid(x=np.arange(-100, 2000, 10), y=np.arange(-500, 500, 10)))
     min_ws_line = fm.min_WS_eff()
-
+    ref = [np.nan, -0., 11.68, 21.77, 30.59, 38.36, 45.29, 2.6,
+           -8.75, -18.82, -27.71, -35.59, -42.61, -0.8, -1.08, -1.34,
+           -1.59, -1.83, -2.07, -2.31, -2.55]
     if 0:
         fm.plot_wake_map()
         min_ws_line.plot()
+        plt.plot(min_ws_line.x[::10], ref, '.')
         print(np.round(min_ws_line[::10], 2))
         plt.show()
     plt.close('all')
-    npt.assert_array_almost_equal(min_ws_line[::10],
-                                  [np.nan, 0, 11.6, 21.64, 30.42, 38.17, 45.09, 2.6,
-                                   -8.65, -18.66, -27.51, -35.37, -42.38, -0.8, -1.09, -1.34,
-                                   -1.59, -1.83, -2.07, -2.31, -2.56], 2)
+    npt.assert_array_almost_equal(min_ws_line[::10], ref, 2)
 
 
 def test_plot_windturbines_with_wd_ws_dependent_yaw():
@@ -416,3 +417,22 @@ def test_plot_windturbines_with_tilt_and_yaw():
     if 0:
         plt.show()
     plt.close('all')
+
+
+def test_WS_WD_TI():
+    wfm = IEA37CaseStudy1(16)
+    sim_res = wfm(x=[0], y=[0], wd=[270], WS=8, WD=260, TI=0.01)
+    fm = sim_res.flow_map()
+    npt.assert_array_equal(fm.WS, 8)
+    npt.assert_array_equal(fm.WD, 260)
+    npt.assert_array_equal(fm.TI, 0.01)
+
+
+def test_wt_dependent_WS():
+    wfm = IEA37CaseStudy1(16)
+    sim_res = wfm(x=[0, 500], y=[0, 0], wd=[270], WS=[8, 9])
+    s = 'The WT dependent WS that was provided for the simulation is not available at the flow map points and therefore ignored'
+    with pytest.raises(UserWarning, match=s):
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', UserWarning)
+            sim_res.flow_map()

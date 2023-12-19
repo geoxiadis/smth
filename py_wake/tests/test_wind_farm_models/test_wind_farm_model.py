@@ -1,6 +1,6 @@
 import pytest
 from py_wake import np
-from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit
+from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit, BastankhahGaussian
 from py_wake.deficit_models.noj import NOJ
 
 from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80, wt9_y, wt9_x, wt16_x, wt16_y
@@ -18,6 +18,7 @@ from py_wake.literature.iea37_case_study1 import IEA37CaseStudy1
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind
 from py_wake.site._site import UniformSite
 from py_wake.deficit_models.utils import ct2a_mom1d
+import warnings
 
 
 def test_yaw_wrong_name():
@@ -208,6 +209,23 @@ def test_aep_gradients_with_types():
     npt.assert_array_almost_equal(daep_autograd, daep_fd)
 
 
+def test_aep_vs_aep():
+    import numpy as np
+
+    windTurbines = V80()
+    site = Hornsrev1Site()
+    wf_model = BastankhahGaussian(site, windTurbines)
+
+    npt.assert_array_almost_equal(wf_model(wt16_x, wt16_y).aep(with_wake_loss=False).values.sum(),
+                                  wf_model.aep(wt16_x, wt16_y, with_wake_loss=False))
+    npt.assert_almost_equal(wf_model(wt16_x, wt16_y).aep(with_wake_loss=True).values.sum(),
+                            wf_model.aep(wt16_x, wt16_y, with_wake_loss=True))
+
+    npt.assert_array_almost_equal(wf_model.aep(wt16_x, wt16_y, with_wake_loss=True) /
+                                  wf_model.aep(wt16_x, wt16_y, with_wake_loss=False),
+                                  0.95, 2)
+
+
 @pytest.mark.parametrize('n_wt, shape,dims', [(16, (16,), ('wt',)),
                                               (12, (12,), ('wt',)),
                                               (12, (16,), ('wd',)),
@@ -252,8 +270,10 @@ def test_wd_dependent_wt_positions():
     wfm = IEA37CaseStudy1(16)
     sim_res = wfm(x=[[-100, 0, 100], [100, 0, -100]], y=[[0, 100, 0],
                                                          [0, -100, 0]], wd=[0, 90, 180], WS=[[[5]], [[10]]])
-    ws_eff = sim_res.flow_map().WS_eff.interp(
-        x=('z', [-100, -300, 100]), y=('z', [-300, 100, 300]), wd=('z', [0, 90, 180])).squeeze().values
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', UserWarning)
+        ws_eff = sim_res.flow_map().WS_eff.interp(
+            x=('z', [-100, -300, 100]), y=('z', [-300, 100, 300]), wd=('z', [0, 90, 180])).squeeze().values
     npt.assert_array_equal(ws_eff[0], ws_eff)
     if 0:
         for wd, ax in zip(sim_res.wd, plt.subplots(3, 1, figsize=(4, 10))[1]):

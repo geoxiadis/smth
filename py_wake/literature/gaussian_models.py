@@ -33,6 +33,8 @@ class Bastankhah_PorteAgel_2014(PropagateDownwind):
             WindTurbines object representing the wake generating wind turbines
         k : float
             Wake expansion factor
+        use_effective_ws : bool
+            Option to use either the local (True) or free-stream wind speed (False) experienced by the ith turbine
         rotorAvgModel : RotorAvgModel, optional
             Model defining one or more points at the down stream rotors to
             calculate the rotor average wind speeds from.\n
@@ -73,7 +75,7 @@ class Niayifar_PorteAgel_2016(PropagateDownwind):
 
     def __init__(self, site, windTurbines, a=[0.38, 4e-3], ceps=.2, superpositionModel=LinearSum(),
                  deflectionModel=None, turbulenceModel=CrespoHernandez(), rotorAvgModel=None, groundModel=None,
-                 use_effective_ws=False, use_effective_ti=True):
+                 use_effective_ws=True, use_effective_ti=True):
         """
         Parameters
         ----------
@@ -87,6 +89,10 @@ class Niayifar_PorteAgel_2016(PropagateDownwind):
             Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
         turbulenceModel : TurbulenceModel, default CrespoHernandez
             Model describing the amount of added turbulence in the wake
+        use_effective_ws : bool
+            Option to use either the local (True) or free-stream (False) wind speed experienced by the ith turbine
+        use_effective_ti : bool
+            Option to use either the local (True) or free-stream (False) turbulence intensity experienced by the ith turbine
         """
         PropagateDownwind.__init__(self, site, windTurbines,
                                    wake_deficitModel=NiayifarGaussianDeficit(a=a, ceps=ceps,
@@ -131,7 +137,7 @@ class Zong_PorteAgel_2020(PropagateDownwind):
     def __init__(self, site, windTurbines, a=[0.38, 4e-3], deltawD=1. / np.sqrt(2), lam=7.5, B=3,
                  rotorAvgModel=None,
                  superpositionModel=WeightedSum(), deflectionModel=None, turbulenceModel=CrespoHernandez(), groundModel=None,
-                 use_effective_ws=False, use_effective_ti=True):
+                 use_effective_ws=True, use_effective_ti=True):
         """
         Parameters
         ----------
@@ -145,6 +151,10 @@ class Zong_PorteAgel_2020(PropagateDownwind):
             Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
         turbulenceModel : TurbulenceModel, default None
             Model describing the amount of added turbulence in the wake
+        use_effective_ws : bool
+            Option to use either the local (True) or free-stream (False) wind speed experienced by the ith turbine
+        use_effective_ti : bool
+            Option to use either the local (True) or free-stream (False) turbulence intensity experienced by the ith turbine
         """
         PropagateDownwind.__init__(self, site, windTurbines,
                                    wake_deficitModel=ZongGaussianDeficit(a=a, deltawD=deltawD, lam=lam, B=B,
@@ -171,11 +181,13 @@ class Blondel_Cathelain_2020(PropagateDownwind):
     Description:
         - Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f; with a_f kept constant at 3.11.
         - Calibrated parameters taken from Table 2 and 3 in [1].
+        - Linear summation of the wakes based on Shapiro (2019) https://www.mdpi.com/1996-1073/12/15/2956
+        - Turbulence model is set to None. The Crespo Hernandez model is recommended.
     """
 
-    def __init__(self, site, windTurbines, superpositionModel=SquaredSum(),
-                 deflectionModel=None, turbulenceModel=STF2017TurbulenceModel(), rotorAvgModel=None, groundModel=None,
-                 use_effective_ws=False, use_effective_ti=True):
+    def __init__(self, site, windTurbines, superpositionModel=LinearSum(),
+                 deflectionModel=None, turbulenceModel=None, rotorAvgModel=None, groundModel=None,
+                 use_effective_ws=True, use_effective_ti=True):
         """
         Parameters
         ----------
@@ -189,57 +201,13 @@ class Blondel_Cathelain_2020(PropagateDownwind):
             Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
         turbulenceModel : TurbulenceModel, default None
             Model describing the amount of added turbulence in the wake
+        use_effective_ws : bool
+            Option to use either the local (True) or free-stream (False) wind speed experienced by the ith turbine
+        use_effective_ti : bool
+            Option to use either the local (True) or free-stream (False) turbulence intensity experienced by the ith turbine
         """
         PropagateDownwind.__init__(self, site, windTurbines,
                                    wake_deficitModel=BlondelSuperGaussianDeficit2020(rotorAvgModel=rotorAvgModel,
-                                                                                     groundModel=groundModel,
-                                                                                     use_effective_ws=use_effective_ws,
-                                                                                     use_effective_ti=use_effective_ti),
-                                   superpositionModel=superpositionModel, deflectionModel=deflectionModel,
-                                   turbulenceModel=turbulenceModel)
-
-
-class Blondel_2023(PropagateDownwind):
-    """Implemented according to:
-        Blondel and Cathelain (2020)
-        An alternative form of the super-Gaussian wind turbine wake model
-        Wind Energ. Sci., 5, 1225–1236, 2020 https://doi.org/10.5194/wes-5-1225-2020
-
-        With calibrated parameters taken from Table 1 in:
-        Blondel (2023)
-        Brief communication: A momentum-conserving superposition method applied to
-        the super-Gaussian wind turbine wake model
-        Wind Energ. Sci., 8, 141–147, 2023, 2023 https://doi.org/10.5194/wes-8-141-2023
-
-    Features:
-        - Wake profile transitions from top-hat at near wake to Gaussian at far wake.
-        - Characteristic wake width (sigma) function of turbulence intensity and CT.
-        - Evolution of super gaussian "n" order function of downwind distance and turbulence intensity.
-
-    Description:
-        - Linear relationship between turbulence intensity and the Gaussian wake width given by the calibrated parameters: a_s, b_s, c_s.
-        - Super gaussian wake order "n" is determined with the calibrated parameters: a_f, b_f, c_f;
-    """
-
-    def __init__(self, site, windTurbines, superpositionModel=SquaredSum(),
-                 deflectionModel=None, turbulenceModel=STF2017TurbulenceModel(), rotorAvgModel=None, groundModel=None,
-                 use_effective_ws=False, use_effective_ti=True):
-        """
-        Parameters
-        ----------
-        site : Site
-            Site object
-        windTurbines : WindTurbines
-            WindTurbines object representing the wake generating wind turbines
-        superpositionModel : SuperpositionModel, default SquaredSum
-            Model defining how deficits sum up
-        deflectionModel : DeflectionModel, default None
-            Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
-        turbulenceModel : TurbulenceModel, default None
-            Model describing the amount of added turbulence in the wake
-        """
-        PropagateDownwind.__init__(self, site, windTurbines,
-                                   wake_deficitModel=BlondelSuperGaussianDeficit2023(rotorAvgModel=rotorAvgModel,
                                                                                      groundModel=groundModel,
                                                                                      use_effective_ws=use_effective_ws,
                                                                                      use_effective_ti=use_effective_ti),
@@ -257,8 +225,7 @@ def main():
         for wf_model in [Bastankhah_PorteAgel_2014(site, windTurbines),
                          Niayifar_PorteAgel_2016(site, windTurbines),
                          Zong_PorteAgel_2020(site, windTurbines),
-                         Blondel_Cathelain_2020(site, windTurbines),
-                         Blondel_2023(site, windTurbines)]:
+                         Blondel_Cathelain_2020(site, windTurbines, turbulenceModel=CrespoHernandez())]:
 
             # run wind farm simulation
             sim_res = wf_model(x, y)

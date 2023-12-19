@@ -64,7 +64,7 @@ ZongGaussian
 SuperGaussian
 -----------------------------
 
-.. autoclass:: py_wake.literature.gaussian_models.Blondel_2023
+.. autoclass:: py_wake.literature.gaussian_models.Blondel_Cathelain_2020
     :members:
       
     .. automethod:: __init__

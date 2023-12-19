@@ -32,6 +32,7 @@ class LocalWind(dict):
         P : array_like
             Probability/weight
         """
+        self.overwritten = set()
         ws = np.atleast_1d(ws)
         if time is not False:
             assert len(wd) == len(ws)
@@ -80,18 +81,19 @@ class LocalWind(dict):
 
     def set_data_array(self, data_array, name, description):
         if data_array is not None:
-            self[name] = data_array
+            self[name] = np.atleast_3d(data_array)
             self.descriptions[name] = description
 
     def add_ilk(self, name, value):
         coords = self.coords
         self[name] = arg2ilk(name, value, I=len(coords['i']), L=len(coords['wd']), K=len(coords['ws']))
+        self.overwritten |= {name}
 
     def set_W(self, ws, wd, ti, ws_bins, use_WS=False):
         for da, name, desc in [(ws, 'WS_ilk', 'Local free-stream wind speed [m/s]'),
                                (wd, 'WD_ilk', 'Local free-stream wind direction [deg]'),
                                (ti, 'TI_ilk', 'Local free-stream turbulence intensity')]:
-            self.set_data_array(np.atleast_3d(da), name, desc)
+            self.set_data_array(da, name, desc)
 
         # upper and lower bounds of wind speed bins
         WS_ilk = [self.ws[na, na], self.WS_ilk][use_WS]
@@ -293,7 +295,7 @@ class Site(ABC):
 
         """
         if ax is None:
-            ax = plt
+            ax = plt.gca()
 
         lbl = "Wind direction: %d deg"
         if include_wd_distribution:
@@ -313,8 +315,8 @@ class Site(ABC):
             P = P.expand_dims({'wd': wd})
         for wd, p in zip(wd, P):
             ax.plot(ws, p * 10, label=lbl % wd)
-            ax.xlabel('Wind speed [m/s]')
-            ax.ylabel('Probability')
+            ax.set_xlabel('Wind speed [m/s]')
+            ax.set_ylabel('Probability')
         ax.legend(loc=1)
         return P
 
