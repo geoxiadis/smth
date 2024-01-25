@@ -1,6 +1,8 @@
 from py_wake import np
 from py_wake.wind_turbines import WindTurbine
 from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
+from py_wake.site._site import UniformWeibullSite
+
 
 wt_x = [672420.0, 672438.0, 672456.0, 672475.0, 672493.0, 672511.0,
         672529.0, 672548.0, 672566.0, 673279.0, 673297.0, 673316.0,
@@ -74,6 +76,8 @@ ct_curve = np.array([[4.0, 0.856],
                      [23.0, 0.073],
                      [24.0, 0.063],
                      [25.0, 0.056]])
+ti = 0.0875
+
 
 # Wind Turbine at Nysted
 class Bonus_2p3(WindTurbine):
@@ -90,6 +94,18 @@ class Bonus_2p3(WindTurbine):
 
 
 Nysted_Bonus_2p3 = Bonus_2p3
+
+
+class NystedSite(UniformWeibullSite):
+    def __init__(self, ti=ti, shear=None):
+        f = [3.597152, 3.948682, 5.167395, 7.000154, 8.364547, 6.43485,
+             8.643194, 11.77051, 15.15757, 14.73792, 10.01205, 5.165975]
+        a = [9.176929, 9.782334, 9.531809, 9.909545, 10.04269, 9.593921,
+             9.584007, 10.51499, 11.39895, 11.68746, 11.63732, 10.08803]
+        k = [2.392578, 2.447266, 2.412109, 2.591797, 2.755859, 2.595703,
+             2.583984, 2.548828, 2.470703, 2.607422, 2.626953, 2.326172]
+        UniformWeibullSite.__init__(self, np.array(f) / np.sum(f), a, k, ti=ti, shear=shear)
+        self.initial_position = np.array([wt_x, wt_y]).T
 
 
 def main():

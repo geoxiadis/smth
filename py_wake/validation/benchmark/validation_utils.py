@@ -6,24 +6,23 @@ from numpy import newaxis as na
 from py_wake.utils.gradients import hypot
 from py_wake.literature.gaussian_models import Bastankhah_PorteAgel_2014, Blondel_Cathelain_2020
 from py_wake.literature.noj import Jensen_1983
-from py_wake.literature.fuga import Ott_Nielsen_2014
+from py_wake.literature.fuga import Ott_Nielsen_2014, Ott_Nielsen_2014_Blockage
 from py_wake.deficit_models.fuga import FugaMultiLUTDeficit
 from py_wake.wind_farm_models import All2AllIterative
 from py_wake.site import UniformSite
 from py_wake.wind_turbines._wind_turbines import WindTurbine
 from py_wake.wind_turbines.power_ct_functions import PowerCtFunctions
 from py_wake.turbulence_models.crespo import CrespoHernandez
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site
-from py_wake.examples.data.v27swift import V27SWIFT
 
 # -----------------------------------------------------
 # Default values
 # -----------------------------------------------------
 
-data_path = os.path.dirname(__file__) + '/data/'   # path to reference data
-cLES = 'b'            # line color for LES results
-cRANS = 'g'           # line color for RANS
-lw = 2.0              # line width for most resutls
+data_path = os.path.dirname(__file__) + '/data/'  # path to reference data
+cLES = 'b'  # line color for LES results
+cRANS = 'g'  # line color for RANS
+lw = 2.0  # line width for most resutls
+
 
 # -----------------------------------------------------
 # General functions
@@ -143,167 +142,41 @@ def get_downstream_label(sDown_D):
     return (s.rstrip('0').rstrip('.') if '.' in s else s).replace('.', 'p')
 
 
-def kwargs_func_SW(case, wffm):
-    # kwargs function to instantiate the engineering wind farm models used in the single wake cases
-    # the configuration of the models represent the literature setup
+def wffm_kwargs(case, wffm):
+    # Call engineering wind farm models used with appropriate kwargs params to instantiate the
+    # configuration of the models represented in the literature setup
 
-    # Dummy constant CT for the wind turbine
-    def ct(ws):
-        ct = case['CT']
-        return ct
+    # Use default site/windTurbine models unless explicitly specified
+    if 'site' not in case:
+        case['site'] = UniformSite(p_wd=[1], ti=case['TItot'], ws=case['U0'])
 
-    # Dummy power function for wind turbine
-    def p(ws):
-        p = ws
-        return p
+    if 'wt' not in case:
+        case['wt'] = WindTurbine(name=case['name'],
+                                 diameter=case['D'],
+                                 hub_height=case['zH'],
+                                 powerCtFunction=PowerCtFunctions(power_function=lambda ws: ws,  # Dummy power
+                                                                  # function for wind turbine
+                                                                  power_unit='w',
+                                                                  ct_function=lambda ct: case['CT']))  # Dummy constant CT for the wind turbine
 
-    # Setting up the site and wind turbine for the study
-    site = UniformSite(p_wd=[1], ti=case['TItot']/0.8, ws=case['U0'])  # Dummy site (flat and uniform)
-
-    windTurbines = WindTurbine(name=case['name'],
-                               diameter=case['D'],
-                               hub_height=case['zH'],
-                               powerCtFunction=PowerCtFunctions(p, 'w', ct))
-
-    kwargs_list = []
-    for wfm in wffm:
-        if wfm == Jensen_1983:
-            k = NOJ_k_from_location(case['location'])
-            kwargs = {'site': site, 'windTurbines': windTurbines, 'k': k}
-        elif wfm == Bastankhah_PorteAgel_2014:
-            k = Gau_k_from_Iu(case['TItot'] / 0.8)
-            kwargs = {'site': site, 'windTurbines': windTurbines, 'k': k}
-        elif wfm == Blondel_Cathelain_2020:
-            kwargs = {'site': site, 'windTurbines': windTurbines, 'turbulenceModel': CrespoHernandez()}
-        elif wfm == Ott_Nielsen_2014:
-            kwargs = {'LUT_path': case['fugaPath'], 'site': site, 'windTurbines': windTurbines}
+    wake_params = {'site': case['site'], 'windTurbines': case['wt']}
+    # Set model-specific params
+    if wffm == Jensen_1983:
+        wake_params.update({'k': NOJ_k_from_location(case['location'])})
+    elif wffm == Bastankhah_PorteAgel_2014:
+        wake_params.update({'k': Gau_k_from_Iu(case['TItot'])})
+    elif wffm == Blondel_Cathelain_2020:
+        wake_params.update({'turbulenceModel': CrespoHernandez()})
+    # special case for F2F where FugaMultiLUTDeficit requires All2AllIterative method
+    elif wffm == Ott_Nielsen_2014 or wffm == Ott_Nielsen_2014_Blockage:
+        if 'lut_paths_lst' in case:  # f2f parameters only passed if case defines a list of lut paths
+            fuga_multi_deficit = FugaMultiLUTDeficit(LUT_path_lst=case['lut_paths_lst'],
+                                                     z_lst=case['wt']._hub_heights.tolist(),
+                                                     TI_ref_height=case['wt'].hub_height())
+            fuga_multilut_wfm = All2AllIterative(wake_deficitModel=fuga_multi_deficit,
+                                                 blockage_deficitModel=fuga_multi_deficit,
+                                                 **wake_params)
+            return fuga_multilut_wfm
         else:
-            k = None
-            kwargs = {'site': site, 'windTurbines': windTurbines}
-
-        kwargs_list.append(kwargs)
-
-    return kwargs_list
-
-
-def kwargs_func_SWiFt(cases, wffm):
-    # kwargs function to instantiate the engineering wind farm models used in the single wake cases for SWiFT case
-    # the different stability cases (stable, neutral and unstable) are included
-    # the configuration of the models represent the literature setup
-
-    site = Hornsrev1Site()
-    windTurbines = V27SWIFT()
-
-    kwargs_list = []
-
-    for wfm in wffm:
-        if wfm == Jensen_1983:
-            k = NOJ_k_from_location('offshore')
-            kwargs = {'site': site, 'windTurbines': windTurbines, 'k': k}
-
-        elif wfm == Blondel_Cathelain_2020:
-            kwargs = {'site': site, 'windTurbines': windTurbines, 'turbulenceModel': CrespoHernandez()}
-
-        elif wfm == Bastankhah_PorteAgel_2014:
-            k = Gau_k_from_Iu(cases['TI'] / 0.8)
-            kwargs = {'site': site, 'windTurbines': windTurbines, 'k': k}
-
-        elif wfm == Ott_Nielsen_2014:
-            kwargs = {'LUT_path': cases['fugaPath'], 'site': site, 'windTurbines': windTurbines}
-
-        else:
-            k = None
-            kwargs = {'site': site, 'windTurbines': windTurbines}
-
-        kwargs_list.append(kwargs)
-
-    return kwargs_list
-
-
-def kwargs_func_WF(case, wffm):
-    # kwargs function to instantiate the engineering wind farm models used in the wind farm cases
-    # the configuration of the models represent the literature setup
-
-    # Instatiating site, wind turbines and fuga LUTs
-    site = case['site']
-    windTurbines = case['wt']
-    fuga_path = case['fugaPath']
-
-    kwargs_list = []
-    for wfm in wffm:
-        if wfm == Jensen_1983:
-            k = NOJ_k_from_location(case['location'])
-            kwargs = {'site': site, 'windTurbines': windTurbines, 'k': k}
-        elif wfm == Bastankhah_PorteAgel_2014:
-            k = Gau_k_from_Iu(case['TItot'] / 0.8)
-            kwargs = {'site': site, 'windTurbines': windTurbines, 'k': k}
-        elif wfm == Blondel_Cathelain_2020:
-            kwargs = {'site': site, 'windTurbines': windTurbines, 'turbulenceModel': CrespoHernandez()}
-        elif wfm == Ott_Nielsen_2014:
-            kwargs = {'LUT_path': fuga_path, 'site': site, 'windTurbines': windTurbines}
-        else:
-            k = None
-            kwargs = {'site': site, 'windTurbines': windTurbines}
-
-        kwargs_list.append(kwargs)
-
-    return kwargs_list
-
-
-# for farm to farm
-def kwargs_func_f2f(case_name, wffm, site, windTurbines, fuga_path):
-
-    kwargs_list = []
-    wakemodels_nr = []
-
-    if case_name == 'Roedsand':
-
-        for wfm in wffm:
-            if wfm == Jensen_1983:
-                k = NOJ_k_from_location('offshore')
-                kwargs = {'site': site, 'windTurbines': windTurbines, 'k': k}
-            elif wfm == Bastankhah_PorteAgel_2014:
-                k = Gau_k_from_Iu(0.07 / 0.8)
-                kwargs = {'site': site, 'windTurbines': windTurbines, 'k': k}
-            elif wfm == Blondel_Cathelain_2020:
-                kwargs = {'site': site, 'windTurbines': windTurbines, 'turbulenceModel': CrespoHernandez()}
-            elif wfm == Ott_Nielsen_2014:
-                kwargs = {'LUT_path': fuga_path, 'site': site, 'windTurbines': windTurbines}
-            else:
-                k = None
-                kwargs = {'site': site, 'windTurbines': windTurbines}
-
-            kwargs_list.append(kwargs)
-
-    elif case_name == 'Nysted_Roedsand':
-
-        for wfm in wffm:
-
-            if wfm == Jensen_1983:
-                k = NOJ_k_from_location('offshore')
-                kwargs = {'site': site, 'windTurbines': windTurbines, 'k': k}
-                wakemodels_nr.append(wfm(**kwargs))
-            elif wfm == Bastankhah_PorteAgel_2014:
-                k = Gau_k_from_Iu(0.07 / 0.8)
-                kwargs = {'site': site, 'windTurbines': windTurbines, 'k': k}
-                wakemodels_nr.append(wfm(**kwargs))
-            elif wfm == Blondel_Cathelain_2020:
-                kwargs = {'site': site, 'windTurbines': windTurbines, 'turbulenceModel': CrespoHernandez()}
-                wakemodels_nr.append(wfm(**kwargs))
-            elif wfm == Ott_Nielsen_2014:
-                fuga_deficit = FugaMultiLUTDeficit(
-                    LUT_path_lst=fuga_path)
-
-                Fuga_MultiLUT_wfm = All2AllIterative(
-                    site,
-                    windTurbines,
-                    wake_deficitModel=(fuga_deficit),
-                    blockage_deficitModel=(fuga_deficit))
-
-                wakemodels_nr.append(Fuga_MultiLUT_wfm)
-            else:
-                k = None
-                kwargs = {'site': site, 'windTurbines': windTurbines}
-                wakemodels_nr.append(wfm(**kwargs))
-
-    return kwargs_list, wakemodels_nr
+            wake_params.update({'LUT_path': case['fugaPath']})
+    return wffm(**wake_params)

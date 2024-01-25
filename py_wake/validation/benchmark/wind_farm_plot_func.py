@@ -1,25 +1,24 @@
-from copy import copy
 import os
 import shutil
-import matplotlib
-import matplotlib.style
 from matplotlib.ticker import MaxNLocator
 import matplotlib.pyplot as plt
 
 # PyWake objects
 from py_wake.validation.benchmark import validation_utils
-from py_wake.validation.benchmark.validation_utils import sigma_hornsrev, GaussianFilter, kwargs_func_WF
+from py_wake.validation.benchmark.validation_utils import sigma_hornsrev, GaussianFilter, wffm_kwargs
+from py_wake.literature.fuga import Ott_Nielsen_2014, Ott_Nielsen_2014_Blockage
 from py_wake import np
 
 # path to reference data
 data_path = os.path.dirname(validation_utils.__file__) + '/data/'
+luts_path = os.path.dirname(validation_utils.__file__) + '/fuga_files/'
 
 # =============================================================================
 # %% Wind farm cases - including data, LES, RANS, and different wake models
 # =============================================================================
 
 
-def deficitPlotWFCases(WFcases, wffm_list, wm_labels, linewidth, cLES, cRANS, colors, save_plot=False, latex_table=False):
+def deficitPlotWFCases(WFcases, wffms, cLES, cRANS, save_plot=False, latex_table=False):
     """
     Plot power deficit or wind farm efficiency for each wind farm case
 
@@ -27,37 +26,23 @@ def deficitPlotWFCases(WFcases, wffm_list, wm_labels, linewidth, cLES, cRANS, co
     ----------
     WFcases : dict
         dictionary containing all parameters for the wind farm cases
-    wffm_list : list
-        list of user-specified wind farm models used for the benchmarking
-    wm_labels : labels
-        labels for the wind farm models
-    linewidth : int or float
-        line width used for the plots
+    wffms : dict
+        dictionary containing user-specified wind farm models and corresponding plot color-labels
     cLES : str
         color specified for LES results
     cRANS : str
         color specified for RANS results
-    colors : str
-        list of colors for the engineering wind farm models
     save_plot : bool
         user-defined option to determine whether plots are saved as PDF or shown inline
     latex_table : bool
         user-defined option to create a LaTex table with the results of the Wind Farm efficiency
     """
-
+    linewidth = 1.5
     for case in WFcases:
 
         # =============================================================================
         # Engineering Wind Farm Models
         # =============================================================================
-
-        # Setting up the Site, WindTurbine and other parameters needed for the engineering wind farm models
-        kwargs_list = kwargs_func_WF(case, wffm_list)
-
-        # ===== Instantiating wind farm models from literature =====
-        wakemodels = []
-        for wfm, kwargs in zip(wffm_list, kwargs_list):
-            wakemodels.append(wfm(**kwargs))
 
         # =============================================================================
         # Plot power deficit in wind turbine row cases or calculate the WF efficiency
@@ -75,9 +60,13 @@ def deficitPlotWFCases(WFcases, wffm_list, wm_labels, linewidth, cLES, cRANS, co
 
         power_models = []
         powerGA_models = []
-        for wakemodel in wakemodels:
+        for _, wakemodel in enumerate(wffms.keys()):
             # Calculating power at each wind turbine, wind speed and wind direction
-            power_ilk = wakemodel(case['wt_x'], case['wt_y'], ws=case['U0'], yaw=[0]).power_ilk
+            wffm = wffm_kwargs(case, wakemodel)
+            if wakemodel in [Ott_Nielsen_2014, Ott_Nielsen_2014_Blockage]:
+                power_ilk = wffm(x=case['wt_x'], y=case['wt_y'], ws=case['U0'], yaw=[0]).power_ilk
+            else:
+                power_ilk = wffm(case['wt_x'], case['wt_y'], ws=case['U0'], yaw=[0]).power_ilk
             power_models.append(power_ilk)
 
             # ===== Gaussian averaging =====
@@ -101,12 +90,12 @@ def deficitPlotWFCases(WFcases, wffm_list, wm_labels, linewidth, cLES, cRANS, co
                 norm = len(case['wt_x']) * case['wt'].power(case['U0'])
                 WFeffWakeModels = []
 
-                for k in range(len(wakemodels)):
+                for k, wffm_param in enumerate(wffms.values()):
                     WFeff = power_models[k][:, :, 0].sum(axis=0) / norm
                     WFeffGA = powerGA_models[k][:, :, 0].sum(axis=0) / norm
 
                     # Getting wind farm efficiency for each engineering model
-                    print('WFeff', wm_labels[k], WFeff.mean())
+                    print('WFeff', wffm_param['label'], WFeff.mean())
                     WFeffWakeModels.append(WFeff.mean())
 
                 # Getting wind farm efficiency from RANS data and measurements
@@ -127,12 +116,12 @@ def deficitPlotWFCases(WFcases, wffm_list, wm_labels, linewidth, cLES, cRANS, co
                     f.write('%s %4.2f %s %4.3f %s %4.2f' % ('Wind farm efficiency & $',
                                                             data[:, 1].mean(), '\\pm', dataWFunc,
                                                             '$ & ', RANS[:, 1].mean()))
-                    for k in range(len(wakemodels)):
+                    for k in range(len(wffms)):
                         f.write('%s %4.2f' % (' & ', WFeffWakeModels[k]))
                     f.write('\\\\ \n')
                     f.write('%s %4.0f' % ('Relative error [\\%] & - & ', 100.0 *
                                           (RANS[:, 1].mean() - data[:, 1].mean()) / data[:, 1].mean()))
-                    for k in range(len(wakemodels)):
+                    for k in range(len(wffms)):
                         f.write('%s %4.0f' % (' & ',
                                               100.0 * (WFeffWakeModels[k] - data[:, 1].mean()) / data[:, 1].mean()))
                     f.write('\\\\ \n')
@@ -177,7 +166,7 @@ def deficitPlotWFCases(WFcases, wffm_list, wm_labels, linewidth, cLES, cRANS, co
             # Plotting Engineering Models
             # =============================================================================
 
-                for k in range(len(wakemodels)):
+                for k, wffm_param in enumerate(wffms.values()):
                     if case['name'] == 'Hornsrev1':
                         # Linear average for 267-273 deg and reshape in WT rows and columns
                         power_matrix = power_models[k][:, 267:274, 0].mean(axis=1).reshape(10, 8)
@@ -188,11 +177,11 @@ def deficitPlotWFCases(WFcases, wffm_list, wm_labels, linewidth, cLES, cRANS, co
                         powerGAsum_inner_rows = powerGA_matrix[:, 1:6].sum(axis=1)
 
                         l1, = ax[0].plot(np.linspace(1, 10, 10),
-                                         powersum_inner_rows / powersum_inner_rows[0], color=colors[k],
-                                         linewidth=linewidth, label=wm_labels[k])
+                                         powersum_inner_rows / powersum_inner_rows[0], color=wffm_param['color'],
+                                         linewidth=linewidth, label=wffm_param['label'])
                         l2, = ax[1].plot(np.linspace(1, 10, 10),
-                                         powerGAsum_inner_rows / powerGAsum_inner_rows[0], color=colors[k],
-                                         linewidth=linewidth, label=wm_labels[k] + ' GA')
+                                         powerGAsum_inner_rows / powerGAsum_inner_rows[0], color=wffm_param['color'],
+                                         linewidth=linewidth, label=wffm_param['label'] + ' GA')
                     else:
                         # Collect data for a row and linear average within wd bin.
                         power_row = np.zeros((len(plot['wts']), 2))
@@ -203,9 +192,9 @@ def deficitPlotWFCases(WFcases, wffm_list, wm_labels, linewidth, cLES, cRANS, co
                                 power_row[i, 0] = power_models[k][plot['wts'][i], int(wd) - 3:int(wd) + 4, 0].mean()
                                 power_row[i, 1] = powerGA_models[k][plot['wts'][i], int(wd) - 3:int(wd) + 4, 0].mean()
                         l1, = ax[0].plot(np.linspace(1, len(plot['wts']), len(
-                            plot['wts'])), power_row[:, 0] / power_row[0, 0], color=colors[k], linewidth=linewidth, label=wm_labels[k])
+                            plot['wts'])), power_row[:, 0] / power_row[0, 0], color=wffm_param['color'], linewidth=linewidth, label=wffm_param['label'])
                         l2, = ax[1].plot(np.linspace(1, len(plot['wts']), len(
-                            plot['wts'])), power_row[:, 1] / power_row[0, 1], color=colors[k], linewidth=linewidth, label=wm_labels[k] + ' GA')
+                            plot['wts'])), power_row[:, 1] / power_row[0, 1], color=wffm_param['color'], linewidth=linewidth, label=wffm_param['label'] + ' GA')
 
                 ax[0].grid(True)
                 ax[1].grid(True)
@@ -242,7 +231,7 @@ def deficitPlotWFCases(WFcases, wffm_list, wm_labels, linewidth, cLES, cRANS, co
                         (pos2.width - pos2.width/2), pos2.height]
                 ax_layout.set_position(pos3)
 
-                ncol = len(wakemodels) + 2
+                ncol = len(wffms) + 2
 
                 lines, labels = ax[0].get_legend_handles_labels()
                 linesGA, labelsGA = ax[1].get_legend_handles_labels()
