@@ -485,7 +485,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
             alt_model = [self.superpositionModel, LinearSum()][isinstance(
                 self.superpositionModel, (WeightedSum, CumulativeWakeSum))]
             self.blockage_superpositionModel = self.blockage_deficitModel.superpositionModel or alt_model
-        
+
         for j in tqdm(range(I), disable=I <= 1 or not self.verbose, desc="Calculate flow interaction", unit="wt"):
             # wake deficit
             self.direction = 'down'
@@ -493,31 +493,31 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                 wd, dw_order_indices_ld,
                 WS_ilk - blockage_deficit, **kwargs)
             wake_deficit = (WS_ilk - blockage_deficit) - WS_eff_wake_ilk
-             
+
             if j == 0:
                 # set initial value to wakes-only
                 WS_eff_ilk_last = WS_ilk - wake_deficit
-                # initialize 
+                # initialize
                 diff_ilk_last = WS_eff_ilk_last * 1e6
                 iconverging = np.full(WS_eff_ilk_last.shape, True)
-                
+
             # blockage deficit
             self.direction = 'up'
             WS_eff_blockage_ilk = self._propagate_deficit(wd, dw_order_indices_ld[:, ::-1],
                                                           WS_ilk - wake_deficit, **kwargs)[0]
             blockage_deficit = (WS_ilk - wake_deficit) - WS_eff_blockage_ilk
             WS_eff_ilk = WS_ilk - wake_deficit - blockage_deficit
-            
+
             # check convergence of local turbine inflow wind speed
             diff_ilk = cabs(WS_eff_ilk_last - WS_eff_ilk)
             # compare convergence rate to previous iteration to check if converging
             iconverging &= (diff_ilk - diff_ilk_last) <= 0.
             # compute max difference of all converging cases
             max_diff = diff_ilk[iconverging].max()
-            # convergence check 
+            # convergence check
             if (max_diff < self.convergence_tolerance) or ((j + 1) >= self.max_iter):
                 break
-            # update and keep iterating 
+            # update and keep iterating
             diff_ilk_last = diff_ilk
             WS_eff_ilk_last = WS_eff_ilk
 
