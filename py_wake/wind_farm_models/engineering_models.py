@@ -499,7 +499,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                 WS_eff_ilk_last = WS_ilk - wake_deficit
                 # initialize 
                 diff_ilk_last = WS_eff_ilk_last * 1e6
-                iconverging = np.ones_like(WS_eff_ilk_last, dtype=bool)
+                iconverging = np.full(WS_eff_ilk_last.shape, True)
                 
             # blockage deficit
             self.direction = 'up'
