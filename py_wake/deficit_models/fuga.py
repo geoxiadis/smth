@@ -241,14 +241,16 @@ class FugaBlockage(All2AllIterative, DeprecatedModel):
 class FugaMultiLUTDeficit(XRLUTDeficitModel, FugaDeficit):
     def __init__(self, LUT_path_lst=tfp + 'fuga/2MW/multilut/LUTs_Zeta0=0.00e+00_16_32_*_zi400_z0=0.00001000_z9.8-207.9_UL_nx128_ny128_dx20.0_dy5.0.nc',
                  z_lst=None, TI_ref_height=None, bounds='limit',
+                 smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False,
                  rotorAvgModel=None, groundModel=None,
                  use_effective_ti=False):
 
+        fuga_kwargs = dict(smooth2zero_x=smooth2zero_x, smooth2zero_y=smooth2zero_y, remove_wriggles=remove_wriggles)
         if isinstance(LUT_path_lst, str):
-            da_lst = [FugaXRLUT(f).UL for f in glob.glob(LUT_path_lst)]
+            da_lst = [FugaXRLUT(f, **fuga_kwargs).UL for f in glob.glob(LUT_path_lst)]
             assert len(da_lst), f"No files found matching {LUT_path_lst}"
         else:
-            da_lst = [FugaXRLUT(f).UL for f in LUT_path_lst]
+            da_lst = [FugaXRLUT(f, **fuga_kwargs).UL for f in LUT_path_lst]
 
         dims = ['d_h', 'zeta0', 'zi', 'z0']
 
@@ -258,7 +260,9 @@ class FugaMultiLUTDeficit(XRLUTDeficitModel, FugaDeficit):
 
         if z_lst is None:
             z_lst = np.sort(np.unique([da.z for da in da_lst]))
-        da_lst = [da.interp(z=z_lst) for da in da_lst]
+        x_lst = np.sort(np.unique([da.x for da in da_lst]))
+        y_lst = np.sort(np.unique([da.y for da in da_lst]))
+        da_lst = [da.interp(z=z_lst, x=x_lst, y=y_lst) for da in da_lst]
 
         # combine_by_coords does not always merge attributes correctly
         attrs = merge_attrs([da.attrs for da in da_lst], combine_attrs='drop_conflicts')
