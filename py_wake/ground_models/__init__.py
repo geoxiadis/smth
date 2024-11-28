@@ -1,1 +1,1 @@
-from .ground_models import GroundModel, Mirror, NoGround
+from .ground_models import GroundModel, Mirror, NoGround, MultiMirror
