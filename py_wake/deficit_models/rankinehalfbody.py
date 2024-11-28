@@ -53,7 +53,7 @@ class RankineHalfBody(BlockageDeficitModel):
         m_ilk = 2. * WS_ilk * ct2a_ilk * np.pi * R_il[:, :, na]**2
         if self.high_ct_mod:
             m_ilk *= (1. - ct2a_ilk) / (1. - 2. * ct2a_ilk)
-            dw_ijlk -= (ct2a_ilk * R_il[:, :, na] / np.sqrt(1. - 2. * ct2a_ilk))[:, :, :, na]
+            dw_ijlk -= (ct2a_ilk * R_il[:, :, na] / np.sqrt(1. - 2. * ct2a_ilk))[:, na, :, :]
         # radial distance
         r_ijlk = hypot(dw_ijlk, cw_ijlk)
         # find points lying outside RHB, the only ones to be computed

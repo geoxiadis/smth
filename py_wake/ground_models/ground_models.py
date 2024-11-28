@@ -28,7 +28,6 @@ class MultiMirror(GroundModel):
             else:
                 fac = -(i // 2 + 1)      
             h_mirrors.append(fac * mirror_height)
-        print('h_mirrors:', h_mirrors)
         self.h_mirrors = h_mirrors
         self.n_mirrors = len(h_mirrors)
 
@@ -71,8 +70,8 @@ class MultiMirror(GroundModel):
 
     def __call__(self, func, h_ilk, dh_ijlk, IJLK, **kwargs):
         new_kwargs = self._update_kwargs(h_ilk=h_ilk, dh_ijlk=dh_ijlk, IJLK=IJLK, **kwargs)
-        above_ground = ((new_kwargs['h_ilk'][:, na, :] + new_kwargs['dh_ijlk']) > 0)
-        # above_ground = np.ones_like(new_kwargs['dh_ijlk'])
+        # above_ground = ((new_kwargs['h_ilk'][:, na, :] + new_kwargs['dh_ijlk']) > 0)
+        above_ground = np.ones_like(new_kwargs['dh_ijlk'])
         values_pijlk = func(**new_kwargs)
         deficit_mijlk = np.reshape(values_pijlk * above_ground, (2**self.n_mirrors,) + IJLK)
         return self.windFarmModel.superpositionModel(deficit_mijlk)
