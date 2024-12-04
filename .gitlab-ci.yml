@@ -2,6 +2,8 @@ launch_releasetest_sophia:
   stage: test
   variables:
     SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=1 --time=00:01:00 --partition=windq,workq"
+  pre_get_sources_script:
+    - ml git git-lfs
   script:
     - ml git Python/3.8.2-GCCcore-9.3.0 git-lfs/2.13.2 
     - which python
