@@ -1,39 +1,17 @@
-before_script:
-  - exec &> >(tee -a "output.log") 
-after_script:
-  - cat output.log
 
-
-.tmpl_before_script_sophia: &tmpl_before_script_sophia
-  - ml git git-lfs
-  - which python
-  - hostname
-
-.site-id-token:
+test_pywake_ellipsys:
+  variables:
+    SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=1 --time=0:1:00 --partition=workq,windq,windfatq,fatq"
   tags:
     - sophia
   id_tokens:
       CI_JOB_JWT:
         aud: https://gitlab.windenergy.dtu.dk
-
-
-test_pywake_ellipsys:
-  variables:
-    SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=32 --time=3:59:00 --partition=workq,windq,windfatq,fatq"
-#    COPY_SCHEDULER_LOGS: "/groups/PyWakeEllipSys/CI/logs"
-  extends:
-    - .site-id-token
+  hooks:
+    pre_get_sources_script:
+      - mkdir -p $RUNNER_TEMP_PROJECT_DIR/git-template
+      - git config -f $RUNNER_TEMP_PROJECT_DIR/git-template/config lfs.url https://localhost
   script:
     - module load git git-lfs
     - hostname
     - which python
-
-
-test_pywake_ellipsys_release:
-  variables:
-    SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=32 --time=2:59:00 --partition=workq,windq,windfatq,fatq"   
-  extends:
-    - .site-id-token
-  script:
-    - *tmpl_before_script_sophia
-    - pip list
