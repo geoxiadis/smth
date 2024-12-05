@@ -8,7 +8,7 @@ test_pywake_ellipsys:
       CI_JOB_JWT:
         aud: https://gitlab.windenergy.dtu.dk
   hooks:
-      pre_get_sources_script:
+      pre_clone_script:
       - ml git  git-lfs
   #    - mkdir -p $RUNNER_TEMP_PROJECT_DIR/git-template
   #    - git config -f $RUNNER_TEMP_PROJECT_DIR/git-template/config lfs.url https://localhost
