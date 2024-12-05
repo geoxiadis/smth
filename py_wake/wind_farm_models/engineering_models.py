@@ -47,9 +47,10 @@ class EngineeringWindFarmModel(WindFarmModel):
     default_grid_resolution = 500
 
     def __init__(self, site, windTurbines: WindTurbines, wake_deficitModel, superpositionModel, rotorAvgModel=None,
-                 blockage_deficitModel=None, deflectionModel=None, turbulenceModel=None, inputModifierModels=[]):
+                 blockage_deficitModel=None, deflectionModel=None, turbulenceModel=None, inputModifierModels=[], backend_config=None):
 
         WindFarmModel.__init__(self, site, windTurbines)
+        self.backend_config = backend_config or {'backend': 'multiprocessing'}
         if not isinstance(inputModifierModels, (list, tuple)):
             inputModifierModels = [inputModifierModels]
         for model, cls, name in ([(wake_deficitModel, WakeDeficitModel, 'wake_deficitModel'),
@@ -118,6 +119,14 @@ class EngineeringWindFarmModel(WindFarmModel):
         if self.turbulenceModel:
             models.append("%s-turbulence" % name(self.turbulenceModel))
         return "%s(%s)" % (name(self), ", ".join(models))
+
+    def __del__(self):
+        """Ensure proper cleanup of distributed resources"""
+        if hasattr(self, 'backend_config'):
+            if self.backend_config.get('backend') == 'ray':
+                import ray
+                if ray.is_initialized():
+                    ray.shutdown()
 
     def _init_deficit(self, **kwargs):
         """Calculate layout dependent wake (and blockage) deficit terms"""

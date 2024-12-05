@@ -11,7 +11,7 @@ import inspect
 class DeficitModel(ABC, RotorAvgAndGroundModelContainer):
     deficit_initalized = False
 
-    def __init__(self, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False):
+    def __init__(self, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False, backend_config=None):
         RotorAvgAndGroundModelContainer.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel)
 
         self.WS_key = ['WS_ilk', 'WS_eff_ilk'][use_effective_ws]

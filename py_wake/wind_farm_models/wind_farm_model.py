@@ -12,17 +12,18 @@ from py_wake.utils.parallelization import get_pool_map, get_pool_starmap
 from py_wake.utils.functions import arg2ilk
 from py_wake.utils.gradients import autograd
 from py_wake.noise_models.iso import ISONoiseModel
-
+from py_wake.utils.parallelization import get_distributed_map
 
 class WindFarmModel(ABC):
     """Base class for RANS and engineering flow models"""
     verbose = True
 
-    def __init__(self, site, windTurbines):
+    def __init__(self, site, windTurbines, backend_config=None):
         check_model(site, Site, 'site')
         check_model(windTurbines, WindTurbines, 'windTurbines')
         self.site = site
         self.windTurbines = windTurbines
+        self.backend_config = backend_config or {'backend': 'multiprocessing'}
 
     def get_wt_kwargs(self, TI_eff_ilk, kwargs):
         wt_kwargs = {}
@@ -52,8 +53,9 @@ class WindFarmModel(ABC):
                 add_arg(k, opt)
         return wt_kwargs
 
-    def _run(self, x, y, h=None, type=0, wd=None, ws=None, time=False, verbose=False,  # @ReservedAssignment
+    def _run(self, x, y, h=None, type=0, wd=None, ws=None, time=False, verbose=False,
              n_cpu=1, wd_chunks=None, ws_chunks=1, **kwargs):
+        """Run WindFarmModel with specified parameters and handle backend configuration"""
         if time is False and np.ndim(wd):
             wd = np.sort(wd)
         assert len(x) == len(y)
@@ -64,16 +66,31 @@ class WindFarmModel(ABC):
         if len([k for k in kwargs if 'yaw' in k.lower() and k != 'yaw' and not k.startswith('yawc_')]):
             raise ValueError(
                 'Custom *yaw*-keyword arguments not allowed to avoid confusion with the default "yaw" keyword')
+        
+        # Handle backend separately from other kwargs
+        backend = kwargs.pop('backend', self.backend_config.get('backend', 'multiprocessing'))
+    
+        # Process remaining kwargs without backend
         kwargs.update(dict(x=x, y=y, h=h))
         kwargs_ilk = {k + '_ilk': arg2ilk(k, v, I, L, K) for k, v in kwargs.items()}
+    
+        # Store backend in instance for use by _multiprocessing_chunks
+        self._current_backend = backend
+        try:
+            return self.calc_wt_interaction(
+                h_i=h, type_i=type,
+                wd=wd, ws=ws, time=time,
+                n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
+                **kwargs_ilk)
+        finally:
+            # Clean up backend setting
+            if hasattr(self, '_current_backend'):
+                del self._current_backend
 
-        return self.calc_wt_interaction(h_i=h, type_i=type,
-                                        wd=wd, ws=ws, time=time,
-                                        n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
-                                        **kwargs_ilk)
 
-    def __call__(self, x, y, h=None, type=0, wd=None, ws=None, time=False, verbose=False,  # @ReservedAssignment
-                 n_cpu=1, wd_chunks=None, ws_chunks=1, return_simulationResult=True, **kwargs):
+    def __call__(self, x, y, h=None, type=0, wd=None, ws=None, time=False, verbose=False,
+                 n_cpu=1, wd_chunks=None, ws_chunks=1, backend='multiprocessing',
+                 return_simulationResult=True, **kwargs):
         """Run the wind farm simulation
 
         Parameters
@@ -121,6 +138,9 @@ class WindFarmModel(ABC):
             and allows parallel execution if n_cpu>1.
         return_simulationResult : boolean, optional
             see Returns
+        backend : str, optional
+            Distributed computing backend to use: 'multiprocessing' (default), 'mpi', or 'ray'
+  
 
         Returns
         -------
@@ -130,7 +150,8 @@ class WindFarmModel(ABC):
         """
 
         res = self._run(x, y, h=h, type=type, wd=wd, ws=ws, time=time, verbose=verbose,
-                        n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks, **kwargs)
+                       n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks, 
+                       backend=backend, **kwargs)
         if return_simulationResult:
             WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, localWind, kwargs_ilk = res
 
@@ -142,7 +163,7 @@ class WindFarmModel(ABC):
 
     def aep(self, x, y, h=None, type=0, wd=None, ws=None,  # @ReservedAssignment
             normalize_probabilities=False, with_wake_loss=True,
-            n_cpu=1, wd_chunks=None, ws_chunks=1, **kwargs):
+            n_cpu=1, wd_chunks=None, ws_chunks=1, backend='multiprocessing', **kwargs):
         """Anual Energy Production (sum of all wind turbines, directions and speeds) in GWh.
 
         the typical use is:
@@ -198,8 +219,9 @@ class WindFarmModel(ABC):
         AEP in GWh
 
         """
+        backend = kwargs.pop('backend', self.backend_config.get('backend', 'multiprocessing'))
         res = self._run(x, y, h=h, type=type, wd=wd, ws=ws,
-                        n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks, **kwargs)
+                        n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks, backend=backend, **kwargs)
         _, _, power_ilk, _, localWind, kwargs_ilk = res
         P_ilk = localWind.P_ilk
         if normalize_probabilities:
@@ -270,24 +292,32 @@ class WindFarmModel(ABC):
         """
 
     def _multiprocessing_chunks(self, wd, ws, time,
-                                n_cpu, wd_chunks, ws_chunks, **kwargs):
+                              n_cpu, wd_chunks, ws_chunks, **kwargs):
+        """Calculate chunks for parallel processing"""
+        # Use current backend or default
+        backend = getattr(self, '_current_backend', self.backend_config.get('backend', 'multiprocessing'))
+        
         n_cpu = n_cpu or multiprocessing.cpu_count()
         wd_chunks = int(np.minimum(wd_chunks or n_cpu, len(wd)))
         ws_chunks = int(np.minimum(ws_chunks or 1, len(ws)))
+    
+        # Get map function for selected backend
+        try:
+            map_func = get_distributed_map(backend=backend, processes=n_cpu)
+        except ImportError as e:
+            if backend == 'mpi':
+                raise ImportError("MPI backend requires mpi4py to be installed") from e
+            elif backend == 'ray':
+                raise ImportError("Ray backend requires ray to be installed") from e
+            raise
 
         if time is not False:
             wd_chunks = ws_chunks = int(np.maximum(ws_chunks, wd_chunks))
-
+    
+        # Create slice indices
         wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
         ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
-        if n_cpu > 1:
-            map_func = get_pool_map(n_cpu)
-        else:
-            from tqdm import tqdm
-
-            def map_func(f, iter):
-                return tqdm(map(f, iter), total=len(iter), disable=not self.verbose)
-
+    
         if time is False:
             # (wd x ws) matrix
             slice_lst = [(slice(wd_i0, wd_i1), slice(ws_i0, ws_i1))
@@ -299,6 +329,7 @@ class WindFarmModel(ABC):
                 time = np.arange(len(wd))
             slice_lst = [(slice(wd_i0, wd_i1), slice(wd_i0, wd_i1))
                          for wd_i0, wd_i1 in zip(wd_i[:-1], wd_i[1:])]
+    
 
         I, L, K = len(kwargs.get('x_ilk', kwargs.get('x'))), len(wd), len(ws)
 
