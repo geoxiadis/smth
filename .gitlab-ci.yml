@@ -16,12 +16,6 @@ after_script:
       CI_JOB_JWT:
         aud: https://gitlab.windenergy.dtu.dk
 
-stages:
-  - build
-  - test
-  - deploy
-  - test_release
-
 
 test_pywake_ellipsys:
   variables:
@@ -29,8 +23,6 @@ test_pywake_ellipsys:
 #    COPY_SCHEDULER_LOGS: "/groups/PyWakeEllipSys/CI/logs"
   extends:
     - .site-id-token
-  stage:
-    test
   script:
     - module load git git-lfs
     - hostname
@@ -42,8 +34,6 @@ test_pywake_ellipsys_release:
     SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=32 --time=2:59:00 --partition=workq,windq,windfatq,fatq"   
   extends:
     - .site-id-token
-  stage:
-    test_release
   script:
     - *tmpl_before_script_sophia
     - pip list
