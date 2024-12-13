@@ -314,6 +314,22 @@ def test_All2AllIterative_initialize_with_PropagateDownwind():
     assert i1 <= i2
 
 
+def test_All2AllIterative_initialize_with():
+    site = IEA37Site(64)
+    x, y = site.initial_position.T
+    windTurbines = V80()
+
+    def get(WS_eff):
+        wfm = All2AllIterative(site, windTurbines, wake_deficitModel=NOJDeficit(),
+
+                               blockage_deficitModel=SelfSimilarityDeficit())
+        return wfm(x, y, WS_eff=WS_eff).aep().sum(), wfm.iterations
+
+    res = np.array([get(WS_eff) for WS_eff in [0, None, 25]])
+    npt.assert_array_almost_equal(res[:, 0], res[0, 0])
+    npt.assert_array_equal(res[:, 1], [5, 4, 6])  # iterations
+
+
 def test_huge_farm():
     site = UniformSite([1], ti=0)
     windTurbines = IEA37_WindTurbines()
