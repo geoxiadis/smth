@@ -8,9 +8,10 @@ test_pywake_ellipsys:
       CI_JOB_JWT:
         aud: https://gitlab.windenergy.dtu.dk
   script:
-    - module load git git-lfs
     - hostname
     - which python
     - env > ~/env.txt
   after_script:
     - echo "after script"
+    - hostname
+    - which python
