@@ -11,5 +11,6 @@ test_pywake_ellipsys:
     - module load git git-lfs
     - hostname
     - which python
+    - env > ~/env.txt
   after_script:
     - echo "after script"
