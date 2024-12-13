@@ -17,4 +17,6 @@ test_pywake_ellipsys:
     - sleep 5
     - echo sleep 1
     - sleep 1
+    - echo end
+    - echo "end script" > ~/log.txt
     
