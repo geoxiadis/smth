@@ -1,7 +1,7 @@
 
 test_pywake_ellipsys:
   variables:
-    SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=1 --time=0:1:00 --partition=workq,windq,windfatq,fatq"
+    SCHEDULER_PARAMETERS: "--nodes=1 --ntasks=1 --time=0:1:00 -o slurm.log --partition=workq,windq,windfatq,fatq"
   tags:
     - sophia
   id_tokens:
@@ -11,3 +11,5 @@ test_pywake_ellipsys:
     - module load git git-lfs
     - hostname
     - which python
+  after_script:
+    - echo "after script"
