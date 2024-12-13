@@ -44,6 +44,8 @@ def mean_rad(dir, axis=0):
 
 
 def arg2ilk(k, v, I, L, K):
+    if v is None:
+        return v
     v = np.asarray(v)
     if v.shape == ():
         v = v[na, na, na]

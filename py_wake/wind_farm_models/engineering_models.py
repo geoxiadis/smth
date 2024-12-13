@@ -644,9 +644,9 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
 
                 # Calculate required args4deficit parameters
                 arg_funcs = {'WS_ilk': lambda: WS_mk[m][na],
-                             'WS_jlk': lambda: np.moveaxis([WS_ilk[(slice(0, 1), j)[WS_ilk.shape[0] > 1],
-                                                                   (0, l)[WS_ilk.shape[1] > 1]]
-                                                            for j, l in zip(i_dw, i_wd_l)], 0, 1),
+                             'WS_jlk': lambda: np.moveaxis(np.array(
+                                 [WS_ilk[(slice(0, 1), j)[WS_ilk.shape[0] > 1], (0, l)[WS_ilk.shape[1] > 1]]
+                                  for j, l in zip(i_dw, i_wd_l)]), 0, 1),
                              'WS_eff_ilk': lambda: WS_eff_mk[-1][na],
                              'TI_ilk': lambda: TI_mk[m][na],
                              'TI_eff_ilk': lambda: TI_eff_mk[-1][na],
