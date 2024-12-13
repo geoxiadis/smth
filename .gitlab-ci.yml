@@ -7,10 +7,6 @@ test_pywake_ellipsys:
   id_tokens:
       CI_JOB_JWT:
         aud: https://gitlab.windenergy.dtu.dk
-  pre_clone_script:
-      - ml git  git-lfs
-  #    - mkdir -p $RUNNER_TEMP_PROJECT_DIR/git-template
-  #    - git config -f $RUNNER_TEMP_PROJECT_DIR/git-template/config lfs.url https://localhost
   script:
     - module load git git-lfs
     - hostname
