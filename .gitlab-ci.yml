@@ -10,6 +10,7 @@ test_pywake_ellipsys:
   script:
     - hostname
     - which python
+    - echo "in script"
     - env > ~/env.txt
   after_script:
     - echo "after script"
