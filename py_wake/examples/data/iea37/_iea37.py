@@ -2,7 +2,7 @@ from py_wake import np
 
 from py_wake.examples.data.iea37.iea37_reader import read_iea37_windturbine, read_iea37_windturbine_deprecated
 from py_wake.examples.data.iea37 import iea37_path
-from py_wake.examples.data.iea37.iea37_aepcalc import getTurbLocYAML,\
+from py_wake.examples.data.iea37.iea37_aepcalc import getTurbLocYAML, \
     getWindRoseYAML, getTurbAtrbtYAML, calcAEP
 from py_wake.site._site import UniformSite
 from py_wake.wind_turbines import WindTurbine

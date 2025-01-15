@@ -394,7 +394,7 @@ def test_Interpolators(interpolator):
 
 
 @pytest.mark.parametrize('y,x,axis', [([2, 3, 7, 9], [1, 2, 4, 8], 0),
-                                      (lambda x:-x**2 + 9, np.linspace(-3, 3, 10), 0)])
+                                      (lambda x: -x**2 + 9, np.linspace(-3, 3, 10), 0)])
 def test_trapz(y, x, axis):
     if callable(y):
         y = y(x)

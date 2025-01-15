@@ -1,7 +1,7 @@
 from py_wake import np
 
 from abc import abstractmethod, ABC
-from py_wake.wind_turbines.wind_turbine_functions import WindTurbineFunction, FunctionSurrogates,\
+from py_wake.wind_turbines.wind_turbine_functions import WindTurbineFunction, FunctionSurrogates, \
     WindTurbineFunctionList
 from py_wake.utils.check_input import check_input
 from py_wake.utils.model_utils import check_model, fix_shape

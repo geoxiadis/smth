@@ -88,6 +88,13 @@ class NumpyWrapper():
     def __init__(self):
         self.set_backend(numpy)
 
+    def __str__(self):
+        if isinstance(self.backend, NumpyBackend):
+            n = self.backend.__class__.__name__
+        else:
+            n = self.backend.__name__
+        return f"Wrapper of {n}"
+
     @property
     def float(self):
         if self.backend == numpy:

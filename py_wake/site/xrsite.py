@@ -49,7 +49,7 @@ class XRSite(Site):
             assert all([v in ['linear', 'nearest'] for v in interp_method.values()]), \
                 'interp_method "%s" not implemented. Values must be "linear" or "nearest"' % interp_method
         else:
-            assert interp_method in ['linear', 'nearest'],\
+            assert interp_method in ['linear', 'nearest'], \
                 'interp_method "%s" not implemented. Must be "linear" or "nearest"' % interp_method
         assert bounds in ['check', 'limit', 'ignore'], 'bounds must be "check", "limit" or "ignore"'
         distance = distance or StraightDistance()

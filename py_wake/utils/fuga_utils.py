@@ -30,8 +30,7 @@ Please convert the data to the new netcdf format:
 from py_wake.utils.fuga_utils import dat2netcdf
 dat2netcdf(folder='{Path(path).as_posix()}')
 
-After that pass the new netcdf file to Fuga instead of the old folder""",
-                          DeprecationWarning, stacklevel=2)
+After that pass the new netcdf file to Fuga instead of the old folder""", DeprecationWarning, stacklevel=2)
 
             self.path = Path(path)
             if (self.path / 'CaseData.bin').exists():
@@ -263,7 +262,7 @@ def dat2netcdf(folder):
         z_id = f"z{fu.z[0]:.1f}-{fu.z[-1]:.1f}"
 
     preluts_id = f'Zeta0={fu.zeta0:3.2f}'
-    fluts_id = f'_D{fu.r*2}_zhub{fu.zHub}_zi{fu.zi}_z0={fu.z0}_{z_id}{lut_vars_id}'
+    fluts_id = f'_D{fu.r * 2}_zhub{fu.zHub}_zi{fu.zi}_z0={fu.z0}_{z_id}{lut_vars_id}'
     luts_id = f'_nx{fu.nx}_ny{fu.ny}_dx{fu.dx}_dy{fu.dy}'
     filename = Path(folder).parent / (preluts_id + fluts_id + luts_id + ".nc")
     ds.to_netcdf(filename)

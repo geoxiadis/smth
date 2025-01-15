@@ -9,11 +9,17 @@ from py_wake.utils.grid_interpolator import GridInterpolator
 
 class GaussianOverlapAvgModel(RotorAvgModel):
     def __init__(self, filename=os.path.dirname(__file__) + f'/gaussian_overlap_.02_.02_128_512.nc'):
-        table = xr.load_dataarray(filename)
-        R_sigma = np.arange(0, 20.001, 0.01)
-        CW_sigma = np.arange(0, 10.01, 0.01)
-        dat = table.interp(R_sigma=R_sigma, CW_sigma=CW_sigma, method='cubic')
-        self.overlap_interpolator = GridInterpolator([R_sigma, CW_sigma], dat, bounds='limit')
+        self.filename = filename
+
+    @property
+    def overlap_interpolator(self):
+        if not hasattr(self, '_overlap_interpolator'):
+            table = xr.load_dataarray(self.filename, engine='h5netcdf')
+            R_sigma = np.arange(0, 20.001, 0.01)
+            CW_sigma = np.arange(0, 10.01, 0.01)
+            dat = table.interp(R_sigma=R_sigma, CW_sigma=CW_sigma, method='cubic')
+            self._overlap_interpolator = GridInterpolator([R_sigma, CW_sigma], dat, bounds='limit')
+        return self._overlap_interpolator
 
     def _calc_layout_terms(self, func, cw_ijlk, **kwargs):
         func(cw_ijlk=cw_ijlk * 0, **kwargs)

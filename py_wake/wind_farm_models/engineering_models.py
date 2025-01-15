@@ -1,17 +1,17 @@
 from abc import abstractmethod
 from numpy import newaxis as na
 from py_wake import np
-from py_wake.superposition_models import SuperpositionModel, LinearSum, WeightedSum, CumulativeWakeSum
+from py_wake.superposition_models import SuperpositionModel, LinearSum, WeightedSum, CumulativeWakeSum, SquaredSum
 from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
 from py_wake.deflection_models.deflection_model import DeflectionModel
 from py_wake.utils.gradients import cabs
-from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, RotorCenter, NodeRotorAvgModel
+from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, NodeRotorAvgModel
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel
 from py_wake.deficit_models.deficit_model import ConvectionDeficitModel, BlockageDeficitModel, WakeDeficitModel
 from tqdm import tqdm
 from py_wake.wind_turbines._wind_turbines import WindTurbines
 from py_wake.utils.model_utils import check_model, fix_shape
-from py_wake.utils.gradients import hypot
+from py_wake.utils import gradients
 import warnings
 from py_wake.input_modifier_models.input_modifier_model import InputModifierModel
 from py_wake.deficit_models.no_wake import NoWakeDeficit
@@ -241,7 +241,8 @@ class EngineeringWindFarmModel(WindFarmModel):
 
         # Calculate down-wind and cross-wind distances
         z_ilk = self.site.elevation(kwargs['x_ilk'], kwargs['y_ilk'])
-        self.site.distance.setup(kwargs['x_ilk'], kwargs['y_ilk'], kwargs['h_ilk'], z_ilk)
+        self.site.distance.setup(
+            np.asarray(kwargs['x_ilk']), np.asarray(kwargs['y_ilk']), np.asarray(kwargs['h_ilk']), np.asarray(z_ilk))
 
         WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs = self._calc_wt_interaction(**kwargs)
 
@@ -307,7 +308,7 @@ class EngineeringWindFarmModel(WindFarmModel):
                              'x_ilk': wt_x_ilk, 'y_ilk': wt_y_ilk})
 
         if 'cw_ijlk' in self.args4all:
-            model_kwargs['cw_ijlk'] = hypot(dh_ijlk, hcw_ijlk)
+            model_kwargs['cw_ijlk'] = gradients.hypot(dh_ijlk, hcw_ijlk)
 
         if 'wake_radius_ijlk' in self.args4all:
             model_kwargs['wake_radius_ijlk'] = self.wake_deficitModel.wake_radius(**model_kwargs)
@@ -483,6 +484,9 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
             alt_model = [self.superpositionModel, LinearSum()][isinstance(
                 self.superpositionModel, (WeightedSum, CumulativeWakeSum))]
             self.blockage_superpositionModel = self.blockage_deficitModel.superpositionModel or alt_model
+            msg = "PropagateDownwind does not work with SquaredSum when the blockage model has both up and downstream effects"
+            assert self.blockage_deficitModel.upstream_only or not isinstance(
+                self.blockage_superpositionModel, SquaredSum), msg
 
         WS_eff_ilk_last = WS_ilk
         for j in tqdm(range(I), disable=I <= 1 or not self.verbose, desc="Calculate flow interaction", unit="wt"):
@@ -504,7 +508,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
             diff_ilk = cabs(WS_eff_ilk_last - WS_eff_ilk)
             max_diff = np.max(diff_ilk.max(0))
 
-            if max_diff < 1e-6:
+            if max_diff < self.convergence_tolerance:
                 break
             WS_eff_ilk_last = WS_eff_ilk
         self.direction = 'down'
@@ -641,9 +645,9 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
 
                 # Calculate required args4deficit parameters
                 arg_funcs = {'WS_ilk': lambda: WS_mk[m][na],
-                             'WS_jlk': lambda: np.moveaxis([WS_ilk[(slice(0, 1), j)[WS_ilk.shape[0] > 1],
-                                                                   (0, l)[WS_ilk.shape[1] > 1]]
-                                                            for j, l in zip(i_dw, i_wd_l)], 0, 1),
+                             'WS_jlk': lambda: np.moveaxis(np.array(
+                                 [WS_ilk[(slice(0, 1), j)[WS_ilk.shape[0] > 1], (0, l)[WS_ilk.shape[1] > 1]]
+                                  for j, l in zip(i_dw, i_wd_l)]), 0, 1),
                              'WS_eff_ilk': lambda: WS_eff_mk[-1][na],
                              'TI_ilk': lambda: TI_mk[m][na],
                              'TI_eff_ilk': lambda: TI_eff_mk[-1][na],
@@ -934,14 +938,14 @@ class All2AllIterative(EngineeringWindFarmModel):
                     self.site.distance.setup(model_kwargs['x_ilk'], model_kwargs['y_ilk'], model_kwargs['h_ilk'], z_ilk)
                     model_kwargs.update({k: v for k, v in zip(['dw_ijlk', 'hcw_ijlk', 'dh_ijlk'],
                                                               self.site.distance(wd_l=wd, WD_ilk=WD_ilk))})
-                    model_kwargs['cw_ijlk'] = hypot(model_kwargs['dh_ijlk'], model_kwargs['hcw_ijlk'])
+                    model_kwargs['cw_ijlk'] = gradients.hypot(model_kwargs['dh_ijlk'], model_kwargs['hcw_ijlk'])
                     if not self.deflectionModel:
                         self._init_deficit(**model_kwargs)
 
             if self.deflectionModel:
                 dw_ijlk, hcw_ijlk, dh_ijlk = self.deflectionModel.calc_deflection(**model_kwargs)
                 model_kwargs.update({'dw_ijlk': dw_ijlk, 'hcw_ijlk': hcw_ijlk, 'dh_ijlk': dh_ijlk,
-                                     'cw_ijlk': hypot(dh_ijlk, hcw_ijlk)})
+                                     'cw_ijlk': gradients.hypot(dh_ijlk, hcw_ijlk)})
                 self._reset_deficit()
             if 'wake_radius_ijlk' in self.args4all:
                 model_kwargs['wake_radius_ijlk'] = self.wake_deficitModel.wake_radius(**model_kwargs)
@@ -991,7 +995,7 @@ class All2AllIterative(EngineeringWindFarmModel):
             # ensure idling wt in unstable flow cases do not cutin even if ws increases due to speedup
             # this helps to converge
             # WS_eff_ilk[ioff] = np.minimum(WS_eff_ilk[ioff], WS_eff_ilk_last[ioff])
-            WS_eff_ilk = np.minimum(WS_eff_ilk, WS_eff_ilk_last, out=WS_eff_ilk, where=ioff)
+            WS_eff_ilk = gradients.minimum(WS_eff_ilk, WS_eff_ilk_last, out=WS_eff_ilk, where=ioff)
 
             if self.turbulenceModel:
                 add_turb_ijlk = self.turbulenceModel(**model_kwargs)
@@ -1069,7 +1073,7 @@ def main():
 
         # NOJ wake and selfsimilarity blockage
         noj_ss = All2AllIterative(site, windTurbines, wake_deficitModel=NOJDeficit(), superpositionModel=SquaredSum(),
-                                  blockage_deficitModel=SelfSimilarityDeficit())
+                                  blockage_deficitModel=SelfSimilarityDeficit(upstream_only=True))
 
         # Zong convection superposition
         zongp = PropagateDownwind(site, windTurbines, wake_deficitModel=ZongGaussianDeficit(), superpositionModel=WeightedSum(),

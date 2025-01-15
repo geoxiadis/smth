@@ -2,7 +2,7 @@ import numpy as np
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind
 from py_wake.deficit_models.utils import ct2a_mom1d
 from py_wake.superposition_models import LinearSum, WeightedSum
-from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, NiayifarGaussianDeficit, ZongGaussianDeficit,\
+from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, NiayifarGaussianDeficit, ZongGaussianDeficit, \
     BlondelSuperGaussianDeficit2020, CarbajofuertesGaussianDeficit
 from py_wake.turbulence_models.crespo import CrespoHernandez
 from py_wake.superposition_models import SqrMaxSum

@@ -116,7 +116,7 @@ except ModuleNotFoundError:
 
         try:
             import contextlib
-            name = f'{os.path.basename(self.filename).replace(".","_")}'
+            name = f'{os.path.basename(self.filename).replace(".", "_")}'
             with contextlib.redirect_stdout(StringIO()):
                 with contextlib.redirect_stderr(StringIO()):
 

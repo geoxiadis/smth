@@ -19,6 +19,7 @@ class ISONoiseModel:
         Metode til beregning af luftabsorption
 
         The code is a vectorized version of the implementaion made by Camilla Marie Nyborg <cmny@dtu.dk>
+        The atmospheric abosrption model was modified by Andreas Fischer <asfi@dtu.dk> to correct for implementation errors
 
         The model models the sound pressure level from a number of sound sources at a number of receivers taking into
         account
@@ -124,26 +125,48 @@ class ISONoiseModel:
 
         return ISO_ground_ijlkf
 
-    def atmab(self, distance_ij, T0, RH0):
-        # Atmospheric absorption
-        T_0 = 293.15
-        T_01 = 273.16
-        T = T0 + 273.15
-        p_s0 = 1.0
+    def atmab(self, distance_ij, T0, RH0, p_s):
+        """ Atmospheric absorption
 
-        psat = p_s0 * 10.0**(-6.8346 * (T_01 / T)**1.261 + 4.6151)
-        h = p_s0 * (RH0) * (psat / p_s0)
-        F_rO = 1.0 / p_s0 * (24.0 + 4.04 * (10**4.0) * h * (0.02 + h) / (0.391 + h))
-        F_rN = 1.0 / p_s0 * (T_0 / T)**(0.5) * (9.0 + 280 * h *
-                                                np.exp(-4.17 * ((T_0 / T)**(1.0 / 3.0) - 1.0)))
-        alpha_ps = self.freqs**2.0 / p_s0 * (1.84 * (10**(-11)) * (T / T_0)**(0.5) + (T / T_0)**(-5.0 / 2.0) *
-                                             (0.01275 * np.exp(-2239.1 / T) / (F_rO + self.freqs**2.0 / F_rO) +
-                                              0.1068 * np.exp(-3352 / T) / (F_rN + self.freqs**2.0 / F_rN)))
+        Source: H. E. Bass, L. C. Sutherland, A. J. Zuckerwar, D. T. Blackstock, D. M. Hester;
+        Atmospheric absorption of sound: Further developments. J. Acoust. Soc. Am. 1 January 1995; 97 (1): 680–683. https://doi.org/10.1121/1.412989
+        Note that an erratum was published to correct eq. 3
 
-        ISO_alpha = alpha_ps[na, na] * 20.0 / np.log(10.0) * distance_ij[:, :, na]
+        # inputs
+        distance_ij : distance between source and observer in meter
+        T0 : atmospheric temperature in deg C
+        RH0 : relative humidity in pct
+        p_s : atmospheric pressure in atm
+        """
+        T_0 = 293.15  # reference temperature in K
+        T_01 = 273.16  # triple point isotherm temperature in K
+        T = T0 + 273.15  # convert temperature from deg to K
+        p_s0 = 1.0  # reference atmospheric pressure in atm
+        #
+        log10psatps0 = -6.8346 * (T_01 / T)**1.261 + 4.6151
+        psatps0 = 10**log10psatps0  # saturation pressure of water vapor normalised by reference atmospheric pressure
+        #
+        h = RH0 * p_s0 / p_s * psatps0  # absolute humidity in pct
+        #
+        F = self.freqs / p_s  # frequency normalised by atmospheric pressure
+        F2 = F**2
+        #
+        F_rO = 1.0 / p_s0 * (24.0 + 4.04e4 * h * (0.02 + h) / (0.391 + h))  # relaxation frequency of oxygen normalised by atmospheric pressure
+        F_rN = 1.0 / p_s0 * (T_0 / T)**(0.5) * (9.0 + 2.8e2 * h *
+                                                np.exp(-4.17 * ((T_0 / T)**(1.0 / 3.0) - 1.0)))  # relaxation frequency of nitrogen normalised by atmospheric pressure
+        #
+        alpha = F2 * (1.84e-11 * (T / T_0)**(0.5) * p_s0 + (T / T_0)**(-5.0 / 2.0) *
+                      (1.275e-2 * np.exp(-2239.1 / T) / (F_rO + F2 / F_rO) +
+                       0.1068 * np.exp(-3352.0 / T) / (F_rN + F2 / F_rN)))  # sound absorption coefficient in nepers normalised by distance and atmospheric pressure
+        #
+        alpha_ps = alpha * p_s  # sound absorption coefficient in nepers normalised by distance
+        #
+        ISO_alpha = alpha_ps[na, na] * 20.0 / np.log(10.0) * distance_ij[:, :, na]  # sound absorption coefficient in dB
         return ISO_alpha
 
-    def transmission_loss(self, rec_x, rec_y, rec_h, ground_type, Temp, RHum):
+    def transmission_loss(self, rec_x, rec_y, rec_h, ground_type, patm, Temp, RHum):
+        patm /= 101325.0  # convert unit of atmospheric pressure from pascal to atmosphere
+
         # transmission loss = ground effects + atmospheric absorption
         rec_h = np.zeros_like(rec_x) + rec_h
         rec_z = self.elevation_function(rec_x, rec_y)
@@ -151,12 +174,12 @@ class ISONoiseModel:
         ground_distance_ijlk = np.sqrt(self.distance.dx_ijlk**2 + self.distance.dy_ijlk**2)
         distance_ijlk = np.sqrt(self.distance.dx_ijlk**2 + self.distance.dy_ijlk**2 + self.distance.dh_ijlk**2)
 
-        atm_abs_ijlkf = self.atmab(distance_ijlk, T0=Temp, RH0=RHum)  # The atmospheric absorption term
+        atm_abs_ijlkf = self.atmab(distance_ijlk, T0=Temp, RH0=RHum, p_s=patm)  # The atmospheric absorption term
         ground_eff_ijlkf = self.ground_eff(ground_distance_ijlk, distance_ijlk, ground_type)
 
         return ground_eff_ijlkf - atm_abs_ijlkf  # Delta_SPL
 
-    def __call__(self, rec_x, rec_y, rec_h, Temp, RHum, ground_type):
+    def __call__(self, rec_x, rec_y, rec_h, patm, Temp, RHum, ground_type):
         """Calculate the sound pressure level at a list of reveicers
 
         Parameters
@@ -167,6 +190,8 @@ class ISONoiseModel:
             y coordinate, [m], of receivers
         rec_h : array_like or float
             height, [m], of receivers (typically 2m)
+        patm : float
+            atmospheric pressure (Pa)
         Temp : float
             Temperature (deg celcius)
         RHum : float
@@ -185,7 +210,7 @@ class ISONoiseModel:
         """
 
         # Computing total transmission loss
-        Delta_SPL_ijlkf = self.transmission_loss(rec_x, rec_y, rec_h, ground_type, Temp, RHum)
+        Delta_SPL_ijlkf = self.transmission_loss(rec_x, rec_y, rec_h, ground_type, patm, Temp, RHum)
         sound_power_ijlkf = np.expand_dims(self.sound_power_level,
                                            tuple(range(1, 6 - len(np.shape(self.sound_power_level)))))
 
@@ -220,7 +245,7 @@ def main():
         ax1.plot([x[0]], [1000], '.', label='Receiver 1')
         ax1.plot([x[-1]], [1000], '.', label='Receiver 2')
         ax1.legend()
-        total_sp_jlk, spl_jlkf = nm(rec_x=[x[0], x[-1]], rec_y=[1000, 1000], rec_h=2, Temp=20, RHum=80, ground_type=0.0)
+        total_sp_jlk, spl_jlkf = nm(rec_x=[x[0], x[-1]], rec_y=[1000, 1000], rec_h=2, patm=101325, Temp=20, RHum=80, ground_type=0.0)
         ax2.plot(nm.freqs, spl_jlkf[0, 0, 0], label='Receiver 1')
         ax2.plot(nm.freqs, spl_jlkf[1, 0, 0], label='Receiver 2')
         setup_plot(xlabel='Frequency [Hz]', ylabel='Sound pressure level [dB]', ax=ax2)

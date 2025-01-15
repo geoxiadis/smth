@@ -12,13 +12,13 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
+from py_wake import __release__
+from py_wake import __version__
 import os
 import sys
 sys.path.insert(0, os.path.abspath('..'))
 sys.path.append(r"c:\Anaconda3\envs\py36\Library\bin")
 
-from py_wake import __version__
-from py_wake import __release__
 
 # -- Project information -----------------------------------------------------
 
@@ -51,7 +51,7 @@ extensions = [
     'sphinx.ext.inheritance_diagram',
     'nbsphinx',
     'sphinx.ext.doctest',
-    #'sphinx.ext.imgconverter',
+    # 'sphinx.ext.imgconverter',
 ]
 
 intersphinx_mapping = {
@@ -76,14 +76,14 @@ master_doc = 'index'
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = [
     # Slow notebook:
-    #'notebooks/neural_network_with_tfds_data.ipynb',
+    # 'notebooks/neural_network_with_tfds_data.ipynb',
     # ipynb checkpoints
     'notebooks/.ipynb_checkpoints/*.ipynb',
     'notebooks/figure_notebooks/*.ipynb',
@@ -127,7 +127,7 @@ nbsphinx_timeout = 180
 
 # This is processed by Jinja2 and inserted before each notebook
 nbsphinx_prolog = r"""
-{% set docname = 'docs/' + env.doc2path(env.docname, base=None) %}
+{% set docname = 'docs' / env.doc2path(env.docname, base=None) %}
 
 
 .. only:: html
@@ -137,9 +137,8 @@ nbsphinx_prolog = r"""
 
     .. nbinfo::
 
-
-        :raw-html:`<a href="https://colab.research.google.com/github/DTUWindEnergy/PyWake/blob/master/{{ docname }}"><img alt="Open and run in Colab (interactive)" src="https://colab.research.google.com/assets/colab-badge.svg" style="vertical-align:text-bottom"></a>
-        <a href="https://gitlab.windenergy.dtu.dk/TOPFARM/PyWake/-/tree/master/{{ docname }}"><img alt="Edit on Gitlab" src="https://img.shields.io/badge/Edit%20on-Gitlab-blue?style=flat&logo=gitlab" style="vertical-align:text-bottom"></a>`
+        :raw-html:`<a href="https://gitlab.windenergy.dtu.dk/TOPFARM/PyWake/-/tree/master/{{ docname }}"><img alt="Edit on Gitlab" src="https://img.shields.io/badge/Edit%20on-Gitlab-blue?style=flat&logo=gitlab" style="vertical-align:text-bottom"></a>
+        <a href="https://mybinder.org/v2/git/https%3A%2F%2Fgitlab.windenergy.dtu.dk%2FTOPFARM%2FPyWake.git/master?labpath={{ docname }}" target="_blank"><img alt="Launch with Binder" src="https://mybinder.org/badge_logo.svg" style="vertical-align:text-bottom"></a>`
 
 """
 
@@ -157,7 +156,7 @@ nbsphinx_prolog = r"""
 #import jupytext
 # nbsphinx_custom_formats = {
 #    '.Rmd': lambda s: jupytext.reads(s, '.Rmd'),
-#}
+# }
 
 # Link or path to require.js, set to empty string to disable
 #nbsphinx_requirejs_path = ''
@@ -184,7 +183,7 @@ html_theme = 'sphinx_rtd_theme'
 # documentation.
 html_theme_options = {
     # TOC options
-    #'navigation_depth': 2,  # only show 2 levels on left sidebar
+    # 'navigation_depth': 2,  # only show 2 levels on left sidebar
     'collapse_navigation': False,  # don't allow sidebar to collapse
 }
 

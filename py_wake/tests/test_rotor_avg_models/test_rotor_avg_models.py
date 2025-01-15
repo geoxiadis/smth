@@ -3,7 +3,7 @@ import pytest
 import matplotlib.pyplot as plt
 from py_wake import np
 from py_wake.deficit_models.deficit_model import WakeDeficitModel, BlockageDeficitModel, WakeRadiusTopHat
-from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit,\
+from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit, \
     BastankhahGaussianDeficit, BastankhahGaussian
 from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit

@@ -1,5 +1,4 @@
-# image: continuumio/anaconda3
-image: continuumio/anaconda3:2023.03-1 # until tensorflow is available for python 3.11 on windows
+image: continuumio/anaconda3
 
 stages:
   - test
@@ -14,6 +13,8 @@ test_PyWake:  # name the job what we like
   script:
   - pip install --upgrade pip
   - pip install -e .[test] --timeout 100 #, fails anyway if Tensorflow does not install in <10min
+  - python -V
+  - pip list
   - pytest
   tags:  # only runners with this tag can do the job [3]
   - ci-ubuntu

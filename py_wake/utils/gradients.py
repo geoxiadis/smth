@@ -24,13 +24,16 @@ from scipy.special import gamma as sgamma
 from autograd.scipy.special import gamma as agamma
 
 
-def asarray(x, dtype=None, order=None):
+def asarray(x, dtype=None, order=None, **kwargs):
+    # kwargs: copy, like, etc introduced in numpy >=2
     if isinstance(x, (ArrayBox)):
         return x
     elif isinstance(x, DataArray) and isinstance(x.values, ArrayBox):  # pragma: no cover
         # only needed or called with some versions of xarray
         return x.values
-    return np_asarray(x, dtype, order)
+    if hasattr(x, '__cuda_array_interface__'):  # pragma: no cover
+        x = x.get()  # x is on GPU, move  to host
+    return np_asarray(x, dtype, order, **kwargs)
 
 
 # def asanyarray(x, dtype=None, order=None):
@@ -162,9 +165,9 @@ def autograd(f, vector_interdependence=True, argnum=0):
             args, kwargs = kwargs2args(f, *args, **kwargs)
             wrt_args = [args[i] for i in argnum]
             args = [a for i, a in enumerate(args) if i not in argnum]
-            wrt_arg_shape = [np.shape(arg) for arg in wrt_args]
-            wrt_1arg = np.concatenate([np.ravel(a) for a in wrt_args])
-            wrt_arg_i = np.r_[0, np.cumsum([np.prod(s) for s in wrt_arg_shape]).astype(int)]
+            wrt_arg_shape = [numpy.shape(arg) for arg in wrt_args]
+            wrt_1arg = numpy.concatenate([numpy.ravel(a) for a in wrt_args])
+            wrt_arg_i = numpy.r_[0, numpy.cumsum([numpy.prod(s) for s in wrt_arg_shape]).astype(int)]
 
             def wrap_1inp(inp, *args):
                 wrt_args = [inp[i0:i1].reshape(s) for i0, i1, s in zip(wrt_arg_i[:-1], wrt_arg_i[1:], wrt_arg_shape)]
@@ -253,7 +256,7 @@ def dinterp_dxp(xp, x, y):
 @set_gradient_function([dinterp_dxp])
 def interp(xp, x, y, *args, **kwargs):
     if all([np.isrealobj(v) for v in [xp, x, y]]):
-        return np.interp(xp, x, y, *args, **kwargs)
+        return np.interp(np.asarray(xp, order='C'), np.asarray(x), np.asarray(y), *args, **kwargs)
     else:
         # yp = np.interp(xp.real, x.real, y.real, *args, **kwargs)
         # dyp_dxp = dinterp_dxp(xp.real, x.real, y.real)

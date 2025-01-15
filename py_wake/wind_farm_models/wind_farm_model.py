@@ -6,6 +6,7 @@ from py_wake.flow_map import FlowMap, HorizontalGrid, FlowBox, Grid
 import xarray as xr
 from py_wake.utils import xarray_utils, weibull  # register ilk function @UnusedImport
 from numpy import newaxis as na
+from numpy import atleast_1d
 from py_wake.utils.model_utils import check_model, fix_shape
 import multiprocessing
 from py_wake.utils.parallelization import get_pool_map, get_pool_starmap
@@ -55,7 +56,7 @@ class WindFarmModel(ABC):
     def _run(self, x, y, h=None, type=0, wd=None, ws=None, time=False, verbose=False,  # @ReservedAssignment
              n_cpu=1, wd_chunks=None, ws_chunks=1, **kwargs):
         if time is False and np.ndim(wd):
-            wd = np.sort(wd)
+            wd = np.sort(np.array(wd))
         assert len(x) == len(y)
         self.verbose = verbose
         h, _ = self.windTurbines.get_defaults(len(x), type, h)
@@ -322,7 +323,7 @@ class WindFarmModel(ABC):
             else:  # pragma: no cover
                 raise ValueError(f'Shape, {s}, of argument {k} is invalid')
 
-        arg_lst = [{'wd': wd[wd_slice], 'ws': ws[ws_slice], 'time':get_subtask_arg('time', time, wd_slice, ws_slice),
+        arg_lst = [{'wd': wd[wd_slice], 'ws': ws[ws_slice], 'time': get_subtask_arg('time', time, wd_slice, ws_slice),
                     ** {k: get_subtask_arg(k, v, wd_slice, ws_slice) for k, v in kwargs.items()}} for wd_slice, ws_slice in slice_lst]
 
         return map_func, arg_lst, wd_chunks, ws_chunks
@@ -330,16 +331,21 @@ class WindFarmModel(ABC):
     def _aep_chunk_wrapper(self, aep_function,
                            x, y, h=None, type=0, wd=None, ws=None,   # @ReservedAssignment
                            normalize_probabilities=False, with_wake_loss=True,
-                           n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
+                           n_cpu=1, wd_chunks=None, ws_chunks=None, time=False, **kwargs):
         wd, ws = self.site.get_defaults(wd, ws)
         wd_bin_size = self.site.wd_bin_size(wd)
 
         map_func, kwargs_lst, wd_chunks, ws_chunks = self._multiprocessing_chunks(
-            wd=wd, ws=ws, time=False, n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
+            wd=wd, ws=ws, time=time, n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
             x=x, y=y, h=h, type=type, **kwargs)
 
-        return np.sum([np.array(aep) / self.site.wd_bin_size(args['wd']) * wd_bin_size
-                       for args, aep in zip(kwargs_lst, map_func(aep_function, kwargs_lst))], 0)
+        if time is False:
+            return np.sum([np.array(aep) / self.site.wd_bin_size(args['wd']) * wd_bin_size
+                           for args, aep in zip(kwargs_lst, map_func(aep_function, kwargs_lst))], 0)
+
+        return np.mean(
+            [np.array(aep) for aep in map_func(aep_function, kwargs_lst)], axis=0
+        )
 
     def aep_gradients(self, gradient_method=autograd, wrt_arg=['x', 'y'], gradient_method_kwargs={},
                       n_cpu=1, wd_chunks=None, ws_chunks=None, **kwargs):
@@ -382,7 +388,7 @@ class WindFarmModel(ABC):
                 n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks, **kwargs)
 
         if kwargs:
-            wrt_arg = np.atleast_1d(wrt_arg)
+            wrt_arg = atleast_1d(wrt_arg)
 
             def wrap_aep(*args, **kwargs):
                 kwargs.update({n: v for n, v in zip(wrt_arg, args)})
@@ -391,7 +397,7 @@ class WindFarmModel(ABC):
             f = gradient_method(wrap_aep, True, tuple(range(len(wrt_arg))), **gradient_method_kwargs)
             return np.array(f(*[kwargs.pop(n) for n in wrt_arg], **kwargs))
         else:
-            argnum = [['x', 'y', 'h', 'type', 'wd', 'ws'].index(a) for a in np.atleast_1d(wrt_arg)]
+            argnum = [['x', 'y', 'h', 'type', 'wd', 'ws'].index(a) for a in atleast_1d(wrt_arg)]
             f = gradient_method(self.aep, True, argnum, **gradient_method_kwargs)
             return f
 
@@ -418,7 +424,7 @@ class SimulationResult(xr.Dataset):
         if 'time' in lw:
             coords['time'] = ('time', lw.time)
 
-        ilk_dims = np.array((['wt', 'wd', 'ws'], ['wt', 'time'])['time' in lw], dtype=np.str_)
+        ilk_dims = (['wt', 'wd', 'ws'], ['wt', 'time'])['time' in lw]
         data_vars = {k: (ilk_dims, (v, v[:, :, 0])['time' in lw], {'Description': d})
                      for k, v, d in [('WS_eff', WS_eff_ilk, 'Effective local wind speed [m/s]'),
                                      ('TI_eff', np.zeros_like(WS_eff_ilk) + TI_eff_ilk,
@@ -506,13 +512,13 @@ class SimulationResult(xr.Dataset):
 
         if linear_power_segments:
             s = "The linear_power_segments method "
-            assert all([n in self for n in ['Weibull_A', 'Weibull_k', 'Sector_frequency']]),\
+            assert all([n in self for n in ['Weibull_A', 'Weibull_k', 'Sector_frequency']]), \
                 s + "requires a site with weibull information"
             assert normalize_probabilities is False, \
                 s + "cannot be combined with normalize_probabilities"
-            assert np.all(self.Power.isel(ws=0) == 0) and np.all(self.Power.isel(ws=-1) == 0),\
+            assert np.all(self.Power.isel(ws=0) == 0) and np.all(self.Power.isel(ws=-1) == 0), \
                 s + "requires first wind speed to have no power (just below cut-in)"
-            assert np.all(self.Power.isel(ws=-1) == 0),\
+            assert np.all(self.Power.isel(ws=-1) == 0), \
                 s + "requires last wind speed to have no power (just above cut-out)"
             weighted_power = weibull.WeightedPower(
                 self.ws.values,
@@ -639,12 +645,14 @@ class SimulationResult(xr.Dataset):
                           freqs=freqs, sound_power_level=sound_power_level,
                           elevation_function=self.windFarmModel.site.elevation)
 
-    def noise_map(self, noiseModel=ISONoiseModel, grid=None, ground_type=0, temperature=20, relative_humidity=80):
+    def noise_map(self, noiseModel=ISONoiseModel, grid=None, ground_type=0,
+                  atmopheric_pressure=101325.0, temperature=20, relative_humidity=80):
         if grid is None:
             grid = HorizontalGrid(h=2)
         nm = self.noise_model(noiseModel)
         X, Y, x_j, y_j, h_j, _ = self._get_grid(grid)
-        spl_jlk, spl_jlkf = nm(x_j, y_j, h_j, temperature, relative_humidity, ground_type=ground_type)
+        spl_jlk, spl_jlkf = nm(x_j, y_j, h_j, atmopheric_pressure, temperature,
+                               relative_humidity, ground_type=ground_type)
         return xr.Dataset({'Total sound pressure level': (('y', 'x', 'wd', 'ws'),
                                                           spl_jlk.reshape(X.shape + (spl_jlk.shape[1:]))),
                            'Sound pressure level': (('y', 'x', 'wd', 'ws', 'freq'),
@@ -675,7 +683,7 @@ class SimulationResult(xr.Dataset):
             grid = grid(x_i=self.x.values, y_i=self.y.values, h_i=h,
                         d_i=self.windFarmModel.windTurbines.diameter(self.type))
         else:
-            plane = (None,)
+            raise NotImplementedError('The grid must be instance of Grid or None')
         return grid + (plane, )
 
     @property
@@ -744,10 +752,8 @@ class SimulationResult(xr.Dataset):
 
         Parameters
         ----------
-        grid : Grid or tuple(X, Y, x, y, h)
-            Grid, e.g. HorizontalGrid or\n
-            tuple(X, Y, x, y, h) where X, Y is the meshgrid for visualizing data\n
-            and x, y, h are the flattened grid points
+        grid : Grid
+            Grid, e.g. XYGrid, YZGrid, XZGrid or Points\n
         wd : int, float, array_like or None
             Wind directions to include in the flow map (if more than one, an weighted average will be computed)
             The simulation result must include the requested wind directions.

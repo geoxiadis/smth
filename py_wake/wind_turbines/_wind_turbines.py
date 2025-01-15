@@ -52,7 +52,7 @@ Use WindTurbines(names, diameters, hub_heights, power_ct_funcs) instead""", Depr
         return ri, oi
 
     def _info(self, var, type):
-        return var[np.asarray(type, int)]
+        return np.asarray(var)[np.asarray(type, int)]
 
     def hub_height(self, type=0):
         """Hub height of the specified type(s) of wind turbines"""
@@ -253,16 +253,18 @@ Use WindTurbines(names, diameters, hub_heights, power_ct_funcs) instead""", Depr
         if ax is None:
             ax = plt.gca()
         power, ct = self.power_ct(ws, **wt_kwargs)
-        ax.plot(ws, power, label='Power')
+        c = ax.plot(ws, power, label='Power')[0].get_color()
+        ax.plot([], '--', color=c, label='CT')
         ax.grid()
         t = wt_kwargs.get('type', 0)
         ax.set_title(self.name(type=t))
         ax.set_xlabel('Wind speed [m/s]')
         ax.set_ylabel('Power [W]')
         ax2 = ax.twinx()
-        ax2.plot(ws, ct, '--', label='$$C_T$$')
+        ax2.plot(ws, ct, '--')
         ax2.set_ylabel('Thrust coefficient')
         axs = [ax, ax2]
+        ax.legend()
         return axs
 
     @classmethod

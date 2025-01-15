@@ -195,3 +195,9 @@ def test_np32_flowmap():
             fm.plot_wake_map()
             if 0:
                 plt.show()
+
+
+def test_numpy_str():
+    assert str(np) == 'Wrapper of numpy'
+    with Numpy32():
+        assert str(np) == 'Wrapper of Numpy32'

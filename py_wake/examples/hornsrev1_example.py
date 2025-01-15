@@ -1,4 +1,4 @@
-from py_wake.examples.data.hornsrev1 import wt_x, wt_y, HornsrevV80,\
+from py_wake.examples.data.hornsrev1 import wt_x, wt_y, HornsrevV80, \
     Hornsrev1Site
 from py_wake import NOJ
 

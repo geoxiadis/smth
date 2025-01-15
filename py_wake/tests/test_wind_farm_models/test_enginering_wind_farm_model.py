@@ -315,6 +315,22 @@ def test_All2AllIterative_initialize_with_PropagateDownwind():
     assert i1 <= i2
 
 
+def test_All2AllIterative_initialize_with():
+    site = IEA37Site(64)
+    x, y = site.initial_position.T
+    windTurbines = V80()
+
+    def get(WS_eff):
+        wfm = All2AllIterative(site, windTurbines, wake_deficitModel=NOJDeficit(),
+
+                               blockage_deficitModel=SelfSimilarityDeficit())
+        return wfm(x, y, WS_eff=WS_eff).aep().sum(), wfm.iterations
+
+    res = np.array([get(WS_eff) for WS_eff in [0, None, 25]])
+    npt.assert_array_almost_equal(res[:, 0], res[0, 0])
+    npt.assert_array_equal(res[:, 1], [5, 4, 6])  # iterations
+
+
 def test_huge_farm():
     site = UniformSite([1], ti=0)
     windTurbines = IEA37_WindTurbines()
@@ -616,3 +632,16 @@ def test_PropagateUpDownIterative_blockage_deficitModels(blockage_deficitModel):
                                  RankineHalfBody, Rathmann, RathmannScaled, VortexCylinder]:
         atol = 0.01
     npt.assert_allclose(pudi(x, y, wd=270).WS_eff, all2all(x, y, wd=270).WS_eff, atol=atol)
+
+
+def test_PropagateUpDownIterative_SquaredSum():
+    class MyBlockage(SelfSimilarityDeficit):
+        def calc_blockage_deficit(self, dw_ijlk, **kwargs):
+            return np.abs(SelfSimilarityDeficit.calc_blockage_deficit(self, dw_ijlk, **kwargs))
+    wfm = PropagateUpDownIterative(site=UniformSite(),
+                                   windTurbines=V80(),
+                                   wake_deficitModel=BastankhahGaussianDeficit(use_effective_ws=True),
+                                   blockage_deficitModel=MyBlockage(exclude_wake=False, use_effective_ws=True),
+                                   superpositionModel=SquaredSum())
+    with pytest.raises(AssertionError, match='PropagateDownwind does not work with SquaredSum when the blockage model has both up and downstream effects'):
+        wfm([0, 200, 400], [0, 0, 0], wd=270)

@@ -2,7 +2,7 @@ import pytest
 from py_wake import np
 from py_wake import NOJ
 from py_wake.site._site import UniformSite
-from py_wake.superposition_models import LinearSum, SquaredSum, MaxSum, SqrMaxSum, WeightedSum, CumulativeWakeSum,\
+from py_wake.superposition_models import LinearSum, SquaredSum, MaxSum, SqrMaxSum, WeightedSum, CumulativeWakeSum, \
     SuperpositionModel
 from py_wake.tests import npt
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
@@ -172,3 +172,10 @@ def test_superpositionModels_rotor_avg_model(superpositionModel):
     sim_res_a2a = wfm_a2a(wt9_x, wt9_y, operating=operating)
     sim_res_pdw = wfm_pdw(wt9_x, wt9_y, operating=operating)
     npt.assert_array_almost_equal(sim_res_a2a.WS_eff.sel(wt=8), sim_res_pdw.WS_eff.sel(wt=8))
+
+
+def test_squaredSum_speedups():
+    wfm = All2AllIterative(site=UniformSite(), windTurbines=V80(), wake_deficitModel=NOJDeficit(),
+                           blockage_deficitModel=SelfSimilarityDeficit(exclude_wake=False), superpositionModel=SquaredSum())
+    with pytest.raises(AssertionError, match='SquaredSum only works for deficit - not speedups'):
+        wfm([0, 200, 400], [0, 0, 0], wd=270)

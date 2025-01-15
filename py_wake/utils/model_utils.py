@@ -133,7 +133,7 @@ class RotorAvgAndGroundModelContainer():
 
 
 def get_exclude_dict():
-    from py_wake.deficit_models.deficit_model import ConvectionDeficitModel, WakeDeficitModel,\
+    from py_wake.deficit_models.deficit_model import ConvectionDeficitModel, WakeDeficitModel, \
         BlockageDeficitModel
     from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
     from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, NodeRotorAvgModel

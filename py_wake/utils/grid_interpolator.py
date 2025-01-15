@@ -1,5 +1,6 @@
 from py_wake import np
 from numpy import newaxis as na
+from numpy import atleast_1d
 from py_wake.utils import gradients
 from autograd.numpy.numpy_boxes import ArrayBox
 
@@ -35,7 +36,7 @@ class GridInterpolator(object):
         for i in self.irregular_axes_indexes:
             self.x[i] = np.r_[self.x[i], self.x[i][-1] + 1]
         self.V = np.asarray(V)
-        if not np.all(self.V.shape[:len(self.n)] == self.n):
+        if not np.all(np.asarray(self.V.shape[:len(self.n)]) == self.n):
             raise ValueError("Lengths of x does not match shape of V")
         ui = np.array([[0], [1]])
         for _ in range(len(x) - 1):
@@ -58,8 +59,8 @@ class GridInterpolator(object):
         """
         if len(np.atleast_1d(xp)) == 0:
             return np.array([])
-        method = np.atleast_1d(method or self.method)
-        assert np.all([m in ['linear', 'nearest'] for m in method]), 'method must be "linear" or "nearest"'
+        method = atleast_1d(method or self.method)
+        assert all([m in ['linear', 'nearest'] for m in method]), 'method must be "linear" or "nearest"'
         assert len(method) in [1, len(self.x)]
         linear = [method[min(len(method) - 1, i)] == 'linear' for i in range(len(self.x))]
         bounds = bounds or self.bounds
@@ -90,11 +91,11 @@ class GridInterpolator(object):
 
         if 'nearest' in method:
             # round x.5 down to match old results
-            xpi = np.where(linear, xpi, np.round(xpi - .1 * (gradients.mod(xpi, 2) == 1.5)))
+            xpi = np.where(np.asarray(linear), xpi, np.round(xpi - .1 * (gradients.mod(xpi, 2) == 1.5)))
         xpif, xpi0 = gradients.modf(xpi)
 
-        int_box_axes = [[0, (0, 1)][l] for l in linear]
-        ui = np.moveaxis(np.meshgrid(*int_box_axes, indexing='ij'), 0, -1)
+        int_box_axes = [(np.asarray([0], dtype=int), np.asarray([0, 1], dtype=int))[l] for l in linear]
+        ui = np.moveaxis(np.asarray(np.meshgrid(*int_box_axes, indexing='ij'), dtype=int), 0, -1)
 
         ui = ui.reshape((-1, len(self.x)))
         indexes = (ui.T[:, :, na] + xpi0.T[:, na])
