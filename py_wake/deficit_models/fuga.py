@@ -166,7 +166,7 @@ class FugaYawDeficit(FugaDeficit):
         mdUT_ijlk = np.negative(mdUT_ijlk, out=mdUT_ijlk, where=hcw_ijlk < 0)  # UT is antisymmetric
         theta_ilk = np.deg2rad(yaw_ilk)
 
-        mdu_ijlk = (mdUL_ijlk * np.cos(theta_ilk)[:, na] - mdUT_ijlk * np.sin(theta_ilk)[:, na])
+        mdu_ijlk = (mdUL_ijlk * np.cos(theta_ilk)[:, na] + mdUT_ijlk * np.sin(theta_ilk)[:, na])
         # avoid wake on itself
         mdu_ijlk *= ~((dw_ijlk == 0) & (hcw_ijlk <= D_src_il[:, na, :, na]))
 

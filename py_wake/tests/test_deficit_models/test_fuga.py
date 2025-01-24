@@ -194,7 +194,7 @@ def test_fuga_downwind_vs_notebook():
     p = Path(tfp) / "fuga/v80_wake_4d_y_no_deflection.csv"
     y, notebook_deficit_4d = np.array([v.split(",") for v in p.read_text().strip().split("\n")], dtype=float).T
     sim_res = wfm_ULT([0], [0], wd=270, ws=WS, yaw=[[[17.4493]]])
-    fm = sim_res.flow_map(XYGrid(4 * wt.diameter(), y=y))
+    fm = sim_res.flow_map(XYGrid(4 * wt.diameter(), y=-y))
     npt.assert_allclose(fm.WS_eff.squeeze() - WS, notebook_deficit_4d, atol=1e-6)
 
     if 0:

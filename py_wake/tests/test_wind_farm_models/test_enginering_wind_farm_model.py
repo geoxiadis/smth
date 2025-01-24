@@ -322,7 +322,6 @@ def test_All2AllIterative_initialize_with():
 
     def get(WS_eff):
         wfm = All2AllIterative(site, windTurbines, wake_deficitModel=NOJDeficit(),
-
                                blockage_deficitModel=SelfSimilarityDeficit())
         return wfm(x, y, WS_eff=WS_eff).aep().sum(), wfm.iterations
 

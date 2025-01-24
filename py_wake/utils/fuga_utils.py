@@ -102,7 +102,7 @@ After that pass the new netcdf file to Fuga instead of the old folder""", Deprec
             ds = xr.open_dataset(path)
             self.dataset_path = path
             self.x, self.y, self.z = ds.x.values, ds.y.values, ds.z.values
-            self.dx, self.dy = np.diff(self.x[:2]), np.diff(self.y[:2])
+            self.dx, self.dy = np.diff(self.x[:2])[0], np.diff(self.y[:2])[0]
             self.zeta0, self.zHub, self.z0 = ds.zeta0.item(), ds.hubheight.item(), ds.z0.item()
             self.ds = ds.ds.item()
 

@@ -512,6 +512,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                 break
             WS_eff_ilk_last = WS_eff_ilk
         self.direction = 'down'
+        self.iterations = j
         return WS_eff_ilk, TI_eff_ilk, ct_ilk, res_kwargs
 
     def _calc_deficit(self, dw_ijlk, **kwargs):
@@ -858,6 +859,8 @@ class All2AllIterative(EngineeringWindFarmModel):
             self.blockage_deficitModel = blockage_deficitModel
         elif np.all(WS_eff_ilk == 0):
             WS_eff_ilk = WS_ILK + 0.
+        else:
+            WS_eff_ilk = np.zeros((I, L, K)) + WS_eff_ilk
 
         WS_eff_ilk = WS_eff_ilk.astype(dtype)
         WS_eff_ilk_last = WS_eff_ilk + 0  # fast autograd-friendly copy
@@ -867,9 +870,12 @@ class All2AllIterative(EngineeringWindFarmModel):
         kwargs['WD_ilk'] = WD_ilk
 
         wt_kwargs = self.get_wt_kwargs(TI_eff_ilk, kwargs)
-        ct_ilk = self.windTurbines.ct(ws=WS_ILK, **wt_kwargs)
+        ct_ilk = self.windTurbines.ct(ws=WS_eff_ilk, **wt_kwargs)
         try:
-            ct_ilk_idle = self.windTurbines.ct(ws=0.1 * np.ones_like(WS_ILK), **wt_kwargs)
+            if hasattr(self.windTurbines.powerCtFunction, 'ct_idle'):
+                ct_ilk_idle = np.ones_like(WS_ILK) * self.windTurbines.powerCtFunction.ct_idle
+            else:
+                ct_ilk_idle = self.windTurbines.ct(ws=0.1 * np.ones_like(WS_ILK), **wt_kwargs)
         except BaseException:
             ct_ilk_idle = 0
         unstable_lk = np.zeros((L, K), dtype=bool)
@@ -911,8 +917,13 @@ class All2AllIterative(EngineeringWindFarmModel):
         # Iterate until convergence
         for j in tqdm(range(I), disable=I <= 1 or not self.verbose,
                       desc="Calculate flow interaction", unit="Iteration"):
-
+            ct_last_ilk = ct_ilk + 0.
             ct_ilk = self.windTurbines.ct(np.maximum(WS_eff_ilk, 0), **wt_kwargs)
+
+            # ensure idling wt in unstable flow cases do not cutin even if ws increases due to speedup
+            # this helps to converge
+            # ct_ilk[ioff] = np.minimum(ct_ilk[ioff], ct_last_ilk[ioff])
+            ct_ilk = gradients.minimum(ct_ilk, ct_last_ilk, out=ct_ilk, where=ioff)
             ioff |= (unstable_lk)[na] & (ct_ilk <= ct_ilk_idle)
 
             model_kwargs.update(dict(ct_ilk=ct_ilk, WS_eff_ilk=WS_eff_ilk))
@@ -992,11 +1003,6 @@ class All2AllIterative(EngineeringWindFarmModel):
             if self.blockage_deficitModel:
                 WS_eff_ilk -= blockage_superpositionModel(blockage_iilk)
 
-            # ensure idling wt in unstable flow cases do not cutin even if ws increases due to speedup
-            # this helps to converge
-            # WS_eff_ilk[ioff] = np.minimum(WS_eff_ilk[ioff], WS_eff_ilk_last[ioff])
-            WS_eff_ilk = gradients.minimum(WS_eff_ilk, WS_eff_ilk_last, out=WS_eff_ilk, where=ioff)
-
             if self.turbulenceModel:
                 add_turb_ijlk = self.turbulenceModel(**model_kwargs)
                 add_turb_ijlk *= i2i_zero
@@ -1012,9 +1018,6 @@ class All2AllIterative(EngineeringWindFarmModel):
                 break
             # i_, l_, k_ = list(zip(*np.where(diff_ilk == max_diff)))[0]
             # wsi, wsl, wsk = WS_ilk.shape
-
-            # wsi, wsl, wsk = WS_ilk.shape
-
             # print("Iteration: %d, max diff_ilk: %.8f, WT: %d, WD: %d, WS: %f, WS_eff: %f" %
             #       (j, max_diff, i_, wd[l_],
             #        WS_ilk[min(i_, wsi - 1), min(l_, wsl - 1), min(k_, wsk - 1)],
