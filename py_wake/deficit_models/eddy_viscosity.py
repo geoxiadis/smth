@@ -102,7 +102,6 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         self.normalise_ti_to_waked_ws = normalise_ti_to_waked_ws
         self.maximum_wake_distance = maximum_wake_distance
 
-        lookup_table: xr.DataArray
         if lookup_table_filepath is None:
             if formulation is None:
                 raise ValueError(
@@ -291,7 +290,6 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         if np.max(ct_ilk) > 1.4:
             raise ValueError("Thrust coefficient (Ct) values higher than 1.4 are not supported.")
 
-        ti0_ilk: np.ndarray
         if self.use_effective_ti:
             ti0_ilk = TI_eff_ilk
         else:
