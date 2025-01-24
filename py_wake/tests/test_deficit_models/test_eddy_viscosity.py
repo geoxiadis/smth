@@ -50,6 +50,15 @@ def calc_deficit_kwargs():
                 ]
             ]
         ),
+        "WS_jlk": np.array(
+            [
+                [
+                    [1.0, 3.0, 5.0, 6.0, 7.0],
+                    [1.3, 3.3, 5.3, 6.3, 7.3],
+                    [1.6, 3.6, 5.6, 6.6, 7.6],
+                ]
+            ]
+        ),
         "WS_eff_ilk": np.array(
             [
                 [
@@ -276,11 +285,29 @@ def test_eddy_viscosity_invalid_maximum_wake_distance_raises_error() -> None:
         _ = EddyViscosityDeficitModel(maximum_wake_distance=1000.0)
 
 
+def test_eddy_viscosity_invalid_nan_inputs_raises_error() -> None:
+    model = EddyViscosityDeficitModel()
+
+    with pytest.raises(ValueError, match="Found NaN value in the input array 'WS_eff_ilk'"):
+        model.calc_deficit(
+            WS_ilk=np.array([[[12.0, 13.0]]]),
+            WS_jlk=np.array([[[12.0, 13.0]]]),
+            WS_eff_ilk=np.array([[[10.0, np.nan]]]),  # Invalid
+            TI_ilk=np.array([[[0.1, 0.09]]]),
+            TI_eff_ilk=np.array([[[0.09, 0.08]]]),
+            dw_ijlk=np.array([[[[250.0, 250.0]]]]),
+            cw_ijlk=np.array([[[[200.0, 200.0]]]]),
+            D_src_il=np.array([[[100.0, 100.0]]]),
+            ct_ilk=np.array([[[0.1, 0.1]]]),
+        )
+
+
 def test_eddy_viscosity_invalid_negative_ws_raises_error() -> None:
     with pytest.raises(ValueError, match="Negative wind speed.*not valid"):
         model = EddyViscosityDeficitModel()
         model.calc_deficit(
             WS_ilk=np.array([[[-0.01]]]),  # Invalid
+            WS_jlk=np.array([[[0.01]]]),
             WS_eff_ilk=np.array([[[10.0]]]),
             TI_ilk=np.array([[[0.1]]]),
             TI_eff_ilk=np.array([[[0.1]]]),
@@ -296,6 +323,7 @@ def test_eddy_viscosity_invalid_negative_ct_raises_error() -> None:
         model = EddyViscosityDeficitModel()
         model.calc_deficit(
             WS_ilk=np.array([[[10.0]]]),
+            WS_jlk=np.array([[[10.0]]]),
             WS_eff_ilk=np.array([[[10.0]]]),
             TI_ilk=np.array([[[0.1]]]),
             TI_eff_ilk=np.array([[[0.1]]]),
@@ -311,6 +339,7 @@ def test_eddy_viscosity_invalid_high_ct_raises_error() -> None:
         model = EddyViscosityDeficitModel()
         model.calc_deficit(
             WS_ilk=np.array([[[10.0]]]),
+            WS_jlk=np.array([[[10.0]]]),
             WS_eff_ilk=np.array([[[10.0]]]),
             TI_ilk=np.array([[[0.1]]]),
             TI_eff_ilk=np.array([[[0.1]]]),
@@ -326,6 +355,7 @@ def test_eddy_viscosity_invalid_negative_ti_raises_error() -> None:
         model = EddyViscosityDeficitModel()
         model.calc_deficit(
             WS_ilk=np.array([[[10.0]]]),
+            WS_jlk=np.array([[[10.0]]]),
             WS_eff_ilk=np.array([[[10.0]]]),
             TI_ilk=np.array([[[-0.1]]]),  # Invalid
             TI_eff_ilk=np.array([[[-0.1]]]),

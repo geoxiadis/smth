@@ -137,6 +137,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
     def calc_deficit(
         self,
         WS_ilk: np.ndarray,
+        WS_jlk: np.ndarray,
         WS_eff_ilk: np.ndarray,
         TI_ilk: np.ndarray,
         TI_eff_ilk: np.ndarray,
@@ -149,6 +150,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         """Calculate the estimate of wake velocity deficit.
 
         :param WS_ilk: the free wind speed at the source turbine
+        :param WS_jlk: the free wind speed at the destination turbine
         :param WS_eff_ilk: the waked wind speed at the source turbine
         :param TI_ilk: the ambient TI at the source turbine
         :param TI_eff_ilk: the waked TI at the source turbine
@@ -191,7 +193,6 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
             )
         )
 
-        ws_ref_ilk: np.ndarray
         if self.use_effective_ws:
             ws_ref_ilk = WS_eff_ilk
         else:
@@ -205,15 +206,16 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         )
 
         # Filter to compute deficit only for positive downstream distances
-        fractional_deficit_ijlk = fractional_deficit_ijlk * np.logical_or(
-            dw_norm_ijlk > 0.0,
-            np.isclose(dw_norm_ijlk, 0.0),
+        fractional_deficit_ijlk = fractional_deficit_ijlk * (
+            (dw_norm_ijlk > 0.0) | np.isclose(dw_norm_ijlk, 0.0)
         )
 
         # Convert dimensionless deficit to dimensional deficit in 'm/s'
-        deficit_ijlk = ws_ref_ilk[:, na] * fractional_deficit_ijlk
-
-        return deficit_ijlk
+        # and limit to the free wind speed at the destination turbine
+        return np.minimum(
+            ws_ref_ilk[:, na, :, :] * fractional_deficit_ijlk,
+            WS_jlk[na, :, :, :],
+        )
 
     def wake_radius(
         self,
@@ -269,6 +271,18 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         D_src_il: np.ndarray,
         ct_ilk: np.ndarray,
     ):
+        for input_array, input_array_name in [
+            (WS_ilk, "'WS_ilk' (free wind speed)"),
+            (WS_eff_ilk, "'WS_eff_ilk' (effective wind speed)"),
+            (TI_ilk, "'TI_ilk' (free ambient turbulence intensity)"),
+            (TI_eff_ilk, "'TI_eff_ilk' (effective turbulence intensity)"),
+            (dw_ijlk, "'dw_ijlk' (downwind distance)"),
+            (D_src_il, "'D_src_il' (source turbine diameter)"),
+            (ct_ilk, "'ct_ilk' (thrust coefficient)"),
+        ]:
+            if np.any(np.isnan(input_array)):
+                raise ValueError(f"Found NaN value in the input array {input_array_name}.")
+
         if np.min(WS_ilk) < 0.0 or np.min(WS_eff_ilk) < 0.0:
             raise ValueError("Negative wind speed values are not valid.")
 
@@ -288,7 +302,11 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
 
         # Normalise the effective turbulence intensity to the waked wind speed
         if self.normalise_ti_to_waked_ws:
-            ti0_ilk = ti0_ilk * (WS_ilk / WS_eff_ilk)
+            ti0_ilk = np.where(
+                np.isclose(WS_eff_ilk, 0.0) | np.isclose(WS_ilk, 0.0),
+                ti0_ilk,
+                ti0_ilk * (WS_ilk / WS_eff_ilk),
+            )
 
         # Filter the effective turbulence intensity for the calculations to be at most 50%,
         # in order to avoid artificially fast wake decay and wind speed recovery
