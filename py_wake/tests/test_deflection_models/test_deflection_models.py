@@ -175,9 +175,10 @@ def test_upstream_deflection():
         ref = {'None': 0.0,
                'FugaDeflection': 1.6,
                'GCLHillDeflection': -1.6,
-               'JimenezWakeDeflection': -18}[l]
+               'JimenezWakeDeflection': -18.4,
+               'JimenezLocalWakeDeflection': -18.4}[l]
 
-        # npt.assert_almost_equal(ref, blockage_center, err_msg=l)
+        npt.assert_almost_equal(ref, blockage_center, err_msg=l)
         if plot:
             fm.WS_eff.squeeze().plot(ax=ax, label=l)
             plt.figure()

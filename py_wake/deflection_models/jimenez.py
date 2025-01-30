@@ -23,6 +23,30 @@ class JimenezWakeDeflection(DeflectionIntegrator):
         return np.tan(alpha_ijlkx)
 
 
+class JimenezLocalWakeDeflection(DeflectionIntegrator):
+    """Implemented according to
+    Jiménez, Á., Crespo, A. and Migoya, E. (2010), Application of a LES technique to characterize
+    the wake deflection of a wind turbine in yaw. Wind Energ., 13: 559-572. doi:10.1002/we.380
+    """
+
+    def __init__(self, N=20, a=[0.38, 4e-3], use_effective_ti=False):
+        DeflectionIntegrator.__init__(self, N)
+        self.a = a
+        self.TI_key = ['TI_ilk', 'TI_eff_ilk'][use_effective_ti]
+
+    @property
+    def additional_args(self):
+        return {self.TI_key}
+
+    def get_deflection_rate(self, theta_ilk, ct_ilk, D_src_il, dw_ijlkx, **kwargs):
+        denominator_ilk = np.cos(theta_ilk)**2 * np.sin(theta_ilk) * (ct_ilk / 2)
+        TI_ref_ilk = kwargs[self.TI_key]
+        beta_ilk = TI_ref_ilk * self.a[0] + self.a[1]
+        nominator_ijlkx = (1 + (beta_ilk / D_src_il[:, :, na])[:, na, :, :, na] * np.maximum(dw_ijlkx, 0))**2
+        alpha_ijlkx = denominator_ilk[:, na, :, :, na] / nominator_ijlkx
+        return np.tan(alpha_ijlkx)
+
+
 def main():
     if __name__ == '__main__':
         from py_wake import Fuga

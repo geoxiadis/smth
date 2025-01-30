@@ -6,6 +6,7 @@ from numpy import newaxis as na
 
 
 class DeflectionModel(ABC):
+    additional_args = set()
 
     @property
     def args4model(self):
@@ -13,7 +14,7 @@ class DeflectionModel(ABC):
 
     @property
     def args4deflection(self):
-        return method_args(self.calc_deflection)
+        return method_args(self.calc_deflection) | self.additional_args
 
     @abstractmethod
     def calc_deflection(self, dw_ijl, hcw_ijl, dh_ijl, **kwargs):

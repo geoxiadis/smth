@@ -198,7 +198,7 @@ class FlowMap(FlowBox):
 
         if plot_windturbines:
             self.plot_windturbines(normalize_with=normalize_with, ax=ax)
-        plt.axis('equal')
+        ax.axis('equal')
         return c
 
     def plot_windturbines(self, normalize_with=1, ax=None):

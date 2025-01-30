@@ -263,7 +263,9 @@ def get_model_input(wfm, x, y, ws=10, wd=270, **kwargs):
                                                   ('tilt_ilk', 'tilt'),
                                                   ('WS_ilk', 'WS'),
                                                   ('WS_eff_ilk', 'WS_eff'),
-                                                  ('ct_ilk', 'CT')]
+                                                  ('ct_ilk', 'CT'),
+                                                  ('TI_ilk', 'TI'),
+                                                  ('TI_eff_ilk', 'TI_eff')]
                  if n in sim_res})
     args['IJLK'] = (1, len(x), len(wd), len(ws))
     return args
