@@ -1,6 +1,8 @@
 from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel
 from py_wake import np
 from numpy import newaxis as na
+
+from py_wake.utils import gradients
 from py_wake.utils.gradients import cabs
 from autograd.numpy.numpy_boxes import ArrayBox
 from py_wake.deficit_models.deficit_model import WakeRadiusTopHat
@@ -115,10 +117,10 @@ class AreaOverlapAvgModel(RotorAvgModel):
         beta = arccos_lim((Rmin[mask]**2.0 + d[mask]**2 - Rmax[mask]**2) /
                           (2.0 * np.maximum(Rmin[mask] * d[mask], eps)))
 
-        # p = (R1[mask] + R2[mask] + d[mask]) / 2.0
-        # A_triangle = 2 * np.sqrt(gradients.cabs(p * (p - Rmin[mask]) *
-        #                                         (p - Rmax[mask]) * (p - d[mask])))
-        A_triangle = np.sin(alpha) * R1[mask] * d[mask]
+        p = (R1[mask] + R2[mask] + d[mask]) / 2.0
+        A_triangle = 2 * np.sqrt(gradients.cabs(p * (p - Rmin[mask]) *
+                                                 (p - Rmax[mask]) * (p - d[mask])))
+        #A_triangle = np.sin(alpha) * R1[mask] * d[mask]
 
         p_wake_f = (alpha * Rmax[mask]**2 + beta * Rmin[mask]**2 -
                     A_triangle) / (R2[mask]**2 * np.pi)
