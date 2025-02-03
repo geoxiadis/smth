@@ -143,6 +143,8 @@ def test_large_wind_farm_correction_wind_farm_model_returns_correct_aep() -> Non
     model = LargeWindFarmCorrectionModel(
         site=UniformSite(p_wd=[0.1, 0.3, 0.2, 0.4], ws=10),
         windTurbines=HornsrevV80(),
+        base_roughness=0.0002,
+        increased_roughness=0.03,
     )
     results = model(
         x=np.array(

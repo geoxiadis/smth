@@ -345,7 +345,7 @@ class LargeWindFarmCorrectionDeficitModel(WakeDeficitModel):
             method="hybr",
         )
         if not sol.success:
-            raise ValueError(f"Failed to calculate IBL height: {sol.message}.")
+            raise ValueError(f"Failed to calculate IBL height: {sol.message}.")  # pragma: no cover
 
         ibl_height = sol.x.reshape(fetch_distance_f.shape, order="C")
 
