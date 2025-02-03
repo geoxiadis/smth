@@ -6,7 +6,9 @@ wind farm model implementation.
 The LWFC model was developed as kind of bias correction model for the
 Eddy Viscosity (EV) model when applied to large wind farms. It is
 intended to be used together with the EV model, and will not produce
-meaningful results on its own. 
+meaningful results on its own. The process is to run the LWFC model
+first, and then feed the EV model with the corrected wind speed
+predictions as input.
 
 References:
 
