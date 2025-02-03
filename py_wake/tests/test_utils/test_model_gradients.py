@@ -122,7 +122,7 @@ def test_wake_deficit_models(model):
     # this test; it triggers a type error do to incompatible conversion
     if model.__name__ == "LargeWindFarmCorrectionDeficitModel":
         return
-    
+
     with warnings.catch_warnings():
         if model.__name__ == 'NoWakeDeficit':
             warnings.filterwarnings('ignore', r'Output seems independent of input.')

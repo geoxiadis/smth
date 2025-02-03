@@ -362,7 +362,7 @@ def test_with_all_deficit_models(WFM):
         # in this test
         if deficitModel.__name__ == "LargeWindFarmCorrectionDeficitModel":
             continue
-        
+
         wfm = WFM(site, windTurbines, wake_deficitModel=deficitModel(),
                   superpositionModel=LinearSum(),
                   deflectionModel=None, turbulenceModel=STF2017TurbulenceModel())

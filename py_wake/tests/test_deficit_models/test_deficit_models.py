@@ -135,7 +135,7 @@ def test_huge_distance(deficitModel):
     skip_models = ["LargeWindFarmCorrectionDeficitModel"]
     if deficitModel.__name__ in skip_models:
         return
-    
+
     ref = {"NOJDeficit": 9.799733,
            "FugaDeficit": 9.8,
            "FugaYawDeficit": 9.8,
