@@ -215,8 +215,8 @@ class LargeWindFarmCorrectionDeficitModel(WakeDeficitModel):
                     np.log(h_ibl_adj_ijlk / self.increased_roughness)
                 ) * np.log(0.09 * h_ibl_adj_ijlk / self.increased_roughness) * (
                     1.0 - (
-                        np.log(z_adj_ijlk / (0.09 * h_ibl_adj_ijlk))
-                        / np.log(0.3 / 0.09)
+                        np.log(z_adj_ijlk / (0.09 * h_ibl_adj_ijlk)) /
+                        np.log(0.3 / 0.09)
                     )
                 ) + (
                     np.log(0.3 * h_ibl_adj_ijlk / self.base_roughness) *
@@ -278,8 +278,7 @@ class LargeWindFarmCorrectionDeficitModel(WakeDeficitModel):
                     ),
                     axis=0,
                     keepdims=True,
-                )
-                - np.max(
+                ) - np.max(
                     np.where(
                         hcw_ijlk < -d_src_ijlk / 2.0,
                         hcw_ijlk,
@@ -287,8 +286,7 @@ class LargeWindFarmCorrectionDeficitModel(WakeDeficitModel):
                     ),
                     axis=0,
                     keepdims=True,
-                )
-                <= self.row_spacing_limit * d_src_ijlk,
+                ) <= self.row_spacing_limit * d_src_ijlk,
                 axis=0,
                 keepdims=True,
             ),

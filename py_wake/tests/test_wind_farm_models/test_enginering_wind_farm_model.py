@@ -11,6 +11,7 @@ from py_wake import np
 from py_wake.deficit_models.fuga import FugaDeficit, FugaMultiLUTDeficit, FugaYawDeficit
 from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit
 from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit, BastankhahGaussian
+from py_wake.deficit_models.large_wind_farm_correction_model import LargeWindFarmCorrectionDeficitModel
 from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit, SelfSimilarityDeficit2020
@@ -575,7 +576,8 @@ def test_PropagateUpDownIterative():
 @pytest.mark.parametrize('wake_deficitModel', get_models(WakeDeficitModel))
 def test_PropagateUpDownIterative_wake_deficitModels(wake_deficitModel):
     if wake_deficitModel in [NOJDeficit, FugaDeficit, FugaMultiLUTDeficit,
-                             FugaYawDeficit, IEA37SimpleBastankhahGaussianDeficit]:
+                             FugaYawDeficit, IEA37SimpleBastankhahGaussianDeficit,
+                             LargeWindFarmCorrectionDeficitModel]:
         with pytest.raises(AssertionError, match="PropagateUpDownIterative requires a wake deficit model that scales with the effective wind speed. For most models this can be achieved by setting the argument use_effective_ws=True"):
             PropagateUpDownIterative(site=UniformSite(),
                                      windTurbines=V80(),
