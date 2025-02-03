@@ -43,6 +43,7 @@ def mixing_function(x: np.ndarray) -> np.ndarray:
         at ``x``, with the same shape as ``x``
     """
     fx = 0.65 + np.cbrt((x - 4.5) / 23.32)
+
     return np.where(2.0 < x < 5.5, np.minimum(fx, 1.0), 1.0)
 
 
@@ -128,8 +129,8 @@ class SimplifiedEddyViscositySpeedFormulation:
         """The initial dimensionless wake wind speed value."""
         u = 1 - ct + 0.05 + (16.0 * ct - 0.5) * (ti0 / 10.0)
         u = np.maximum(u, 0.0001)
-        u = np.minimum(u, 1.0)
-        return u
+
+        return np.minimum(u, 1.0)
 
     @staticmethod
     def streamwise_derivative(
@@ -159,9 +160,7 @@ class SimplifiedEddyViscositySpeedFormulation:
         du_dx_values = np.maximum(du_dx_values, 0.0)
 
         # Return zero gradient if wind speed is close to recovered
-        du_dx_values = np.where(u <= 0.999, du_dx_values, 0.0)
-
-        return du_dx_values
+        return np.where(u <= 0.999, du_dx_values, 0.0)
 
 
 class SimplifiedEddyViscosityDeficitFormulation:
@@ -181,8 +180,8 @@ class SimplifiedEddyViscosityDeficitFormulation:
         """The initial dimensionless wake wind speed deficit value."""
         u = ct - 0.05 - (16.0 * ct - 0.5) * (ti0 / 10.0)
         u = np.maximum(u, 0.0)
-        u = np.minimum(u, 0.9999)
-        return u
+
+        return np.minimum(u, 0.9999)
 
     @staticmethod
     def streamwise_derivative(
@@ -211,6 +210,4 @@ class SimplifiedEddyViscosityDeficitFormulation:
         du_dx_values = np.minimum(du_dx_values, 0.0)
 
         # Return zero gradient if deficit is zero or very small
-        du_dx_values = np.where(u >= 0.001, du_dx_values, 0.0)
-
-        return du_dx_values
+        return np.where(u >= 0.001, du_dx_values, 0.0)

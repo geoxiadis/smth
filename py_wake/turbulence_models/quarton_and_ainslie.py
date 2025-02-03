@@ -23,7 +23,7 @@ References:
 
 """
 
-from typing import Any, Optional
+from typing import Any, Final, Optional
 
 from numpy import newaxis as na
 from py_wake import np
@@ -32,6 +32,8 @@ from py_wake.rotor_avg_models import RotorAvgModel, RotorCenter
 from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel
 from py_wake.superposition_models import AddedTurbulenceSuperpositionModel, SqrMaxSum
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel
+
+DEFAULT_ROTOR_SPEED_ILK: Final[np.ndarray] = np.array([[[20.0]]])
 
 
 class QuartonAndAinslieTurbulenceModel(TurbulenceModel):
@@ -133,20 +135,12 @@ class QuartonAndAinslieTurbulenceModel(TurbulenceModel):
             the jth destination turbine, in the lth wind direction
             sector and for the kth wind speed bin)
         """
-        ws_ref_ilk: np.ndarray
-        if self.use_effective_ws:
-            ws_ref_ilk = WS_eff_ilk
-        else:
-            ws_ref_ilk = WS_ilk
+        ws_ref_ilk = WS_eff_ilk if self.use_effective_ws else WS_ilk
 
         if np.min(ws_ref_ilk) < 0.0:
             raise ValueError("Negative wind speed values are not valid.")
 
-        ti_ref_ilk: np.ndarray
-        if self.use_effective_ti:
-            ti_ref_ilk = TI_eff_ilk
-        else:
-            ti_ref_ilk = TI_ilk
+        ti_ref_ilk = TI_eff_ilk if self.use_effective_ti else TI_ilk
 
         if np.min(ti_ref_ilk) < 0.0:
             raise ValueError("Negative turbulence intensity values are not valid.")
@@ -229,7 +223,7 @@ class QuartonAndAinslieTurbulenceModel(TurbulenceModel):
         ti_ref_ilk: np.ndarray,
         D_src_il: np.ndarray,
         ct_ilk: np.ndarray,
-        rotor_speed_ilk: np.ndarray = np.array([[[20.0]]]),
+        rotor_speed_ilk: np.ndarray = DEFAULT_ROTOR_SPEED_ILK,
     ) -> np.ndarray:
         """Calculate the estimate of the dimensional near wake length.
 

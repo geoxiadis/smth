@@ -81,11 +81,7 @@ def generate_lookup_table(
             raise ValueError("All coordinate values must be monotonic increasing.")
 
     # Solve only for non-zero values of ct
-    ct_non_zero: np.ndarray
-    if np.isclose(coordinates.ct[0], 0.0):
-        ct_non_zero = coordinates.ct[1:]
-    else:
-        ct_non_zero = coordinates.ct
+    ct_non_zero = coordinates.ct[1:] if np.isclose(coordinates.ct[0], 0.0) else coordinates.ct
 
     # Create two-dimensional matrices of all combinations of ti0 and ct
     ti0_full = coordinates.ti0[:, na]

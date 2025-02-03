@@ -192,10 +192,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
             )
         )
 
-        if self.use_effective_ws:
-            ws_ref_ilk = WS_eff_ilk
-        else:
-            ws_ref_ilk = WS_ilk
+        ws_ref_ilk = WS_eff_ilk if self.use_effective_ws else WS_ilk
 
         # Limit wake impacts to the maximum wake distance
         fractional_deficit_ijlk = np.where(
@@ -290,10 +287,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
         if np.max(ct_ilk) > 1.4:
             raise ValueError("Thrust coefficient (Ct) values higher than 1.4 are not supported.")
 
-        if self.use_effective_ti:
-            ti0_ilk = TI_eff_ilk
-        else:
-            ti0_ilk = TI_ilk
+        ti0_ilk = TI_eff_ilk if self.use_effective_ti else TI_ilk
 
         if np.min(ti0_ilk) < 0.0:
             raise ValueError("Negative turbulence intensity values are not valid.")

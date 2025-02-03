@@ -131,6 +131,7 @@ class SimplifiedGaussianRotorAverageModel(RotorAvgModel):
         interpolator_input = interpolator_input.reshape((flat_dim, 2), order="C")
 
         rotor_average_factor = self._interpolator(interpolator_input)
+
         return rotor_average_factor.reshape(interpolator_input_shape[:-1], order="C")
 
     @staticmethod
