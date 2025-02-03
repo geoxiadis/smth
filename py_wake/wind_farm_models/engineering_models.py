@@ -606,10 +606,11 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                                           'WS_eff_xxx': np.array(WS_eff_mk),
                                           'ct_xxx': np.array(ct_jlk),
                                           'D_xx': np.array(D_mk)})
-
-                WS_eff_lk = WS_mk[m] - self.superpositionModel.superpose_deficit(**sp_kwargs)
+                WS_eff_lk = WS_mk[m]
+                if self.direction == 'down':
+                    WS_eff_lk = WS_eff_lk - self.superpositionModel.superpose_deficit(**sp_kwargs)
                 if self.blockage_deficitModel:
-                    WS_eff_lk -= self.blockage_superpositionModel(get_value2WT(blockage_nk))
+                    WS_eff_lk = WS_eff_lk - self.blockage_superpositionModel(get_value2WT(blockage_nk))
                 WS_eff_mk.append(WS_eff_lk)
 
                 if self.turbulenceModel:
@@ -706,7 +707,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                 # ======================================================================================================
                 # Calculate deficit
                 # ======================================================================================================
-                if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)):
+                if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)) and self.direction == 'down':
                     # only cw needs to be rotor averaged as remaining super position input is
                     # the same all over the rotor
                     if self.wake_deficitModel.rotorAvgModel:
@@ -724,9 +725,9 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                         deficit = np.zeros_like(sigma_sqr)
                 else:
                     deficit, blockage = self._calc_deficit(**model_kwargs)
+                    if self.blockage_deficitModel:
+                        blockage_nk.append(blockage[0])
                 deficit_nk.append(deficit[0])
-                if self.blockage_deficitModel:
-                    blockage_nk.append(blockage[0])
 
                 if self.turbulenceModel:
 
@@ -784,6 +785,7 @@ class PropagateDownwind(PropagateUpDownIterative):
         EngineeringWindFarmModel.__init__(self, site, windTurbines, wake_deficitModel, superpositionModel, rotorAvgModel,
                                           blockage_deficitModel=None, deflectionModel=deflectionModel,
                                           turbulenceModel=turbulenceModel, inputModifierModels=inputModifierModels)
+        self.direction = 'down'
 
     def _calc_deficit(self, dw_ijlk, **kwargs):
         return EngineeringWindFarmModel._calc_deficit(self, dw_ijlk, **kwargs)
@@ -853,6 +855,7 @@ class All2AllIterative(EngineeringWindFarmModel):
             blockage_deficitModel = self.blockage_deficitModel
             self.blockage_deficitModel = None
             dw_order_indices_ld = self.site.distance.dw_order_indices(wd)[:, 0]
+            self.direction = 'down'
             WS_eff_ilk = PropagateUpDownIterative._propagate_deficit(
                 self, wd, dw_order_indices_ld, WD_ilk=WD_ilk, WS_ilk=WS_ilk, TI_ilk=TI_ilk,
                 WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk, D_i=D_i, I=I, L=L, K=K, **kwargs)[0]

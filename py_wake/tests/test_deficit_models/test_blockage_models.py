@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from py_wake import np
 from py_wake.deficit_models import VortexCylinder
 from py_wake.deficit_models.deficit_model import BlockageDeficitModel
+from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit
 from py_wake.deficit_models.hybridinduction import HybridInduction
 from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.deficit_models.noj import NOJDeficit
@@ -16,11 +17,11 @@ from py_wake.examples.data.hornsrev1 import Hornsrev1Site
 from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines
 from py_wake.flow_map import XYGrid
 from py_wake.rotor_avg_models.rotor_avg_model import CGIRotorAvg, RotorCenter
-from py_wake.superposition_models import LinearSum
+from py_wake.superposition_models import LinearSum, WeightedSum, CumulativeWakeSum
 from py_wake.tests import npt
 from py_wake.turbulence_models.stf import STF2017TurbulenceModel
 from py_wake.utils.model_utils import get_models
-from py_wake.wind_farm_models.engineering_models import All2AllIterative
+from py_wake.wind_farm_models.engineering_models import All2AllIterative, PropagateUpDownIterative
 from py_wake.tests.test_wind_farm_models.test_enginering_wind_farm_model import OperatableV80
 from py_wake.deficit_models.utils import ct2a_mom1d
 
@@ -216,3 +217,21 @@ def test_All2AllIterative_Blockage_Deficit_RotorAvg():
             plt.show()
         npt.assert_almost_equal(sim_res.WS_eff[2, 0, 0].item(), ref)
     plt.close('all')
+
+
+@pytest.mark.parametrize('superpositionModel', [LinearSum(), WeightedSum(), CumulativeWakeSum()])
+def test_PropagateUpDownIterative_Blockage(setup, superpositionModel):
+    site, windTurbines = setup
+
+    def get_aep(wfm_cls):
+        wfm = wfm_cls(
+            site=site,
+            windTurbines=windTurbines,
+            wake_deficitModel=BastankhahGaussianDeficit(use_effective_ws=True),
+            superpositionModel=superpositionModel,
+            blockage_deficitModel=SelfSimilarityDeficit2020(use_effective_ws=True),
+        )
+
+        sim_res = wfm(x=[0, 500, 1000, 1500], y=[0, 0, 0, 0], wd=270, WS_eff=0)
+        return sim_res.aep().sum().item()
+    npt.assert_allclose(get_aep(All2AllIterative), get_aep(PropagateUpDownIterative), atol=0.03)
