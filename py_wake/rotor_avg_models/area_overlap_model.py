@@ -119,8 +119,8 @@ class AreaOverlapAvgModel(RotorAvgModel):
 
         p = (R1[mask] + R2[mask] + d[mask]) / 2.0
         A_triangle = 2 * np.sqrt(gradients.cabs(p * (p - Rmin[mask]) *
-                                                 (p - Rmax[mask]) * (p - d[mask])))
-        #A_triangle = np.sin(alpha) * R1[mask] * d[mask]
+                                                (p - Rmax[mask]) * (p - d[mask])))
+        # A_triangle = np.sin(alpha) * R1[mask] * d[mask]
 
         p_wake_f = (alpha * Rmax[mask]**2 + beta * Rmin[mask]**2 -
                     A_triangle) / (R2[mask]**2 * np.pi)
