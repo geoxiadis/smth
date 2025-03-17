@@ -386,3 +386,9 @@ def gamma(x):
         return agamma(x)
     else:
         return sgamma(x)
+
+
+def sign(x):
+    if np.iscomplexobj(x):
+        x = x.real
+    return np.sign(x)

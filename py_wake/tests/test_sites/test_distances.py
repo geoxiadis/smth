@@ -173,7 +173,7 @@ def test_straightDistance_turning(wfm_cls, turning, method, angle_func):
         warnings.simplefilter('ignore', UserWarning)
         fm_wide = sim_res.flow_map(XYGrid(x=450, y=np.linspace(-200, 200, 1001)), wd=270)
 
-    y = fm_wide.y[np.argmin(fm_wide.WS_eff.squeeze().values)]
+    y = fm_wide.y[np.argmin(fm_wide.WS_eff.squeeze().values)].item()
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', UserWarning)
         fm = sim_res.flow_map(XYGrid(x=450, y=np.linspace(y - 2, y + 2, 1001)), wd=270)
@@ -313,11 +313,11 @@ def test_JITStreamlinesparquefictio():
     # average downwind distance increase around 5 m
     npt.assert_almost_equal((dw + dw.T).mean(), 5, 0)
 
-    fm = sim_res.flow_map(XYGrid(x=np.linspace(site.ds.x[0], site.ds.x[-1], 500),
-                                 y=np.linspace(site.ds.y[0], site.ds.y[-1], 500)))
+    fm = sim_res.flow_map(XYGrid(x=np.linspace(site.ds.x[0].item(), site.ds.x[-1].item(), 500),
+                                 y=np.linspace(site.ds.y[0].item(), site.ds.y[-1].item(), 500)))
     stream_lines = vf3d.stream_lines(wd=np.full(x.shape, wd), start_points=np.array([x, y, np.full(x.shape, 70)]).T,
                                      dw_stop=y - 6504700)
-    if 1:
+    if 0:
         fm.plot_wake_map()
         for sl in stream_lines:
             plt.plot(sl[:, 0], sl[:, 1])

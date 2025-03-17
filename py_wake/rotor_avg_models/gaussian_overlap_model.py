@@ -5,6 +5,7 @@ from numpy import newaxis as na
 import xarray as xr
 from tqdm import tqdm
 from py_wake.utils.grid_interpolator import GridInterpolator
+from scipy.interpolate import RectBivariateSpline
 
 
 class GaussianOverlapAvgModel(RotorAvgModel):
@@ -17,7 +18,10 @@ class GaussianOverlapAvgModel(RotorAvgModel):
             table = xr.load_dataarray(self.filename, engine='h5netcdf')
             R_sigma = np.arange(0, 20.001, 0.01)
             CW_sigma = np.arange(0, 10.01, 0.01)
-            dat = table.interp(R_sigma=R_sigma, CW_sigma=CW_sigma, method='cubic')
+            # behavior changed in xarray=24.11.0 such that
+            # dat = table.interp(R_sigma=R_sigma, CW_sigma=CW_sigma, method='cubic')
+            # performs a two-step interpolation which is slower and less accurate than the previous one-step interpolation
+            dat = RectBivariateSpline(table.R_sigma.values, table.CW_sigma.values, table.values)(R_sigma, CW_sigma)
             self._overlap_interpolator = GridInterpolator([R_sigma, CW_sigma], dat, bounds='limit')
         return self._overlap_interpolator
 

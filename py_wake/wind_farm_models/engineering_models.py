@@ -579,7 +579,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
             # look up power and thrust coefficient
             if j == 0:  # Most upstream turbines (no wake)
                 WS_eff_lk = WS_mk[m]
-                WS_eff_mk.append(WS_eff_lk)
+                WS_eff_mk.append(np.broadcast_to(WS_eff_lk, (L, K)))
                 if self.turbulenceModel:
                     TI_eff_lk = TI_mk[m]
                     TI_eff_mk.append(np.broadcast_to(TI_eff_lk, (L, K)))
@@ -640,7 +640,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
 
             ct_lk = self.windTurbines.ct(WS_eff_lk, **_wt_kwargs)
 
-            ct_jlk.append(ct_lk)
+            ct_jlk.append(np.broadcast_to(ct_lk, (L, K)))
 
             if j < I - 1 or len(self.inputModifierModels):
                 i_dw = wt_order_indices_ld[:, j + 1:]

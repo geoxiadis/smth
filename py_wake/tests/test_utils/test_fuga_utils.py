@@ -6,7 +6,7 @@ from py_wake import np
 from py_wake.tests import npt
 from py_wake.tests.test_files import tfp
 from py_wake.utils import fuga_utils
-from py_wake.utils.fuga_utils import dat2netcdf, phi, psi
+from py_wake.utils.fuga_utils import dat2netcdf, phi, psi, interp_lut_coordinate
 import xarray as xr
 import matplotlib.pyplot as plt
 
@@ -75,3 +75,8 @@ def test_z0_from_TI():
         plt.show()
     npt.assert_array_almost_equal(fuga_utils.z0([.06, .12, .06, .12, .06, .12], 70, [-6e-7, -6e-7, 0, 0, 6e-7, 6e-7]),
                                   [1.00000e-05, 1.66251e-02, 1.00000e-05, 1.68259e-02, 7.26921e-05, 1.70345e-02], 5)
+
+
+def test_interp_lut_coordinate():
+    da = xr.DataArray(np.arange(12).reshape((4, 3)), dims=('x', 'y'), coords=dict(x=[0, 2, 4, 6], y=[0, 5, 10]))
+    npt.assert_array_equal(interp_lut_coordinate(da, x=[2, 3, 4], y=[5, 10]), da.interp(x=[2, 3, 4], y=[5, 10]))

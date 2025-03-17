@@ -276,27 +276,25 @@ def test_GlobalWindAtlasSite():
     lat, long = 55.52972, 7.906111  # hornsrev
 
     try:
-        site = GlobalWindAtlasSite(lat, long, height=70, roughness=0.001, ti=0.075)
+        site = GlobalWindAtlasSite(lat, long, roughness=0.001, ti=0.075)
     except (HTTPError, URLError):
         pytest.xfail('HTTPError in GlobalWindAtlasSite')
-    ref_mean = weibull.mean(ref.ds.Weibull_A, ref.ds.Weibull_k)
-    gwa_mean = weibull.mean(site.ds.Weibull_A, site.ds.Weibull_k)
+
+    def mean(lw):
+        return (lw['P_ilk'] / lw['P_ilk'].sum((0, 2))[na, :, na] * lw['WS_ilk']).sum((0, 2))
 
     if 0:
         plt.figure()
-        plt.plot(ref.ds.wd, ref_mean, label='HornsrevSite')
-        plt.plot(site.ds.wd, gwa_mean, label='HornsrevSite')
-        for r in [0, 1.5]:
-            for h in [10, 200]:
-                A, k = [site.gwc_ds[v].sel(roughness=r, height=h) for v in ['Weibull_A', 'Weibull_k']]
-                plt.plot(site.gwc_ds.wd, weibull.mean(A, k), label=f'{h}, {r}')
+        plt.plot(site.default_wd, mean(ref.local_wind()), label='HornsrevSite')
+        plt.plot(site.default_wd, mean(site.local_wind(h=70)), label='GWA Hornsrev h=70')
+        plt.plot(site.default_wd, mean(site.local_wind(h=100)), label='GWA Hornsrev h=100')
         plt.legend()
 
         plt.show()
 
-    npt.assert_allclose(gwa_mean, ref_mean, atol=1.4)
+    npt.assert_allclose(mean(site.local_wind(h=70)), mean(ref.local_wind()), atol=1.5)
     for var, atol in [('Sector_frequency', 0.03), ('Weibull_A', 1.6), ('Weibull_k', 0.4)]:
-        npt.assert_allclose(site.ds[var], ref.ds[var], atol=atol)
+        npt.assert_allclose(site.ds.interp(h=70)[var], ref.ds[var], atol=atol)
 
 
 def test_wrong_height():
@@ -731,3 +729,50 @@ def test_gradients():
         ddx_lst = [grad(t, vector_interdependence=False)(x) for grad in [fd, cs, autograd]]
         npt.assert_allclose(ddx_lst[0], ddx_lst[1], rtol=1e-4)
         npt.assert_allclose(ddx_lst[1], ddx_lst[2])
+
+
+def test_non_uniform_ts_xrsite_compute_local_wind_without_ref_ws_wd_inputs():
+    site_x = np.arange(0, 1000, 100)
+    site_y = np.arange(0, 2000, 100)
+    site_time = np.arange(100)
+    site_ws = np.random.uniform(3.0, 21.0, (len(site_x), len(site_y), len(site_time)))
+    site_wd = np.random.uniform(0.0, 360.0, (len(site_x), len(site_y), len(site_time)))
+    non_uniform_ts_site = XRSite(
+        xr.Dataset(
+            data_vars=dict(
+                WS=(["x", "y", "time"], site_ws),
+                WD=(["x", "y", "time"], site_wd),
+                TI=(["x", "y", "time"], np.ones_like(site_ws) * 0.1),
+                P=1,
+            ),
+            coords=dict(
+                x=("x", site_x),
+                y=("y", site_y),
+                time=("time", site_time),
+            ),
+        )
+    )
+
+    # test local wind compute without ref ws and wd inputs
+    ws0 = non_uniform_ts_site.local_wind(
+        site_x[1],
+        site_y[2],
+        time=[3],
+    )["WS_ilk"]
+    assert ws0 == site_ws[1, 2, 3]
+
+    # try wfm call with the site and no ref ws & wd
+    wts = V80()
+    wf_model = PropagateDownwind(
+        non_uniform_ts_site,
+        wts,
+        wake_deficitModel=BastankhahGaussianDeficit(),
+        superpositionModel=LinearSum(),
+    )
+    aep = (
+        wf_model([site_x[1], site_x[2]], [site_y[1], site_y[2]], time=site_time)
+        .aep()
+        .sum()
+        .values
+    )
+    assert aep > 0.0

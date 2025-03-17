@@ -13,6 +13,7 @@ from py_wake.deficit_models.noj import NOJDeficit, NOJ
 from numpy import newaxis as na
 from py_wake.superposition_models import SquaredSum
 from py_wake.utils.gradients import cabs
+from py_wake.utils.fuga_utils import FugaUtils
 
 
 def test_noj():
@@ -85,7 +86,9 @@ def test_fuga():
     site = UniformSite([1, 0, 0, 0], ti=0.075)
     path = tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc'
 
-    x, y, z, du = FugaDeficit(path).load()
+    fu = FugaUtils(path)
+    du = fu.init_lut(fu.load_luts(['UL'])[0])
+    x, y, z = fu.x, fu.y, fu.z
     da = xr.DataArray(du, coords={'z': z, 'y': y, 'x': x})
 
     def get_input(dw_ijlk, hcw_ijlk, h_ilk, dh_ijlk, **_):

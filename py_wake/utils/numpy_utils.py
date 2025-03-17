@@ -16,7 +16,7 @@ try:  # pragma: no cover
 
     from autograd.numpy import numpy_vspaces
     numpy_vspaces.ArrayVSpace.__init__ = __init__
-except ModuleNotFoundError:
+except ModuleNotFoundError:  # pragma: no cover
     from numpy.lib.index_tricks import RClass
 import inspect
 import autograd.numpy as autograd_numpy

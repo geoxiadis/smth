@@ -119,7 +119,7 @@ class SimpleYawModel(AdditionalModel):
 class DensityScale(AdditionalModel):
     """Scales the power and ct with density"""
 
-    def __init__(self, air_density_ref):
+    def __init__(self, air_density_ref=1.225):
         AdditionalModel.__init__(self, input_keys=['ws', 'Air_density'], optional_inputs=['Air_density'],
                                  output_keys=['power', 'ct'])
         self.air_density_ref = air_density_ref
@@ -135,7 +135,7 @@ class DensityScale(AdditionalModel):
 class DensityCompensation(AdditionalModel):
     """Scales the wind speed with density before calculating power and ct"""
 
-    def __init__(self, air_density_ref):
+    def __init__(self, air_density_ref=1.225):
         AdditionalModel.__init__(self, input_keys=['ws', 'Air_density'], optional_inputs=['Air_density'],
                                  output_keys=['power', 'ct'])
         self.air_density_ref = air_density_ref

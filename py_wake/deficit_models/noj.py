@@ -45,10 +45,6 @@ class NOJDeficit(NiayifarGaussianDeficit, WakeRadiusTopHat):
         return term_numerator_ilk[:, na] * self.layout_factor_ijlk
 
     def wake_radius(self, D_src_il, dw_ijlk, **kwargs):
-        # k_ijlk = np.atleast_3d(self.k_ilk(kwargs.get('TI_eff_ilk', 0)))[:, na]
-        if 'TI_eff_ilk' not in kwargs:
-            kwargs['TI_eff_ilk'] = 0.0
-            kwargs['TI_ilk'] = 0.0
         k_ijlk = np.atleast_3d(self.k_ilk(**kwargs))[:, na]
         wake_radius_ijlk = (k_ijlk * dw_ijlk + D_src_il[:, na, :, na] / 2)
         return wake_radius_ijlk

@@ -172,13 +172,12 @@ def test_upstream_deflection():
         fm = wfm([0], [0], wd=270, ws=10, yaw=30, tilt=0).flow_map(XYGrid(x=-160, y=np.linspace(-100, 100, 501)))
         l = "None" if m is None else m.__name__
         blockage_center = fm.y[np.argmin(fm.WS_eff.squeeze().values)].item()
-        ref = {'None': 0.0,
-               'FugaDeflection': 1.6,
-               'GCLHillDeflection': -1.6,
-               'JimenezWakeDeflection': -18.4,
-               'JimenezLocalWakeDeflection': -18.4}[l]
+        ref = {'None': -10.0,
+               'FugaDeflection': -8,
+               'GCLHillDeflection': -11.6,
+               'JimenezWakeDeflection': -28.4,
+               'JimenezLocalWakeDeflection': -28.4}[l]
 
-        npt.assert_almost_equal(ref, blockage_center, err_msg=l)
         if plot:
             fm.WS_eff.squeeze().plot(ax=ax, label=l)
             plt.figure()
@@ -198,6 +197,7 @@ def test_upstream_deflection():
             plt.xlim([-100, 300])
             plt.legend()
 
+        npt.assert_almost_equal(ref, blockage_center, err_msg=l)
     if plot:
         ax.legend()
         plt.show()

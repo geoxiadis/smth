@@ -414,7 +414,7 @@ class GlobalWindAtlasSite(XRSite):
     NOTE: This approach is only valid for sites with homogeneous roughness at the site and far around
     """
 
-    def __init__(self, lat, long, height, roughness, ti=None, **kwargs):  # pragma: no cover
+    def __init__(self, lat, long, roughness, height=None, ti=None, **kwargs):  # pragma: no cover
         """
         Parameters
         ----------
@@ -430,7 +430,10 @@ class GlobalWindAtlasSite(XRSite):
         self.gwc_ds = self._read_gwc(lat, long)
         if ti is not None:
             self.gwc_ds['TI'] = ti
-        XRSite.__init__(self, ds=self.gwc_ds.interp(height=height, roughness=roughness), **kwargs)
+        ds = self.gwc_ds.interp(roughness=roughness).rename(height='h')
+        if height is not None:
+            ds = ds.interp(z=height)
+        XRSite.__init__(self, ds=ds, **kwargs)
 
     def _read_gwc(self, lat, long):  # pragma: no cover
 

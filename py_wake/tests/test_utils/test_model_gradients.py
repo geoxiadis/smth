@@ -5,8 +5,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 from py_wake import np
 from py_wake.deficit_models.deficit_model import WakeDeficitModel, BlockageDeficitModel
-from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit, \
-    BastankhahGaussianDeficit, NiayifarGaussianDeficit
+from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, NiayifarGaussianDeficit
 from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.deflection_models.deflection_model import DeflectionModel
 from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
@@ -25,7 +24,6 @@ from py_wake.utils import gradients
 from py_wake.utils.gradients import autograd, plot_gradients, fd, cs
 from py_wake.utils.model_utils import get_models
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative, EngineeringWindFarmModel
-from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
 from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.site.jit_streamline_distance import JITStreamlineDistance
 from py_wake.site.xrsite import XRSite

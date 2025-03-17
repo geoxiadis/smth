@@ -94,8 +94,8 @@ def main():
         wfm = NOJ(site, wt)
         wd = 330
         sim_res = wfm(x, y, wd=[wd], ws=10)
-        fm = sim_res.flow_map(XYGrid(x=np.linspace(site.ds.x[0], site.ds.x[-1], 500),
-                                     y=np.linspace(site.ds.y[0], site.ds.y[-1], 500)))
+        fm = sim_res.flow_map(XYGrid(x=np.linspace(site.ds.x[0].item(), site.ds.x[-1].item(), 500),
+                                     y=np.linspace(site.ds.y[0].item(), site.ds.y[-1].item(), 500)))
         stream_lines = vf3d.stream_lines(wd=np.full(x.shape, wd), start_points=np.array([x, y, np.full(x.shape, 70)]).T,
                                          dw_stop=y - 6504700)
         fm.plot_wake_map()

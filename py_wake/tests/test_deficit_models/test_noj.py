@@ -5,8 +5,8 @@ from py_wake.site._site import UniformSite
 from py_wake.tests import npt
 from py_wake.flow_map import HorizontalGrid
 from py_wake.wind_turbines import WindTurbines
-from py_wake.wind_farm_models.engineering_models import All2AllIterative
-from py_wake.deficit_models.noj import NOJDeficit
+from py_wake.wind_farm_models.engineering_models import All2AllIterative, PropagateDownwind
+from py_wake.deficit_models.noj import NOJDeficit, NOJLocalDeficit
 from py_wake.superposition_models import LinearSum, WeightedSum
 from py_wake.turbulence_models.stf import STF2017TurbulenceModel
 from py_wake.wind_turbines.power_ct_functions import PowerCtFunction
@@ -105,6 +105,18 @@ def test_NOJConvection2():
     with pytest.raises(NotImplementedError, match='calc_deficit_convection not implemented for NOJ'):
         wfm = NOJ(site, NibeA0(), rotorAvgModel=None, superpositionModel=WeightedSum())
         wfm([0, 500], [0, 0])
+
+
+def test_NOJLocal_ti_dependence():
+    def get(ti):
+        site = UniformSite([1], ti)
+        wfm = PropagateDownwind(site, NibeA0(), NOJLocalDeficit(use_effective_ti=False))
+        return wfm([0, 40], [0, 0], wd=270, ws=[10])
+    sim_res1, sim_res2 = [get(ti) for ti in [0.1, 0.2]]
+    npt.assert_array_almost_equal(sim_res1.TI.squeeze(), [.1])
+    npt.assert_array_almost_equal(sim_res2.TI.squeeze(), [.2])
+    npt.assert_array_almost_equal(sim_res1.WS_eff.isel(wt=1), [[4.43458331]])
+    npt.assert_array_almost_equal(sim_res2.WS_eff.isel(wt=1), [[5.13995521]])
 
 
 def test_NOJLocal_ti_eff_dependence():

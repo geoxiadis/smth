@@ -72,7 +72,7 @@ def test_RotorGridAvg_deficit():
         # test with PropagateDownwind
         wfm = get_wfm(rotorAvgModel=rotorAvgModel)
         sim_res = wfm([0, 500], [0, 0], wd=270, ws=10)
-        npt.assert_almost_equal(sim_res.WS_eff_ilk[1, 0, 0], ref1)
+        npt.assert_almost_equal(sim_res.WS_eff_ilk[1, 0, 0], ref1, err_msg=name)
 
         # test with All2AllIterative
         wfm = get_wfm(All2AllIterative, rotorAvgModel=rotorAvgModel)
