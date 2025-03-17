@@ -107,8 +107,7 @@ After that pass the new netcdf file to Fuga instead of the old folder""", Deprec
             self.ds = ds.ds.item()
 
     def mirror(self, x, anti_symmetric=False):
-        x = np.asarray(x)
-        return np.concatenate([((1, -1)[anti_symmetric]) * x[::-1], x[1:]])
+        return mirror(x, anti_symmetric)
 
     def lut_exists(self, zlevels=None):
         if hasattr(self, 'dataset_path'):
@@ -131,18 +130,18 @@ After that pass the new netcdf file to Fuga instead of the old folder""", Deprec
 
     def zeta0_factor(self):
         invL = self.zeta0 / self.z0
-        ams = -5
+        ams = 5
 
         def psim(zeta):
             if self.zeta0 >= 0:
-                return ams * zeta
+                return -ams * zeta
             else:
                 # See Colonel.u2b.psim
                 amu = -19.3
                 aux2 = np.sqrt(1 + amu * zeta)
                 aux = np.sqrt(aux2)
                 return np.pi / 2 - 2 * np.arctan(aux) + np.log((1 + aux)**2 * (1 + aux2) / 8)
-        return 1 / (1 - (psim(self.zHub * invL) - psim(self.zeta0)) / np.log(self.zHub / self.z0))
+        return (1 - (psim(self.zHub * invL) - psim(self.zeta0)) / np.log(self.zHub / self.z0))
 
     def init_lut(self, lut, smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False):
         """initialize lut (negate, remove wriggles and smooth edges to zero)
@@ -197,20 +196,37 @@ After that pass the new netcdf file to Fuga instead of the old folder""", Deprec
 
 
 class FugaXRLUT(FugaUtils):
-    def __init__(self, path, smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False):
+    def __init__(self, path, variables, z_lst=None, smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False):
         self.smooth2zero_x = smooth2zero_x
         self.smooth2zero_y = smooth2zero_y
         self.remove_wriggles = remove_wriggles
-        self.dataset = ds = xr.open_dataset(path)
+        ds = xr.open_dataset(path)
         self.dataset_path = path
+        if z_lst is not None:
+            ds = interp_lut_coordinate(ds, z=z_lst)
+        self.dataset = ds
         self.x, self.y, self.z = ds.x.values, ds.y.values, ds.z.values
         self.dx, self.dy = np.diff(self.x[:2]), np.diff(self.y[:2])
         self.zeta0, self.zHub, self.z0 = ds.zeta0.item(), ds.hubheight.item(), ds.z0.item()
         self.ds = ds.ds.item()
+        attrs = {
+            'diameter': ds.diameter.item(),
+            'hubheight': ds.hubheight.item(),
+            'z0': ds.z0.item(),
+            **self.dataset.attrs}
+        ds = ds.drop_vars(set(ds.data_vars) - set(variables))
+        for var in variables:
+            if var in ds.data_vars:
+                ds[var] = self.get_table(var)
+        da = ds.to_dataarray('variables')
+        attrs['variable_names'] = da.variables.values
+        da['variables'] = np.arange(len(da.variables))
+        da.attrs = attrs
+        self.dataarray = da
 
-    @property
-    def UL(self):
-        return self.get_table('UL')
+    # @property
+    # def UL(self):
+    #     return self.get_table('UL')
 
     def get_table(self, table):
         da = self.dataset[table]
@@ -225,6 +241,21 @@ class FugaXRLUT(FugaUtils):
             'z0': ds.z0.item(),
             **self.dataset.attrs}
         return xr.DataArray(v, dims=['z', 'y', 'x'], coords=da.coords, attrs=attrs).transpose(*da.dims)
+
+
+def mirror(x, anti_symmetric=False):
+    x = np.asarray(x)
+    return np.concatenate([((1, -1)[anti_symmetric]) * x[::-1], x[1:]])
+
+
+def interp_lut_coordinate(da, **kwargs):
+    for n, v in kwargs.items():
+        if list(da[n].values) != list(v):
+            if np.all([_v in da[n].values for _v in v]):
+                da = da.sel(**{n: v})
+            else:
+                da = da.interp(**{n: v})
+    return da
 
 
 def dat2netcdf(folder):
@@ -343,77 +374,3 @@ def ti(z0, zref, zeta0):
     ti_inv = np.where(zeta0 < 0, ti_inv - psi(zeta0 * zref / z0) + psi(zeta0), ti_inv)
 
     return 1 / ti_inv
-
-
-class LUTInterpolator(object):
-    # Faster than scipy.interpolate.interpolate.RegularGridInterpolator
-    def __init__(self, x, y, z, V):
-        self.x = x
-        self.y = y
-        self.z = z
-        self.V = V
-        self.nx = nx = len(x)
-        self.ny = ny = len(y)
-        self.nz = nz = len(z)
-        assert V.shape[:3] == (nz, ny, nx)
-        self.dx, self.dy = [xy[1] - xy[0] for xy in [x, y]]
-
-        self.x0 = x[0]
-        self.y0 = y[0]
-
-        Ve = np.concatenate((V, V[-1:]), 0)
-        Ve = np.concatenate((Ve, Ve[:, -1:]), 1)
-        Ve = np.concatenate((Ve, Ve[:, :, -1:]), 2)
-
-        self.V000 = np.array([V,
-                              Ve[:-1, :-1, 1:],
-                              Ve[:-1, 1:, :-1],
-                              Ve[:-1, 1:, 1:],
-                              Ve[1:, :-1, :-1],
-                              Ve[1:, :-1, 1:],
-                              Ve[1:, 1:, :-1],
-                              Ve[1:, 1:, 1:]])
-        if V.shape == (nz, ny, nx, 2):
-            # Both UL and UT
-            self.V000 = self.V000.reshape((8, nz * ny * nx, 2))
-        else:
-            self.V000 = self.V000.reshape((8, nz * ny * nx))
-
-    def __call__(self, xyz):
-        xp, yp, zp = xyz
-        xp = np.maximum(np.minimum(xp, self.x[-1]), self.x[0])
-        yp = np.maximum(np.minimum(yp, self.y[-1]), self.y[0])
-
-        xif, xi0 = gradients.modf((xp - self.x0) / self.dx)
-        yif, yi0 = gradients.modf((yp - self.y0) / self.dy)
-
-        zif, zi0 = gradients.modf(gradients.interp(zp, self.z, np.arange(self.nz)))
-
-        nx, ny = self.nx, self.ny
-        idx = zi0 * nx * ny + yi0 * nx + xi0
-        v000, v001, v010, v011, v100, v101, v110, v111 = self.V000[:, idx]
-        if len(self.V000.shape) == 3:
-            # Both UL and UT
-            xif = xif[..., na]
-            yif = yif[..., na]
-            zif = zif[..., na]
-        v_00 = v000 + (v100 - v000) * zif
-        v_01 = v001 + (v101 - v001) * zif
-        v_10 = v010 + (v110 - v010) * zif
-        v_11 = v011 + (v111 - v011) * zif
-        v__0 = v_00 + (v_10 - v_00) * yif
-        v__1 = v_01 + (v_11 - v_01) * yif
-
-        return (v__0 + (v__1 - v__0) * xif)
-#         # Slightly slower
-#         xif1, yif1, zif1 = 1 - xif, 1 - yif, 1 - zif
-#         w = np.array([xif1 * yif1 * zif1,
-#                       xif * yif1 * zif1,
-#                       xif1 * yif * zif1,
-#                       xif * yif * zif1,
-#                       xif1 * yif1 * zif,
-#                       xif * yif1 * zif,
-#                       xif1 * yif * zif,
-#                       xif * yif * zif])
-#
-#         return np.sum(w * self.V01[:, zi0, yi0, xi0], 0)

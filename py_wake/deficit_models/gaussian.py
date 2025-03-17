@@ -153,8 +153,10 @@ class NiayifarGaussianDeficit(BastankhahGaussianDeficit):
         self.ct2a = ct2a
 
     def k_ilk(self, **kwargs):
-        TI_ref_ilk = kwargs[self.TI_key]
-        k_ilk = self.a[0] * TI_ref_ilk + self.a[1]
+        k_ilk = np.reshape(self.a[1], (1, 1, 1))
+        if self.a[0] != 0:
+            TI_ref_ilk = kwargs[self.TI_key]
+            k_ilk = k_ilk + self.a[0] * TI_ref_ilk
         return k_ilk
 
 
@@ -514,8 +516,8 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
         a1 = 2 ** (2 / n - 1)
         a2 = 2 ** (4 / n - 2)
 
-        deficit_center_ijlk = a1 - np.sqrt(a2 - ((n * ctx_ijlk) / (16.0 * gamma(2 / n) * np.sign(sigma_ijlk) *
-                                                                   (cabs(sigma_ijlk) ** (4 / n)))))
+        deficit_center_ijlk = a1 - np.sqrt(a2 - ((n * ctx_ijlk) /
+                                                 (16.0 * gamma(2 / n) * gradients.sign(sigma_ijlk) * (cabs(sigma_ijlk) ** (4 / n)))))
 
         return deficit_center_ijlk
 

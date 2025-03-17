@@ -301,6 +301,10 @@ def test_gradients_interp():
     npt.assert_array_equal(cs(f, False)(xp), [20, 40])
     npt.assert_array_equal(autograd(f, False)(xp), [20, 40])
 
+    def f2(xp):
+        return 2 * gradients.interp(xp, [5], [10])
+    npt.assert_array_equal(autograd(f2, False)(5), [2])
+
 
 def test_gradients_logaddexp():
 

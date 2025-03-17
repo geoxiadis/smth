@@ -189,8 +189,7 @@ def test_All2AllIterative_all_blockage_DeficitModels_with_RotorAvg(deficitModel)
     sim_res = wf_model([0, 500, 1000, 1500], [0, 0, 0, 0], yaw=0, wd=270, ws=10)
 
     if 0:
-        sim_res.flow_map(
-            XYGrid(x=np.linspace(-200, 2000, 100))).plot_wake_map()
+        sim_res.flow_map(XYGrid(x=np.linspace(-200, 2000, 100))).plot_wake_map()
         plt.show()
 
 

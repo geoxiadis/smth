@@ -25,12 +25,12 @@ from py_wake.turbulence_models.stf import STF2017TurbulenceModel
 class FugaDeficitCount(FugaDeficit):
     counter = 0
 
-    def _calc_layout_terms(self, dw_ijlk, hcw_ijlk, z_ijlk, D_src_il, **_):
-        I, J = dw_ijlk.shape[:2]
+    def _calc_layout_terms(self, **kwargs):
+        I, J = kwargs['dw_ijlk'].shape[:2]
         if I > 1 and I == J:
             # only count All2All
             self.counter += 1
-        return FugaDeficit._calc_layout_terms(self, dw_ijlk, hcw_ijlk, z_ijlk, D_src_il, **_)
+        return FugaDeficit._calc_layout_terms(self, **kwargs)
 
 
 @pytest.mark.parametrize('deflection_model,count',

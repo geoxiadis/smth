@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from py_wake.utils.xarray_utils import ilk2da
 from numpy import newaxis as na
 from py_wake.utils.functions import arg2ilk
+from collections.abc import Iterable
 
 """
 suffixs:
@@ -35,9 +36,14 @@ class LocalWind(dict):
         self.overwritten = set()
         ws = np.atleast_1d(ws)
         if time is not False:
-            assert len(wd) == len(ws)
             if time is True:
                 time = np.arange(len(wd))
+            elif isinstance(time, Iterable) and (
+                len(ws) != len(time) or len(wd) != len(time)
+            ):  # avoid redundant passing wd & ws for time series sites
+                wd = np.zeros(len(time))
+                ws = np.zeros(len(time))
+            assert len(wd) == len(ws)
             coords = {'time': np.atleast_1d(time), 'wd': np.atleast_1d(wd), 'ws': np.atleast_1d(ws)}
         else:
             coords = {'wd': np.atleast_1d(wd), 'ws': np.atleast_1d(ws)}
@@ -140,7 +146,7 @@ class Site(ABC):
             ws = np.atleast_1d(ws)
         return wd, ws
 
-    def local_wind(self, x, y, h=None, wd=None, ws=None, time=False, wd_bin_size=None, ws_bins=None, **_):
+    def local_wind(self, x=None, y=None, h=None, wd=None, ws=None, time=False, wd_bin_size=None, ws_bins=None, **_):
         """Local free flow wind conditions
 
         Parameters

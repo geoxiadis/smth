@@ -1,186 +1,25 @@
 from numpy import newaxis as na
 import xarray as xr
 from py_wake import np
-from py_wake.deficit_models.deficit_model import WakeDeficitModel, BlockageDeficitModel, XRLUTDeficitModel
+from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
 from py_wake.superposition_models import LinearSum
 from py_wake.tests.test_files import tfp
-from py_wake.utils.fuga_utils import FugaUtils, LUTInterpolator, FugaXRLUT
+from py_wake.utils.fuga_utils import FugaXRLUT, interp_lut_coordinate
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
-from scipy.interpolate import RectBivariateSpline
-from py_wake.utils import fuga_utils
+from py_wake.utils import fuga_utils, gradients
 from py_wake.utils.gradients import cabs
-from py_wake.utils.grid_interpolator import GridInterpolator
+
 from py_wake.utils.model_utils import DeprecatedModel
 import glob
 from xarray.core.merge import merge_attrs
-
-
-class FugaDeficit(WakeDeficitModel, BlockageDeficitModel, FugaUtils):
-
-    def __init__(self, LUT_path=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc',
-                 smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False,
-                 method='linear', rotorAvgModel=None, groundModel=None):
-        """
-        Parameters
-        ----------
-        LUT_path : str
-            Path to folder containing 'CaseData.bin', input parameter file (*.par) and loop-up tables
-        remove_wriggles : bool
-            The current Fuga loop-up tables have significan wriggles.
-            If True, all deficit values after the first zero crossing (when going from the center line
-            and out in the lateral direction) is set to zero.
-            This means that all speed-up regions are also removed
-        smooth2zero_x : int or None, optional
-            make a linear transition to zero over the first and last <smoot2zero_x> points in the downwind direction
-            of the look-up table
-            if None, default, smooth2zero_x is set to 1/8 of the box length
-            if 0, no correction is applied.
-            if >0, the first and last <smooth2zero_x> points are linearly faded to zero
-        smooth2zero_y : int or None, optional
-            make a linear transition to last <smoot2zero_y> points in the cross wind direction
-            of the look-up table
-            if None, default, smooth2zero_y is set to 1/8 of the box width (i.e. center line to the side)
-            if 0, no correction is applied.
-            if >0, the <smooth2zero_x> points farthest away from the centerline are linearly faded to zero
-        """
-        BlockageDeficitModel.__init__(self, upstream_only=True, rotorAvgModel=rotorAvgModel, groundModel=groundModel)
-        FugaUtils.__init__(self, LUT_path, on_mismatch='input_par')
-        self.smooth2zero_x = smooth2zero_x
-        self.smooth2zero_y = smooth2zero_y
-        self.remove_wriggles = remove_wriggles
-        x, y, z, du = self.load()
-        err_msg = "Method must be 'linear' or 'spline'. Spline is supports only height level only"
-        assert method == 'linear' or (method == 'spline' and len(z) == 1), err_msg
-
-        if method == 'linear':
-            self.lut_interpolator = LUTInterpolator(x, y, z, du)
-        else:
-            du_interpolator = RectBivariateSpline(x, y, du[0].T)
-
-            def interp(xyz):
-                x, y, z = xyz
-                assert np.all(z == self.z[0]), f'LUT table contains z={self.z} only'
-                return du_interpolator.ev(x, y)
-            self.lut_interpolator = interp
-
-        X, Y = np.meshgrid(self.x, self.y)
-        self.lut_interpolator([X, Y, X * 0 + self.zHub])
-        du_zhub = self.lut_interpolator([X, Y, X * 0 + self.zHub])
-        self.setup_wake_radius(du_zhub)
-
-    def setup_wake_radius(self, du_zhub):
-        # set wake limit center_deficit * np.exp(-2)), corresponding to value of 2 sigma for a gaussian profile
-        wake_radius_arr = self.y[np.argmin((du_zhub > (du_zhub[0] * np.exp(-2))), 0)]
-
-        rp = len(self.x) // 4
-        wake_radius_arr[:rp] = 0  # set upstream to 0
-        self.wake_radius_arr = wake_radius_arr
-
-    def load(self):
-        du = self.init_lut(self.load_luts(['UL'])[0],
-                           smooth2zero_x=self.smooth2zero_x, smooth2zero_y=self.smooth2zero_y,
-                           remove_wriggles=self.remove_wriggles)
-        return self.x, self.y, self.z, du
-
-    def interpolate(self, x, y, z):
-        # self.grid_interplator(np.array([zyx.flatten() for zyx in [z, y, x]]).T, check_bounds=False).reshape(x.shape)
-        return self.lut_interpolator((x, y, z))
-
-    def _calc_layout_terms(self, dw_ijlk, hcw_ijlk, z_ijlk, D_src_il, **_):
-        self.mdu_ijlk = self.interpolate(dw_ijlk, cabs(hcw_ijlk), z_ijlk)
-
-    def calc_deficit(self, WS_ilk, WS_eff_ilk, dw_ijlk, hcw_ijlk, z_ijlk, ct_ilk, D_src_il, **kwargs):
-        if not self.deficit_initalized:
-            self._calc_layout_terms(dw_ijlk=dw_ijlk, hcw_ijlk=hcw_ijlk, z_ijlk=z_ijlk, D_src_il=D_src_il, **kwargs)
-        return self.mdu_ijlk * (ct_ilk * WS_eff_ilk**2 / WS_ilk)[:, na]
-
-    def wake_radius(self, D_src_il, dw_ijlk, **_):
-        return np.interp(dw_ijlk, self.x, self.wake_radius_arr)
-
-
-class FugaYawDeficit(FugaDeficit):
-
-    def __init__(self, LUT_path=tfp + 'fuga/2MW/Z0=0.00408599Zi=00400Zeta0=0.00E+00.nc',
-                 smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False,
-                 method='linear', rotorAvgModel=None, groundModel=None):
-        """
-        Parameters
-        ----------
-        LUT_path : str
-            Path to folder containing 'CaseData.bin', input parameter file (*.par) and loop-up tables
-        smooth2zero_x : int or None, optional
-            make a linear transition to zero over the first and last <smoot2zero_x> points in the downwind direction
-            of the look-up table
-            if None, default, smooth2zero_x is set to 1/8 of the box length
-            if 0, no correction is applied.
-            if >0, the first and last <smooth2zero_x> points are linearly faded to zero
-        smooth2zero_y : int or None, optional
-            make a linear transition to last <smoot2zero_y> points in the cross wind direction
-            of the look-up table
-            if None, default, smooth2zero_y is set to 1/8 of the box width (i.e. center line to the side)
-            if 0, no correction is applied.
-            if >0, the <smooth2zero_x> points farthest away from the centerline are linearly faded to zero
-        remove_wriggles : bool
-            The current Fuga loop-up tables have significan wriggles.
-            If True, all deficit values after the first zero crossing (when going from the center line
-            and out in the lateral direction) is set to zero.
-            This means that all speed-up regions are also removed
-        """
-        BlockageDeficitModel.__init__(self, upstream_only=True, rotorAvgModel=rotorAvgModel, groundModel=groundModel)
-        FugaUtils.__init__(self, LUT_path, on_mismatch='input_par')
-        self.smooth2zero_x = smooth2zero_x
-        self.smooth2zero_y = smooth2zero_y
-        self.remove_wriggles = remove_wriggles
-        x, y, z, dUL = self.load()
-
-        mdUT = self.load_luts(['UT'])[0]
-        dUT = np.array(mdUT, dtype=np.float32) * self.zeta0_factor()
-        dU = np.concatenate([dUL[:, :, :, na], dUT[:, :, :, na]], 3)
-        err_msg = "Method must be 'linear' or 'spline'. Spline is supports only height level only"
-        assert method == 'linear' or (method == 'spline' and len(z) == 1), err_msg
-
-        if method == 'linear':
-            self.lut_interpolator = LUTInterpolator(x, y, z, dU)
-        else:
-            UL_interpolator = RectBivariateSpline(x, y, dU[0, :, :, 0].T)
-            UT_interpolator = RectBivariateSpline(x, y, dU[0, :, :, 1].T)
-
-            def interp(xyz):
-                x, y, z = xyz
-                assert np.all(z == self.z[0]), f'LUT table contains z={self.z} only'
-                return np.moveaxis([UL_interpolator.ev(x, y), UT_interpolator.ev(x, y)], 0, -1)
-            self.lut_interpolator = interp
-        X, Y = np.meshgrid(self.x, self.y)
-        self.lut_interpolator([X, Y, X * 0 + self.zHub])
-        du_zhub = self.lut_interpolator([X, Y, X * 0 + self.zHub])[:, :, 0]
-        self.setup_wake_radius(du_zhub)
-
-    def _calc_layout_terms(self, dw_ijlk, hcw_ijlk, z_ijlk, D_src_il, **_):
-        self.mdu_ijlk = (self.interpolate(dw_ijlk, cabs(hcw_ijlk), z_ijlk))
-
-    def calc_deficit_downwind(self, WS_ilk, WS_eff_ilk, dw_ijlk, hcw_ijlk,
-                              z_ijlk, ct_ilk, D_src_il, yaw_ilk, **_):
-
-        mdUL_ijlk, mdUT_ijlk = np.moveaxis(self.interpolate(
-            dw_ijlk, cabs(hcw_ijlk), z_ijlk), -1, 0)
-        mdUT_ijlk = np.negative(mdUT_ijlk, out=mdUT_ijlk, where=hcw_ijlk < 0)  # UT is antisymmetric
-        theta_ilk = np.deg2rad(yaw_ilk)
-
-        mdu_ijlk = (mdUL_ijlk * np.cos(theta_ilk)[:, na] + mdUT_ijlk * np.sin(theta_ilk)[:, na])
-        # avoid wake on itself
-        mdu_ijlk *= ~((dw_ijlk == 0) & (hcw_ijlk <= D_src_il[:, na, :, na]))
-
-        return mdu_ijlk * (ct_ilk * WS_eff_ilk**2 / WS_ilk)[:, na]
-
-    def calc_deficit(self, **kwargs):
-        # fuga result is already downwind
-        return self.calc_deficit_downwind(**kwargs)
+import warnings
+import os
 
 
 class Fuga(PropagateDownwind, DeprecatedModel):
     def __init__(self, LUT_path, site, windTurbines,
                  rotorAvgModel=None, deflectionModel=None, turbulenceModel=None,
-                 smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False):
+                 bounds='limit', smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False):
         """
         Parameters
         ----------
@@ -200,7 +39,7 @@ class Fuga(PropagateDownwind, DeprecatedModel):
             Model describing the amount of added turbulence in the wake
         """
         PropagateDownwind.__init__(self, site, windTurbines,
-                                   wake_deficitModel=FugaDeficit(LUT_path,
+                                   wake_deficitModel=FugaDeficit(LUT_path, bounds=bounds,
                                                                  smooth2zero_x=smooth2zero_x,
                                                                  smooth2zero_y=smooth2zero_y,
                                                                  remove_wriggles=remove_wriggles),
@@ -211,7 +50,7 @@ class Fuga(PropagateDownwind, DeprecatedModel):
 
 class FugaBlockage(All2AllIterative, DeprecatedModel):
     def __init__(self, LUT_path, site, windTurbines, rotorAvgModel=None,
-                 deflectionModel=None, turbulenceModel=None, convergence_tolerance=1e-6, remove_wriggles=False):
+                 deflectionModel=None, turbulenceModel=None, convergence_tolerance=1e-6, bounds='limit', remove_wriggles=False):
         """
         Parameters
         ----------
@@ -230,7 +69,7 @@ class FugaBlockage(All2AllIterative, DeprecatedModel):
         turbulenceModel : TurbulenceModel
             Model describing the amount of added turbulence in the wake
         """
-        fuga_deficit = FugaDeficit(LUT_path, remove_wriggles=remove_wriggles)
+        fuga_deficit = FugaDeficit(LUT_path, bounds=bounds, remove_wriggles=remove_wriggles)
         All2AllIterative.__init__(self, site, windTurbines, wake_deficitModel=fuga_deficit,
                                   rotorAvgModel=rotorAvgModel, superpositionModel=LinearSum(),
                                   deflectionModel=deflectionModel, blockage_deficitModel=fuga_deficit,
@@ -238,21 +77,28 @@ class FugaBlockage(All2AllIterative, DeprecatedModel):
         DeprecatedModel.__init__(self, 'py_wake.literature.fuga.Ott_2014_Blockage')
 
 
-class FugaMultiLUTDeficit(XRLUTDeficitModel, FugaDeficit):
-    def __init__(self, LUT_path_lst=tfp + 'fuga/2MW/multilut/LUTs_Zeta0=0.00e+00_16_32_*_zi400_z0=0.00001000_z9.8-207.9_UL_nx128_ny128_dx20.0_dy5.0.nc',
+class FugaMultiLUTDeficit(XRLUTDeficitModel):
+
+    def __init__(self, LUT_path=tfp + 'fuga/2MW/multilut/LUTs_Zeta0=0.00e+00_16_32_*_zi400_z0=0.00001000_z9.8-207.9_UL_nx128_ny128_dx20.0_dy5.0.nc',
                  z_lst=None, TI_ref_height=None, bounds='limit',
                  smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False,
                  rotorAvgModel=None, groundModel=None,
                  use_effective_ti=False):
 
-        fuga_kwargs = dict(smooth2zero_x=smooth2zero_x, smooth2zero_y=smooth2zero_y, remove_wriggles=remove_wriggles)
-        if isinstance(LUT_path_lst, str):
-            da_lst = [FugaXRLUT(f, **fuga_kwargs).UL for f in glob.glob(LUT_path_lst)]
-            assert len(da_lst), f"No files found matching {LUT_path_lst}"
+        fuga_kwargs = dict(variables=['UL', 'UT'], smooth2zero_x=smooth2zero_x, smooth2zero_y=smooth2zero_y,
+                           remove_wriggles=remove_wriggles, z_lst=z_lst)
+        if isinstance(LUT_path, str) and os.path.isdir(LUT_path):
+            f = fuga_utils.dat2netcdf(LUT_path).filename
+            da_lst = [FugaXRLUT(f, **fuga_kwargs).dataarray]
         else:
-            da_lst = [FugaXRLUT(f, **fuga_kwargs).UL for f in LUT_path_lst]
+            if isinstance(LUT_path, str):
+                lut_path_str = LUT_path
+                LUT_path = list(glob.glob(lut_path_str))
+                assert len(LUT_path), f"No files found matching {lut_path_str}"
 
-        dims = ['d_h', 'zeta0', 'zi', 'z0']
+            da_lst = [FugaXRLUT(f, **fuga_kwargs).dataarray for f in LUT_path]
+
+        dims = self.preprocess_luts(da_lst)
 
         da_lst = [da.assign_coords({'d_h': da.diameter * 1000 + da.hubheight,
                                     **{k: getattr(da, k) for k in dims[1:]}}).expand_dims(dims) for da in da_lst]
@@ -260,11 +106,18 @@ class FugaMultiLUTDeficit(XRLUTDeficitModel, FugaDeficit):
 
         if z_lst is None:
             z_lst = np.sort(np.unique([z for da in da_lst for z in da.z.values]))
+        if not all([(da.x.values.tolist() == da_lst[0].x.values.tolist()) for da in da_lst]):  # pragma: no cover
+            warnings.warn("LUTs contains different x coordinates. "
+                          "Regenerated LUTs with fixed Nx and dx to reduce memory usage and improve performance")
         x_lst = np.sort(np.unique([da.x for da in da_lst]))
         x_lst = x_lst[(x_lst >= np.max([da.x[0] for da in da_lst])) & (x_lst <= np.min([da.x[-1] for da in da_lst]))]
+        if not all([(da.y.values.tolist() == da_lst[0].y.values.tolist()) for da in da_lst]):  # pragma: no cover
+            warnings.warn("LUTs contains different y coordinates. "
+                          "Regenerated LUTs with fixed Ny and dy to reduce memory usage and improve performance")
         y_lst = np.sort(np.unique([da.y for da in da_lst]))
         y_lst = y_lst[(y_lst >= np.max([da.y[0] for da in da_lst])) & (y_lst <= np.min([da.y[-1] for da in da_lst]))]
-        da_lst = [da.interp(z=z_lst, x=x_lst, y=y_lst) for da in da_lst]
+
+        da_lst = [interp_lut_coordinate(da, x=x_lst, y=y_lst, z=z_lst) for da in da_lst]
 
         # combine_by_coords does not always merge attributes correctly
         attrs = merge_attrs([da.attrs for da in da_lst], combine_attrs='drop_conflicts')
@@ -273,27 +126,72 @@ class FugaMultiLUTDeficit(XRLUTDeficitModel, FugaDeficit):
         self.x, self.y = da.x.values, da.y.values
         self._args4model = {k + "_ilk" for k in ['zeta0', 'zi'] if k in da.dims}
 
-        method = ['nearest'] + (['linear'] * (len(da.dims) - 1))
+        method = [['linear', 'nearest'][d in ['d_h', 'variable']] for d in da.dims]
         XRLUTDeficitModel.__init__(self, da, get_input=self.get_input, method=method, bounds=bounds,
                                    rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                    use_effective_ws=False, use_effective_ti=use_effective_ti)
 
-    def wake_radius(self, D_src_il, dw_ijlk, **_):
-        # Set at twice the source radius for now
-        return np.zeros_like(dw_ijlk) + D_src_il[:, na, :, na]
+    def preprocess_luts(self, da_lst):
+        dims = ['d_h', 'zeta0', 'zi', 'z0']
+        return dims
+
+    def wake_radius(self, dw_ijlk, D_src_il, h_ilk, TI_ilk, hcw_ijlk=None, z_ijlk=None, **kwargs):
+        z_ijlk = h_ilk[:, na]
+        lim = self.da.y.max().item()
+
+        def get_mdu(hcw_ijlk):
+            hcw_ijlk = np.nan_to_num(np.clip(hcw_ijlk, -lim, lim), nan=lim)
+            return self._calc_mdu(D_src_il=D_src_il, dw_ijlk=dw_ijlk,
+                                  hcw_ijlk=hcw_ijlk, h_ilk=h_ilk, z_ijlk=z_ijlk, TI_ilk=TI_ilk, **kwargs)
+        mdu_target = get_mdu(dw_ijlk * 0) * np.exp(-2)  # corresponding to 2 sigma
+
+        def get_err(hcw):
+            return get_mdu(hcw) - mdu_target
+
+        def get_wake_radius(wake_radius_ijlk):
+            # Newton Raphson
+            for _ in range(4):
+                err = get_err(wake_radius_ijlk)
+                derr = get_err(wake_radius_ijlk + 1) - err
+                wake_radius_ijlk = wake_radius_ijlk - err / derr
+            return np.abs(wake_radius_ijlk)
+        wake_radius_ijlk = get_wake_radius(D_src_il[:, na, :, na])  # diameter as initial guess
+
+        if np.any(kwargs.get('yaw_ilk', [0])) and 'UT' in self.da.variable_names:
+            # mean of positive and negative side
+            wake_radius_ijlk = (wake_radius_ijlk + get_wake_radius(-D_src_il[:, na, :, na]))
+
+        return wake_radius_ijlk
 
     def calc_deficit(self, WS_ilk, WS_eff_ilk, dw_ijlk, hcw_ijlk, z_ijlk, ct_ilk, D_src_il, **kwargs):
         # bypass XRLUTDeficitModel.calc_deficit
-        return FugaDeficit.calc_deficit(self, WS_ilk=WS_ilk, WS_eff_ilk=WS_eff_ilk,
-                                        dw_ijlk=dw_ijlk, hcw_ijlk=hcw_ijlk, z_ijlk=z_ijlk,
-                                        ct_ilk=ct_ilk, D_src_il=D_src_il, **kwargs)
+        if not self.deficit_initalized:
+            self._calc_layout_terms(dw_ijlk=dw_ijlk, hcw_ijlk=hcw_ijlk, z_ijlk=z_ijlk, D_src_il=D_src_il, **kwargs)
+        return self.mdu_ijlk * (ct_ilk * WS_eff_ilk**2 / WS_ilk)[:, na]
+
+    def _calc_mdu(self, **kwargs):
+        # 0 = UL
+        variables0 = np.reshape(0, np.ones_like(kwargs['dw_ijlk'].shape).astype(int))
+        mdu_ijlk = XRLUTDeficitModel.calc_deficit(self, **kwargs, variables=variables0)
+        if 'yaw_ilk' in kwargs:
+            theta_yaw_ijlk = gradients.deg2rad(kwargs['yaw_ilk'])[:, na]
+            if list(self.da.variable_names) == ['UL', 'UT']:
+                # 1 = UT
+                mdUT_ijlk = XRLUTDeficitModel.calc_deficit(self, **kwargs, variables=variables0 + 1)
+                mdUT_ijlk = np.negative(mdUT_ijlk, out=mdUT_ijlk, where=kwargs['hcw_ijlk'] >= 0)
+                mdu_ijlk = mdu_ijlk * np.cos(theta_yaw_ijlk) + np.sin(theta_yaw_ijlk) * mdUT_ijlk
+            else:
+                mdu_ijlk *= np.cos(theta_yaw_ijlk)
+        return mdu_ijlk
 
     def _calc_layout_terms(self, **kwargs):
-        self.mdu_ijlk = XRLUTDeficitModel.calc_deficit(self, **kwargs)
+        self.mdu_ijlk = self._calc_mdu(**kwargs)
+        return self.mdu_ijlk
 
     def get_input(self, D_src_il, TI_ilk, h_ilk, dw_ijlk, hcw_ijlk, z_ijlk, **kwargs):
         user = {'zeta0': lambda: kwargs['zeta0_ilk'][:, na],
-                'zi': lambda: kwargs['zi_ilk'][:, na]}
+                'zi': lambda: kwargs['zi_ilk'][:, na],
+                'variables': lambda: kwargs['variables']}
         interp_kwargs = {'d_h': (D_src_il[:, :, na] * 1000 + h_ilk)[:, na],
                          'z0': fuga_utils.z0(TI_ilk, self.TI_ref_height or h_ilk, zeta0=kwargs.get('zeta0_ilk', 0))[:, na],
                          'z': z_ijlk,
@@ -304,6 +202,28 @@ class FugaMultiLUTDeficit(XRLUTDeficitModel, FugaDeficit):
 
     def get_output(self, output_ijlk, **kwargs):
         return output_ijlk
+
+
+class FugaYawDeficit(FugaMultiLUTDeficit):
+    def __init__(self, LUT_path=tfp + 'fuga/2MW/Z0=0.00408599Zi=00400Zeta0=0.00E+00.nc',
+                 z_lst=None, TI_ref_height=None, bounds='limit',
+                 smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False,
+                 rotorAvgModel=None, groundModel=None,
+                 use_effective_ti=False):
+        FugaMultiLUTDeficit.__init__(self, LUT_path=LUT_path, z_lst=z_lst, TI_ref_height=TI_ref_height, bounds=bounds,
+                                     smooth2zero_x=smooth2zero_x, smooth2zero_y=smooth2zero_y, remove_wriggles=remove_wriggles,
+                                     rotorAvgModel=rotorAvgModel, groundModel=groundModel, use_effective_ti=use_effective_ti)
+
+
+class FugaDeficit(FugaMultiLUTDeficit):
+    def __init__(self, LUT_path=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc',
+                 z_lst=None, TI_ref_height=None, bounds='limit',
+                 smooth2zero_x=None, smooth2zero_y=None, remove_wriggles=False,
+                 rotorAvgModel=None, groundModel=None,
+                 use_effective_ti=False):
+        FugaMultiLUTDeficit.__init__(self, LUT_path=LUT_path, z_lst=z_lst, TI_ref_height=TI_ref_height, bounds=bounds,
+                                     smooth2zero_x=smooth2zero_x, smooth2zero_y=smooth2zero_y, remove_wriggles=remove_wriggles,
+                                     rotorAvgModel=rotorAvgModel, groundModel=groundModel, use_effective_ti=use_effective_ti)
 
 
 def main():

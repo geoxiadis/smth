@@ -44,8 +44,10 @@ test_PyWake_windows:  # name the job what we like
   script:  # runs on windows machine due to tag below
   - conda init powershell
   - "if (test-path $PROFILE.CurrentUserAllHosts) { & $PROFILE.CurrentUserAllHosts}"
-  - conda activate py38
+  - conda activate py312
   - pip install -e .[test] --no-deps
+  - python -V
+  - pip list
   - pytest --cov-report term-missing:skip-covered --cov-report xml:coverage.xml --cov=py_wake --cov-config .coveragerc
   tags:  # tag for shared runner on windows machine
   - ANMH_old

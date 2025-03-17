@@ -24,7 +24,7 @@ dependencies = [
   "git-lfs",
   "matplotlib",
   "numpy",
-  "xarray", "netcdf4", "h5netcdf",
+  "xarray>=2024.6.1", "netcdf4", "h5netcdf",
   "autograd",
   "pyyaml",
   "scipy",

@@ -251,7 +251,7 @@ Use WindTurbines(names, diameters, hub_heights, power_ct_funcs) instead""", Depr
     def plot_power_ct(self, ax=None, ws=np.linspace(0, 25, 1000), **wt_kwargs):
         import matplotlib.pyplot as plt
         if ax is None:
-            ax = plt.gca()
+            ax = plt.gca().figure.axes[0]
         power, ct = self.power_ct(ws, **wt_kwargs)
         c = ax.plot(ws, power, label='Power')[0].get_color()
         ax.plot([], '--', color=c, label='CT')

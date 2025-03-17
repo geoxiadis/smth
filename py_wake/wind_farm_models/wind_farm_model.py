@@ -13,6 +13,7 @@ from py_wake.utils.parallelization import get_pool_map, get_pool_starmap
 from py_wake.utils.functions import arg2ilk
 from py_wake.utils.gradients import autograd
 from py_wake.noise_models.iso import ISONoiseModel
+from collections.abc import Iterable
 
 
 class WindFarmModel(ABC):
@@ -129,6 +130,12 @@ class WindFarmModel(ABC):
         If return_simulationResult is False the functino returns a tuple of:
         WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, localWind, kwargs_ilk
         """
+        if isinstance(time, Iterable) and (
+            len(ws if ws is not None else []) != len(time) or
+            len(wd if wd is not None else []) != len(time)
+        ):  # avoid redundant passing wd & ws for time series sites
+            wd = np.zeros(len(time))
+            ws = np.zeros(len(time))
 
         res = self._run(x, y, h=h, type=type, wd=wd, ws=ws, time=time, verbose=verbose,
                         n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks, **kwargs)

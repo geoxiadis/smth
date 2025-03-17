@@ -3,7 +3,7 @@ import pytest
 import matplotlib.pyplot as plt
 from py_wake import np
 from py_wake.deficit_models.deficit_model import WakeDeficitModel, BlockageDeficitModel
-from py_wake.deficit_models.fuga import FugaDeficit, Fuga
+from py_wake.deficit_models.fuga import FugaDeficit, Fuga, FugaMultiLUTDeficit
 from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, IEA37SimpleBastankhahGaussianDeficit, \
     ZongGaussianDeficit, NiayifarGaussianDeficit, BastankhahGaussian, ZongGaussian, \
     NiayifarGaussian, CarbajofuertesGaussianDeficit, TurboGaussianDeficit, IEA37SimpleBastankhahGaussian, \
@@ -111,7 +111,7 @@ def test_IEA37_ex16(deficitModel, aep_ref):
     site = IEA37Site(16)
     x, y = site.initial_position.T
     windTurbines = IEA37_WindTurbines()
-    superpositionModel = [SquaredSum, LinearSum][isinstance(deficitModel, FugaDeficit)]
+    superpositionModel = [SquaredSum, LinearSum][isinstance(deficitModel, FugaMultiLUTDeficit)]
     wf_model = PropagateDownwind(site, windTurbines, wake_deficitModel=deficitModel,
                                  superpositionModel=superpositionModel(), turbulenceModel=GCLTurbulence())
 
@@ -221,7 +221,7 @@ def test_deficitModel_wake_map(deficitModel, ref):
     site = IEA37Site(16)
     x, y = site.initial_position.T
     windTurbines = IEA37_WindTurbines()
-    superpositionModel = [SquaredSum, LinearSum][isinstance(deficitModel, FugaDeficit)]
+    superpositionModel = [SquaredSum, LinearSum][isinstance(deficitModel, FugaMultiLUTDeficit)]
     wf_model = PropagateDownwind(site, windTurbines, wake_deficitModel=deficitModel, superpositionModel=superpositionModel(),
                                  turbulenceModel=GCLTurbulence())
 
@@ -260,7 +260,8 @@ def test_deficitModel_wake_map(deficitModel, ref):
         (TurboNOJDeficit(), [99.024477, 61.553917, 123.107833, 92.439673, 97.034049]),
         (BastankhahGaussianDeficit(), [83.336286, 57.895893, 115.791786, 75.266662, 83.336286]),
         (IEA37SimpleBastankhahGaussianDeficit(), [103.166178, 67.810839, 135.621678, 103.166178, 103.166178]),
-        (FugaDeficit(LUT_path=tfp + 'fuga/2MW/Z0=0.00408599Zi=00400Zeta0=0.00E+00.nc'), [90., 90., 115., 90., 90.]),
+        (FugaDeficit(LUT_path=tfp + 'fuga/2MW/Z0=0.00408599Zi=00400Zeta0=0.00E+00.nc'),
+         [88.044245, 88.044245, 110.523363, 88.044245, 88.044245]),
         (GCLDeficit(), [156.949964, 97.763333, 195.526667, 113.225695, 111.340236]),
         (GCLLocalDeficit(), [156.949964, 97.763333, 195.526667, 113.225695, 111.340236]),
         (ZongGaussianDeficit(eps_coeff=0.35), [91.15734, 66.228381, 132.456762, 94.90156, 79.198215]),
@@ -278,6 +279,7 @@ def test_wake_radius(deficitModel, wake_radius_ref):
         D_src_il=np.reshape([100, 50, 100, 100, 100], (5, 1)),
         dw_ijlk=np.reshape([500, 500, 1000, 500, 500], (5, 1, 1, 1)),
         WS_ilk=np.reshape([10, 10, 10, 10, 10], (5, 1, 1)),
+        h_ilk=np.reshape([70, 70, 70, 70, 70], (5, 1, 1)),
         ct_ilk=np.reshape([.8, .8, .8, .4, .8], (5, 1, 1)),
         TI_ilk=np.reshape([.1, .1, .1, .1, .05], (5, 1, 1)),
         TI_eff_ilk=np.reshape([.1, .1, .1, .1, .05], (5, 1, 1)))[:, 0, 0, 0],
@@ -512,7 +514,8 @@ def test_IEA37_ex16_windFarmModel(windFarmModel, aep_ref):
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', category=DeprecationWarning)
         wf_model = windFarmModel(site, windTurbines, turbulenceModel=GCLTurbulence())
-    wf_model.superpositionModel = [SquaredSum(), LinearSum()][isinstance(wf_model.wake_deficitModel, FugaDeficit)]
+    wf_model.superpositionModel = [SquaredSum(), LinearSum()][isinstance(
+        wf_model.wake_deficitModel, FugaMultiLUTDeficit)]
 
     aep_ilk = wf_model(x, y, wd=np.arange(0, 360, 22.5), ws=[9.8]).aep_ilk(normalize_probabilities=True)
     aep_MW_l = aep_ilk.sum((0, 2)) * 1000

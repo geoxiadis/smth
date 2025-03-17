@@ -12,6 +12,7 @@ from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
 from py_wake.tests import npt
 from py_wake.deflection_models.fuga_deflection import FugaDeflection
 from scipy.interpolate import InterpolatedUnivariateSpline
+from py_wake.utils import fuga_utils
 
 
 def test_fuga_deflection_vs_notebook():
@@ -58,7 +59,7 @@ def test_fuga_wake_center_vs_notebook():
 
     WS = 10
     sim_res = wfm([0], [0], yaw=[17.4493], wd=270, ws=[WS])
-    y = wfm.wake_deficitModel.mirror(wfm.wake_deficitModel.y, anti_symmetric=True)
+    y = fuga_utils.mirror(wfm.wake_deficitModel.y, anti_symmetric=True)
     fm = sim_res.flow_map(XYGrid(x=x[1:], y=y[240:271]))
     fuga_wake_center = [np.interp(0, InterpolatedUnivariateSpline(ws.y, ws.values).derivative()(ws.y), ws.y)
                         for ws in fm.WS_eff.squeeze().T]
