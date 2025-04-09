@@ -18,6 +18,7 @@ from collections.abc import Iterable
 
 class WindFarmModel(ABC):
     """Base class for RANS and engineering flow models"""
+    args4all = ['rotor_speed_ilk']
     verbose = True
 
     def __init__(self, site, windTurbines):

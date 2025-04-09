@@ -10,6 +10,7 @@ from py_wake.utils import gradients
 
 
 class DeficitModel(ABC, RotorAvgAndGroundModelContainer):
+    args4all = ['rotor_speed_ilk']
     deficit_initalized = False
 
     def __init__(self, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False):
@@ -30,6 +31,7 @@ class DeficitModel(ABC, RotorAvgAndGroundModelContainer):
         #     args4deficit |= method_args(self.calc_deficit_downwind)
         args4deficit |= method_args(self._calc_layout_terms)
         args4deficit |= self.additional_args
+        args4deficit |= {'rotor_speed_ilk'}
 
         return args4deficit - {'WS_ref_ilk', 'WS_ref_ijlk'}
 

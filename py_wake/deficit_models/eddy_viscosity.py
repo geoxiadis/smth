@@ -44,6 +44,13 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
     ``simplified_eddy_viscosity_lookup_table_generator`` for details.
     """
 
+    args4all = WakeDeficitModel.args4all + ['rotor_speed']
+
+    @property
+    def args4model(self):
+        base_args = super().args4model
+        return base_args | {'rotor_speed'}
+    
     def __init__(
         self,
         rotorAvgModel: Optional[RotorAvgModel] = SimplifiedGaussianRotorAverageModel(),
@@ -340,6 +347,8 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
 
 class EddyViscosityModel(PropagateDownwind):
     """Pre-defined wind farm model based on the EV deficit model."""
+
+    args4all = PropagateDownwind.args4all + ['rotor_speed']
 
     def __init__(
         self,

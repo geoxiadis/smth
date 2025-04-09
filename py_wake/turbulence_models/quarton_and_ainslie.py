@@ -150,6 +150,7 @@ class QuartonAndAinslieTurbulenceModel(TurbulenceModel):
             ti_ref_ilk=ti_ref_ilk,
             D_src_il=D_src_il,
             ct_ilk=ct_ilk,
+            rotor_speed_ilk=_.get('rotor_speed_ilk', DEFAULT_ROTOR_SPEED_ILK)
         )
         dw_norm_xn_ijlk = dw_ijlk / near_wake_length_ilk[:, na, :, :]
         dw_norm_xn_ijlk = np.where(dw_norm_xn_ijlk > 0.1, dw_norm_xn_ijlk, 0.1)

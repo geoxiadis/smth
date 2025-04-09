@@ -414,7 +414,7 @@ class EngineeringWindFarmModel(WindFarmModel):
             msg = "\n".join(["Turbines %d and %d are at the same position" % (i1[i], i2[i]) for i in range(len(i1))])
             raise ValueError(msg)
         for k in self.args4all:
-            if k.endswith('_ilk') and k not in ['ct_ilk'] and k not in kwargs:
+            if k.endswith('_ilk') and k not in ['ct_ilk', 'rotor_speed_ilk'] and k not in kwargs:
                 n = k.replace('_ilk', '')
                 needed_by = str(self)
                 for model in [self.wake_deficitModel, self.superpositionModel, self.blockage_deficitModel,
@@ -429,7 +429,7 @@ class EngineeringWindFarmModel(WindFarmModel):
             n = k.replace('_ilk', '').replace('_i', '')
             if (n not in ri + oi and k not in self.args4all and
                     n not in {'x', 'y', 'h', 'wd', 'ws', 'time', 'type', 'D', 'WD', 'WS',
-                              'WS_eff', 'TI', 'TI_eff', 'I', 'L', 'K'}):
+                              'WS_eff', 'TI', 'TI_eff', 'I', 'L', 'K', 'rotor_speed'}):
                 raise ValueError(f"WindFarmModel an got unexpected keyword argument: '{n}'")
 
 
@@ -756,6 +756,7 @@ class PropagateDownwind(PropagateUpDownIterative):
     """Downstream wake deficits calculated and propagated in downstream direction.
     Very fast, but ignoring blockage effects
     """
+    args4all = ['rotor_speed_ilk']
 
     def __init__(self, site, windTurbines, wake_deficitModel,
                  superpositionModel=LinearSum(),
