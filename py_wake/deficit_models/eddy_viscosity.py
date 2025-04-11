@@ -50,7 +50,7 @@ class EddyViscosityDeficitModel(WakeDeficitModel):
     def args4model(self):
         base_args = super().args4model
         return base_args | {'rotor_speed'}
-    
+
     def __init__(
         self,
         rotorAvgModel: Optional[RotorAvgModel] = SimplifiedGaussianRotorAverageModel(),
