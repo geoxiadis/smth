@@ -1,10 +1,9 @@
 from numpy import newaxis as na
-import xarray as xr
 from py_wake import np
 from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
 from py_wake.superposition_models import LinearSum
 from py_wake.tests.test_files import tfp
-from py_wake.utils.fuga_utils import FugaXRLUT, interp_lut_coordinate
+from py_wake.utils.fuga_utils import FugaXRLUT
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
 from py_wake.utils import fuga_utils, gradients
 from py_wake.utils.gradients import cabs
@@ -15,7 +14,6 @@ try:
     from xarray.core.merge import merge_attrs
 except ModuleNotFoundError:  # pragma: no cover
     from xarray.structure.merge import merge_attrs  # Moved to xarray.structure in v2025.03.0
-import warnings
 import os
 
 
@@ -107,32 +105,14 @@ class FugaMultiLUTDeficit(XRLUTDeficitModel):
                                     **{k: getattr(da, k) for k in dims[1:]}}).expand_dims(dims) for da in da_lst]
         self.TI_ref_height = TI_ref_height
 
-        if z_lst is None:
-            z_lst = np.sort(np.unique([z for da in da_lst for z in da.z.values]))
-        if not all([(da.x.values.tolist() == da_lst[0].x.values.tolist()) for da in da_lst]):  # pragma: no cover
-            warnings.warn("LUTs contains different x coordinates. "
-                          "Regenerated LUTs with fixed Nx and dx to reduce memory usage and improve performance")
-        x_lst = np.sort(np.unique([da.x for da in da_lst]))
-        x_lst = x_lst[(x_lst >= np.max([da.x[0] for da in da_lst])) & (x_lst <= np.min([da.x[-1] for da in da_lst]))]
-        if not all([(da.y.values.tolist() == da_lst[0].y.values.tolist()) for da in da_lst]):  # pragma: no cover
-            warnings.warn("LUTs contains different y coordinates. "
-                          "Regenerated LUTs with fixed Ny and dy to reduce memory usage and improve performance")
-        y_lst = np.sort(np.unique([da.y for da in da_lst]))
-        y_lst = y_lst[(y_lst >= np.max([da.y[0] for da in da_lst])) & (y_lst <= np.min([da.y[-1] for da in da_lst]))]
+        # This assumes all LUTs share the same dimensions
+        da_0 = da_lst[0]
+        method = [['linear', 'nearest'][d in ['d_h', 'variable']] for d in da_0.dims]
 
-        da_lst = [interp_lut_coordinate(da, x=x_lst, y=y_lst, z=z_lst) for da in da_lst]
-
-        # combine_by_coords does not always merge attributes correctly
-        attrs = merge_attrs([da.attrs for da in da_lst], combine_attrs='drop_conflicts')
-        da = xr.combine_by_coords(da_lst, combine_attrs='drop').squeeze()
-        da.attrs = attrs
-        self.x, self.y = da.x.values, da.y.values
-        self._args4model = {k + "_ilk" for k in ['zeta0', 'zi'] if k in da.dims}
-
-        method = [['linear', 'nearest'][d in ['d_h', 'variable']] for d in da.dims]
-        XRLUTDeficitModel.__init__(self, da, get_input=self.get_input, method=method, bounds=bounds,
+        XRLUTDeficitModel.__init__(self, da_lst, get_input=self.get_input, method=method, bounds=bounds,
                                    rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                    use_effective_ws=False, use_effective_ti=use_effective_ti)
+        self._args4model = {k + "_ilk" for k in ['zeta0', 'zi'] if k in self.interp.methods_map['dims'].values}
 
     def preprocess_luts(self, da_lst):
         dims = ['d_h', 'zeta0', 'zi', 'z0']
