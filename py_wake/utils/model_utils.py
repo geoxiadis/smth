@@ -225,6 +225,7 @@ class MultiLUTInterpolator:
             values = np.array([lut[dimension].values for lut in luts])
             if np.unique(values).size == 1:
                 squeeze_dims.append(dimension)
+                squeeze_indexes.append(i)
         return squeeze_indexes, squeeze_dims
 
     @staticmethod
