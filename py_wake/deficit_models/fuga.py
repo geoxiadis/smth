@@ -8,7 +8,7 @@ from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2A
 from py_wake.utils import fuga_utils, gradients
 from py_wake.utils.gradients import cabs
 
-from py_wake.utils.model_utils import DeprecatedModel
+from py_wake.utils.model_utils import DeprecatedModel, MultiLUTInterpolator
 import glob
 try:
     from xarray.core.merge import merge_attrs
@@ -106,13 +106,17 @@ class FugaMultiLUTDeficit(XRLUTDeficitModel):
         self.TI_ref_height = TI_ref_height
 
         # This assumes all LUTs share the same dimensions
-        da_0 = da_lst[0]
-        method = [['linear', 'nearest'][d in ['d_h', 'variable']] for d in da_0.dims]
+        _, ignore_dims = MultiLUTInterpolator.find_squeezable_dims(da_lst)
+
+        method = [['linear', 'nearest'][d in ['d_h', 'variable']] for d in da_lst[0].dims]
+
+        da_0 = da_lst[0].squeeze(ignore_dims)
+        self._args4model = {k + "_ilk" for k in ['zeta0', 'zi'] if k in da_0.dims}
 
         XRLUTDeficitModel.__init__(self, da_lst, get_input=self.get_input, method=method, bounds=bounds,
                                    rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                    use_effective_ws=False, use_effective_ti=use_effective_ti)
-        self._args4model = {k + "_ilk" for k in ['zeta0', 'zi'] if k in self.interp.methods_map['dim'].values}
+
 
     def preprocess_luts(self, da_lst):
         dims = ['d_h', 'zeta0', 'zi', 'z0']
@@ -180,8 +184,8 @@ class FugaMultiLUTDeficit(XRLUTDeficitModel):
                          'z': z_ijlk,
                          'x': dw_ijlk,
                          'y': cabs(hcw_ijlk)}
-        interp_kwargs.update({k: v() for k, v in user.items() if k in self.da.dims})
-        return [interp_kwargs[k] for k in self.da.dims]
+        interp_kwargs.update({k: v() for k, v in user.items() if k in self.interp.methods_map["dim"].values})
+        return [interp_kwargs[k] for k in self.interp.methods_map["dim"].values]
 
     def get_output(self, output_ijlk, **kwargs):
         return output_ijlk
