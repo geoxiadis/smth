@@ -203,23 +203,29 @@ class MultiLUTInterpolator:
                 dim=dimensions,
                 method=methods,
             ),
-            columns=["dim", "method", "spacial"],
+            columns=["dim", "method"],
         )
         self.methods_map.index.rename("input_index")
-        self.methods_map["spacial"] = self.methods_map["dim"].isin(["x", "y", "z"])
 
     def squeeze_luts(self, luts: list[xr.DataArray]) -> list[xr.DataArray]:
         """gets rid of the dimensions with 1 coordinate"""
-        squeeze_dims = []
-        for i, rule in self.methods_map[~self.methods_map["spacial"]].iterrows():
-            dimension = rule["dim"]
-            values = np.array([lut[dimension].values for lut in luts])
-            if np.unique(values).size == 1:
-                squeeze_dims.append(dimension)
-                self.methods_map.drop(index=i, inplace=True)
+        squeeze_indexes, squeeze_dims = self.find_squeezable_dims(luts)
+        self.methods_map.drop(index=squeeze_indexes, inplace=True)
         self.methods_map.reset_index(drop=True, inplace=True)
         luts = [lut.squeeze(squeeze_dims) for lut in luts]
         return luts
+
+    @staticmethod
+    def find_squeezable_dims(luts: list[xr.DataArray]) -> (list[int], list[str]):
+        squeeze_indexes = []
+        squeeze_dims = []
+        for i, dimension in enumerate(luts[0].dims):
+            if dimension in ["x", "y", "z"]:
+                continue
+            values = np.array([lut[dimension].values for lut in luts])
+            if np.unique(values).size == 1:
+                squeeze_dims.append(dimension)
+        return squeeze_indexes, squeeze_dims
 
     @staticmethod
     def merge_luts(luts: list[xr.DataArray]) -> xr.DataArray:
