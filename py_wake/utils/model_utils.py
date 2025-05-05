@@ -4,6 +4,7 @@ import pkgutil
 
 import pandas as pd
 import xarray as xr
+from autograd.numpy.numpy_boxes import ArrayBox
 
 from py_wake import np
 from numpy import newaxis as na
@@ -255,7 +256,10 @@ class MultiLUTInterpolator:
             merged_lut = luts[0].squeeze()
         return merged_lut
 
-    def __call__(self, xp: np.ndarray) -> np.ndarray:
+    def __call__(self, xp: np.ndarray | ArrayBox) -> np.ndarray | ArrayBox:
+        # if isinstance(xp, ArrayBox):
+        #     result = ArrayBox(np.zeros(xp.shape[0]), xp._trace, xp._node)
+        # else:
         result = np.zeros(xp.shape[0])
 
         nearest_dim_indexes = [index for index, rule in self.methods_map.iterrows() if rule["method"] == "nearest"]
@@ -286,7 +290,14 @@ class MultiLUTInterpolator:
                 & (extent["x_min"] <= xp_x)
             ).squeeze()
             xp_in_domain = xp[lut_filter & in_domain, :][:, continuous_dim_indexes]
-            result[lut_filter & in_domain] = interpolator_data["interpolator"](xp_in_domain)
+
+            results_in_domain = interpolator_data["interpolator"](xp_in_domain)
+            if isinstance(xp, ArrayBox):
+                results_in_domain = results_in_domain._value
+            result[np.where(lut_filter & in_domain)] = results_in_domain
+
+        if isinstance(xp, ArrayBox):
+            result = ArrayBox(value=result, trace=xp._trace, node=xp._node)
         return result
 
 
