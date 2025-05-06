@@ -289,9 +289,15 @@ class MultiLUTInterpolator:
                 & (xp_x <= extent["x_max"])
                 & (extent["x_min"] <= xp_x)
             ).squeeze()
+            xp_in_domain = xp[lut_filter & in_domain, :][:, continuous_dim_indexes]
 
-            pre_results = interpolator_data["interpolator"](xp)
-            result = result + pre_results * (lut_filter & in_domain)
+            results_in_domain = interpolator_data["interpolator"](xp_in_domain)
+            if isinstance(xp, ArrayBox):
+                results_in_domain = results_in_domain._value
+            result[np.where(lut_filter & in_domain)] = results_in_domain
+
+        if isinstance(xp, ArrayBox):
+            result = ArrayBox(value=result, trace=xp._trace, node=xp._node)
         return result
 
 
