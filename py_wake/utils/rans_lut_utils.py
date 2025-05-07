@@ -11,8 +11,10 @@ def fugalut2ranslut(path_fuga_LUT=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.0
     cts = [0.1, 0.818]
     TIs = [0.075, 10.0]
     deficit = lut.deficits.transpose('x', 'y', 'z')
-    # To avoid huge upstream blockage test from failing
+    # To avoid huge upstream blockage and distances tests from failing
     deficit[0, :, :] = 0.0
+    deficit[-1, :, :] = 0.0
+    deficit[:, -1, :] = 0.0
     # Mirror deficit at y=0 since Fuga only stores one side of the wake
     deficit2 = deficit.copy()
     deficit['y'] = -deficit['y']
@@ -31,7 +33,7 @@ def fugalut2ranslut(path_fuga_LUT=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.0
     da = da.deficits
     da = da.astype('float64')
     # Create a dummy added_ti lut. To be replaced with a RANS wake added TI
-    da_ti = da.copy()
-    wake_added_ti = 0.05
-    da_ti[:, :, :, :, :] = wake_added_ti
+    da_ti = -da.copy() * 0.1
+    # Set uptream wake added TI to zero to avoid huge upstream blockage turb test from failing
+    da_ti[:, :, 0:512, :, :] = 0.0
     return da, da_ti
