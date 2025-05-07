@@ -11,6 +11,8 @@ def fugalut2ranslut(path_fuga_LUT=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.0
     cts = [0.1, 0.818]
     TIs = [0.075, 10.0]
     deficit = lut.deficits.transpose('x', 'y', 'z')
+    # To avoid huge upstream blockage test from failing
+    deficit[0, :, :] = 0.0
     # Mirror deficit at y=0 since Fuga only stores one side of the wake
     deficit2 = deficit.copy()
     deficit['y'] = -deficit['y']

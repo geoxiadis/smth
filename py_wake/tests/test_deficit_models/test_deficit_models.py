@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from py_wake import np
 from py_wake.deficit_models.deficit_model import WakeDeficitModel, BlockageDeficitModel
 from py_wake.deficit_models.fuga import FugaDeficit, Fuga, FugaMultiLUTDeficit
+from py_wake.deficit_models.rans_lut import RANSLUTDeficit
 from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, IEA37SimpleBastankhahGaussianDeficit, \
     ZongGaussianDeficit, NiayifarGaussianDeficit, BastankhahGaussian, ZongGaussian, \
     NiayifarGaussian, CarbajofuertesGaussianDeficit, TurboGaussianDeficit, IEA37SimpleBastankhahGaussian, \
@@ -170,7 +171,8 @@ def test_huge_distance_blockage(deficitModel):
            "Rathmann": 9.800001,
            "RathmannScaled": 9.800001,
            "SelfSimilarityDeficit": 9.800001,
-           "VortexCylinder": 9.799999, }
+           "VortexCylinder": 9.799999,
+           "RANSLUTDeficit": 9.8, }
     site = IEA37Site(16)
 
     windTurbines = IEA37_WindTurbines()
