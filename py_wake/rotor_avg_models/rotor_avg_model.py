@@ -205,7 +205,7 @@ def EllipSys_polar_grid(n_rnodes, n_theta, D):
     for the Actuator Shape model. Number of cells center is (n_rnodes - 1) * n_theta.
     """
     # Polar grid
-    dr = 0.5 * D * 1.0 / (float(n_rnodes) - 1.0)
+    dr = 0.5 * D / (float(n_rnodes) - 1.0)
     dtheta = 2.0 * np.pi / n_theta
     # theta is defined from positive y-axis, clockwise
     theta, r = np.meshgrid(np.arange(np.pi / 2.0, 2.5 * np.pi, dtheta),
