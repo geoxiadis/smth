@@ -146,7 +146,8 @@ def test_huge_distance(deficitModel):
            "NOJLocalDeficit": 9.797536,
            "TurboNOJDeficit": 9.795322,
            "BlondelSuperGaussianDeficit2020": 9.79177032,
-           "BlondelSuperGaussianDeficit2023": 9.7990636, }
+           "BlondelSuperGaussianDeficit2023": 9.7990636,
+           "RANSLUTDeficit": 9.8}
     site = IEA37Site(16)
 
     windTurbines = IEA37_WindTurbines()

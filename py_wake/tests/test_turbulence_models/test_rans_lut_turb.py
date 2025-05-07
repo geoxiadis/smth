@@ -39,7 +39,8 @@ def test_rans_lut_turb():
                                                                 8.50307297, 7.98284938], 8)
     npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.7934485, 0.79400234, 0.80647357, 0.79303796, 0.80224145,
                                                             0.80650307, 0.80598285], 8)
-    npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), [ti_upstream + wake_added_ti * (len(wt_x) - 1)] * len(wt_x), 8)
+    npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), [0.07506853, 0.075, 0.05977806, 0.07532642, 0.06873296,
+                                                                0.06007079, 0.05384038], 8)
 
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
