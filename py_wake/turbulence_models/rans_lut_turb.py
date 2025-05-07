@@ -9,7 +9,7 @@ from py_wake.superposition_models import LinearSum
 
 
 class RANSLUTTurbulence(XRLUTTurbulenceModel):
-    def __init__(self, lut, zRef=None, Dref=None, addedTurbulenceSuperpositionModel=LinearSum(), rotorAvgModel=None, groundModel=None):
+    def __init__(self, lut=None, zRef=None, Dref=None, addedTurbulenceSuperpositionModel=LinearSum(), rotorAvgModel=None, groundModel=None):
         if isinstance(lut, str):
             lut = xr.load_dataset(lut).ti
         if 'type_i' not in lut.coords:
