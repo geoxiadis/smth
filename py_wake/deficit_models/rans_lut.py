@@ -52,6 +52,11 @@ class RANSLUTDeficit(XRLUTDeficitModel):
         XRLUTDeficitModel.__init__(self, lut, bounds='limit', rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                    use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
 
+    def wake_radius(self, dw_ijlk, **kwargs):
+        # Required for PyWake but not needed for RANS LUT model
+        wake_radius_ijlk = np.ones(dw_ijlk.shape)
+        return wake_radius_ijlk
+
 
 def main():
     if __name__ == '__main__':
