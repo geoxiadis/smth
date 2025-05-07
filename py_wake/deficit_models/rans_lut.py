@@ -4,6 +4,7 @@ from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
 from numpy import newaxis as na
 from py_wake import np
 from py_wake.superposition_models import LinearSum
+from py_wake.utils.rans_lut_utils import fugalut2ranslut
 
 
 def rescale_lut_coords(lut, zRef, Dref):
@@ -37,8 +38,12 @@ def rename_lut(lut):
 # lut files with multple turbines can be provided using type_i dimension. In this case, the coords need to be in [m]
 class RANSLUTDeficit(XRLUTDeficitModel):
     def __init__(self, lut=None, zRef=None, Dref=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False, shearcor=False):
-        self.zRef = zRef
-        self.shearcor = shearcor
+        if lut is None:
+            # Load default RANS LUT file based on Fuga LUT
+            zRef = 70.0
+            Dref = 80.0
+            lut, da_ti = fugalut2ranslut(Dref=Dref, zRef=zRef)
+            lut = lut.sel(ti=0.075)
         if isinstance(lut, str):
             lut = xr.load_dataset(lut).deficits
         if 'type_i' not in lut.coords:
