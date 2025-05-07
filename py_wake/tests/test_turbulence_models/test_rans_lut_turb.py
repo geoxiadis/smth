@@ -21,40 +21,10 @@ def test_rans_lut_turb():
     wt_y = [433, 300, 0, 0, 0, -433, -433]
     wts = HornsrevV80()
     ti_upstream = 0.075
-    site = UniformSite([1, 0, 0, 0], ti=ti_upstream)
-    path_LUT = tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc'
-    # Create a simple LUT file for testing from Fuga, to be replaced with a real RANS based LUT file
-    lut = xr.load_dataset(path_LUT)
-    lut = lut.rename(UL='deficits')
-    Dref = wts.diameter()
-    zRef = wts.hub_height()
-    cts = [0.1, 0.818]
-    TIs = [0.075, 10.0]
-    deficit = lut.deficits.transpose('x', 'y', 'z')
-    # Mirror deficit at y=0 since Fuga only stores one side of the wake
-    deficit2 = deficit.copy()
-    deficit['y'] = -deficit['y']
-    deficit = xr.merge([deficit, deficit2])
-    # Add ct and ti dimensions
-    subluts_ti = []
-    for TI in TIs:
-        subluts_ct = []
-        for ct in cts:
-            subluts_ct.append(-deficit * ct)
-        subluts_ti.append(xr.concat(subluts_ct, dim='ct').assign_coords(ct=cts))
-    da = xr.concat(subluts_ti, dim='ti').assign_coords(ti=TIs)
-    da['x'] = da['x'] / Dref
-    da['y'] = da['y'] / Dref
-    da['z'] = (da['z'] - zRef) / Dref
-    da = da.deficits
-    # Create a dummy added_ti lut. To be replaced with a RANS wake added TI
-    da_ti = da.copy()
     wake_added_ti = 0.05
-    da_ti[:, :, :, :, :] = wake_added_ti
-    da = da.astype('float64')
-    deficit = RANSLUTDeficit(da, zRef, Dref=Dref)
-    turb = RANSLUTTurbulence(da_ti, zRef=zRef, Dref=Dref)
-
+    site = UniformSite([1, 0, 0, 0], ti=ti_upstream)
+    deficit = RANSLUTDeficit()
+    turb = RANSLUTTurbulence()
     wfm = All2AllIterative(site,
                            wts,
                            wake_deficitModel=deficit,

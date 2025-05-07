@@ -20,30 +20,7 @@ def test_rans_lut():
     wt_y = [433, 300, 0, 0, 0, -433, -433]
     wts = HornsrevV80()
     site = UniformSite([1, 0, 0, 0], ti=0.075)
-    path_LUT = tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc'
-    # Create a simple LUT file for testing from Fuga (without wake added ti)
-    # To be replaced with a real RANS based LUT file
-    lut = xr.load_dataset(path_LUT)
-    lut = lut.rename(UL='deficits')
-    Dref = wts.diameter()
-    zRef = wts.hub_height()
-    cts = [0.1, 0.818]
-    deficit = lut.deficits.transpose('x', 'y', 'z')
-    # Mirror deficit at y=0 since Fuga only stores one side of the wake
-    deficit2 = deficit.copy()
-    deficit['y'] = -deficit['y']
-    deficit = xr.merge([deficit, deficit2])
-    # Add ct and ti dimensions
-    subluts_ct = []
-    for ct in cts:
-        subluts_ct.append(-deficit * ct)
-    da = xr.concat(subluts_ct, dim='ct').assign_coords(ct=cts)
-    da['x'] = da['x'] / Dref
-    da['y'] = da['y'] / Dref
-    da['z'] = (da['z'] - zRef) / Dref
-    da = da.deficits
-    da = da.astype('float64')
-    deficit = RANSLUTDeficit(da, zRef, Dref=Dref)
+    deficit = RANSLUTDeficit()
     wfm = All2AllIterative(site,
                            wts,
                            wake_deficitModel=deficit,
