@@ -36,7 +36,7 @@ def rename_lut(lut):
 # This needs to be future investigated
 # lut files with multple turbines can be provided using type_i dimension. In this case, the coords need to be in [m]
 class RANSLUTDeficit(XRLUTDeficitModel):
-    def __init__(self, lut, zRef, Dref=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False, shearcor=False):
+    def __init__(self, lut=None, zRef=None, Dref=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False, shearcor=False):
         self.zRef = zRef
         self.shearcor = shearcor
         if isinstance(lut, str):
