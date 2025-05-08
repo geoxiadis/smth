@@ -1,6 +1,5 @@
 import xarray as xr
 import sys
-from py_wake.deficit_models.rans_lut import rescale_lut_coords, rename_lut
 from numpy import newaxis as na
 from py_wake import np
 from py_wake.turbulence_models.turbulence_model import XRLUTTurbulenceModel
@@ -9,17 +8,13 @@ from py_wake.utils.rans_lut_utils import fugalut2ranslut
 
 
 class RANSLUTTurbulence(XRLUTTurbulenceModel):
+    """ Expects LUT wake added ti xarray with coords in [m] and PyWake variable names """
     def __init__(self, lut=None, zRef=None, Dref=None, addedTurbulenceSuperpositionModel=LinearSum(), rotorAvgModel=None, groundModel=None):
         if lut is None:
             # Load default RANS LUT file based on Fuga LUT
-            zRef = 70.0
-            Dref = 80.0
-            da, lut = fugalut2ranslut(Dref=Dref, zRef=zRef)
+            da, lut = fugalut2ranslut()
         if isinstance(lut, str):
             lut = xr.load_dataset(lut).ti
-        if 'type_i' not in lut.coords:
-            rescale_lut_coords(lut, zRef, Dref)
-        lut = rename_lut(lut)
         XRLUTTurbulenceModel.__init__(self, lut, addedTurbulenceSuperpositionModel=addedTurbulenceSuperpositionModel,
                                       rotorAvgModel=rotorAvgModel, groundModel=groundModel)
 
@@ -50,6 +45,3 @@ def main():
         plt.figure()
         fm.plot_ti_map()
         plt.show()
-
-
-main()
