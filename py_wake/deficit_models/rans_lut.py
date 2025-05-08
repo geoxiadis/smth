@@ -48,9 +48,13 @@ class RANSLUTDeficit(XRLUTDeficitModel):
             lut = xr.load_dataset(lut).deficits
         if 'type_i' not in lut.coords:
             lut = rescale_lut_coords(lut, zRef, Dref)
+        lut = (1 - lut)
         lut = rename_lut(lut)
         XRLUTDeficitModel.__init__(self, lut, bounds='limit', rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                    use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
+
+    def get_output(self, output_ijlk, WS_eff_ilk, **_):
+        return (1.0 - output_ijlk) * WS_eff_ilk[:, na]
 
     def wake_radius(self, dw_ijlk, **kwargs):
         # Required for PyWake but not needed for RANS LUT model
