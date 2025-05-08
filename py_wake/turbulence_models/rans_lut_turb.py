@@ -1,6 +1,5 @@
 import xarray as xr
 import sys
-from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
 from py_wake.deficit_models.rans_lut import rescale_lut_coords, rename_lut
 from numpy import newaxis as na
 from py_wake import np
