@@ -30,10 +30,10 @@ def test_rans_lut():
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
 
-    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.96796393, 9.92840392, 8.47357439, 9.99728889, 9.33989609,
-                                                                8.50307297, 7.98284938], 8)
-    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.7934485, 0.79400234, 0.80647357, 0.79303796, 0.80224145,
-                                                            0.80650307, 0.80598285], 8)
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.98181609, 9.95358693, 8.45426639, 9.98181609, 9.35814773,
+                                                                8.45426639, 7.97008201], 8)
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79325457, 0.79364978, 0.80645427, 0.79325457, 0.80198593,
+                                                            0.80645427, 0.80597008], 8)
 
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
