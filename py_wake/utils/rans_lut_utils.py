@@ -41,11 +41,11 @@ def fugalut2ranslut(path_fuga_LUT=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.0
     da = da.deficits
     if rename:
         da = rename_lut(da)
-    da = da.astype('float64')
     # Create a dummy added_ti lut. To be replaced with a RANS wake added TI
     da_ti = -da.copy() * 0.1
     # Set uptream wake added TI to zero to avoid huge upstream blockage turb test from failing
     da_ti[:, :, 0:513, :, :] = 0.0
+
     ds = xr.Dataset(data_vars={'deficits': da, 'added_ti': da_ti})
     # Add meta data
     ds.attrs['name'] = 'V80'
@@ -133,10 +133,10 @@ def merge_luts(LUTs, types=None, outfile='LUT_merged.nc'):
     dataset.attrs['diameters'] = Drefs
     dataset.attrs['hub_heights'] = zRefs
     encoding = {}
-    vars = ['x', 'y', 'z', 'ct', 'ti', 'deficits', 'added_ti']
-    # for var in vars:
-    #     encoding[var] = {'dtype': 'float32'}
-    # encoding['type_i'] = {'dtype': 'int32'}
+    vars = ['deficits', 'added_ti']
+    for var in vars:
+        encoding[var] = {'dtype': 'float32'}
+    vars = ['x', 'y', 'z', 'ct', 'ti']
     for var in vars:
         encoding[var] = {'dtype': 'float64'}
     encoding['type_i'] = {'dtype': 'int64'}
