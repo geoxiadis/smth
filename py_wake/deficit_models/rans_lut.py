@@ -70,10 +70,7 @@ class RANSLUT(All2AllIterative):
         """
         self.power_as_RANS = power_as_RANS
         self.rotorAvgModelPost = rotorAvgModelPost
-        if not isinstance(ADcontrolfiles, list):
-            self.ADcontrolfiles = [ADcontrolfiles]
-        else:
-            self.ADcontrolfiles = ADcontrolfiles
+        self.ADcontrolfiles = ADcontrolfiles
         self.flowmap_maxpoints = flowmap_maxpoints
         self.ws_cutin = ws_cutin
         self.ws_cutout = ws_cutout
