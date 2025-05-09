@@ -4,7 +4,7 @@ from numpy import newaxis as na
 from py_wake.tests.test_files import tfp
 
 
-def fugalut2ranslut(path_fuga_LUT=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc', Dref=80.0, zRef=70.0, rename=True, nondim=False):
+def fugalut2ranslut(path_fuga_LUT=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc', Dref=80.0, zRef=70.0, rename=True, nondim=False, cover_rotor_area=False):
     """
     Create a simple LUT file for testing from Fuga
     """
@@ -13,6 +13,9 @@ def fugalut2ranslut(path_fuga_LUT=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.0
     cts = [0.1, 0.818]
     TIs = [0.075, 10.0]
     deficit = lut.deficits.transpose('x', 'y', 'z')
+    if cover_rotor_area:
+        # Move levels to cover rotor area
+        deficit['z'] = np.array([zRef - 0.5 * Dref - 0.1, zRef + 0.5 * Dref + 0.1])
     # To avoid huge upstream blockage and distances tests from failing
     deficit[0, :, :] = 0.0
     deficit[-1, :, :] = 0.0
