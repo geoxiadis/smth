@@ -16,8 +16,9 @@ from py_wake.wind_farm_models.wind_farm_model import SimulationResult
 class RANSLUT(All2AllIterative):
     def __init__(self, path_LUT, site, windTurbines, zRef, Dref, rotorAvgModel=None,
                  power_as_RANS=True, rotorAvgModelPost=EllipSysPolygonRotorAvg(n_r=9, n_theta=32),
-                 ADcontrolfiles=None, ADcontrolfiles_write=True, flowmap_maxpoints=10000,
-                 ws_cutin=[4.0], ws_cutout=[25.0], Prated=[2e6], dws=1.0):
+                 flowmap_maxpoints=10000,
+                 ADcontrolfiles=None, ADcontrolfiles_write=False,
+                 ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6]):
         """
         Parameters
         ----------
@@ -43,9 +44,29 @@ class RANSLUT(All2AllIterative):
             CTstar = CT * (U_inf / U_AD) ** 2 = func(U_AD).
         rotorAvgModelPost : object
             rotorAvgModel used to post process turbine output when power_as_RANS=True
+        flowmap_maxpoints: int
+            Maximum number of interpolation points during post turbine step
+            to reduce memomry usage
         ADcontrolfiles : list
             If not None, a list of filename(s) is expected including
             columns of U_AD, CTstar, CPstar, which could come from RANS.
+            If None then a CTstar, CPstar = f(U_AD) relationship is calculated from
+            the lut file.
+        ADcontrolfiles_write : bool
+            If True and ADcontrolfiles is None, then the lut calculated
+            CTstar, CPstar = f(U_AD) relationship is written to a file.
+        ws_cutin : list
+            List of cutin wind speeds with length equal to number of different wts,
+            only used to when ADcontrolfiles is None.
+        ws_cutin : list
+            List of cutin wind speeds with length equal to number of different wts,
+            only used to when ADcontrolfiles is None.
+        dws : float
+            Wind speed interval for lut calculated CTstar, CPstar = f(U_AD) relationship,
+            only used to when ADcontrolfiles is None.
+        Prated : list
+            List of rated power in [W] with length equal to number of different wts,
+            only used when power_as_RANS=True.
         """
         self.power_as_RANS = power_as_RANS
         self.rotorAvgModelPost = rotorAvgModelPost
@@ -71,6 +92,7 @@ class RANSLUT(All2AllIterative):
                                   blockage_deficitModel=deficit,
                                   turbulenceModel=turb,
                                   superpositionModel=LinearSum())
+
         if power_as_RANS:
             # CP and CT as function of disk-avereaged wind speed used for post processing
             self.fint_CPstar = []
@@ -401,8 +423,6 @@ class RANSLUTDeficit(XRLUTDeficitModel):
         if lut is None:
             ds = fugalut2ranslut()
             lut = ds.deficits.sel(TI_eff_ilk=0.075)
-        if isinstance(lut, str):
-            lut = xr.load_dataset(lut).deficits
         lut = (1 - lut)
         XRLUTDeficitModel.__init__(self, lut, bounds='limit', rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                    use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)

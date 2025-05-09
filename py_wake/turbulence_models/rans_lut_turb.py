@@ -14,7 +14,5 @@ class RANSLUTTurbulence(XRLUTTurbulenceModel):
             # Load default RANS LUT file based on Fuga LUT
             ds = fugalut2ranslut()
             lut = ds.added_ti
-        if isinstance(lut, str):
-            lut = xr.load_dataset(lut).ti
         XRLUTTurbulenceModel.__init__(self, lut, addedTurbulenceSuperpositionModel=addedTurbulenceSuperpositionModel,
                                       rotorAvgModel=rotorAvgModel, groundModel=groundModel)
