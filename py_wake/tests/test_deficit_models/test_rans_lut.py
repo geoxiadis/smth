@@ -70,7 +70,7 @@ def test_rans_lut():
     dataset = xr.Dataset(data_vars={'deficits': lut, 'added_ti': da_ti})
     lutname = 'rans_lut.nc'
     dataset.to_netcdf(lutname)
-    wfm = RANSLUT(lutname, site, wts, zRef, Dref)
+    wfm = RANSLUT(lutname, site, wts, zRef, Dref, power_as_RANS=False)
 
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])

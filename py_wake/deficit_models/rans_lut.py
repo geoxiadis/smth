@@ -1,16 +1,20 @@
 import xarray as xr
 import sys
+import time
 from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
 from numpy import newaxis as na
 from py_wake import np
+from scipy.interpolate import interp1d
 from py_wake.superposition_models import LinearSum
 from py_wake.wind_farm_models.engineering_models import All2AllIterative
 from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
-from py_wake.utils.rans_lut_utils import fugalut2ranslut
+from py_wake.utils.rans_lut_utils import fugalut2ranslut, cxzy_to_cxyzg
+from py_wake.rotor_avg_models import EllipSys_polar_grid
+from py_wake.wind_farm_models.wind_farm_model import SimulationResult
 
 
 class RANSLUT(All2AllIterative):
-    def __init__(self, path_LUT, site, windTurbines, zRef, Dref, rotorAvgModel=None):
+    def __init__(self, path_LUT, site, windTurbines, zRef, Dref, rotorAvgModel=None, power_as_RANS=True, ADcontrolfiles=None, nr=10, ntheta=32, ADcontrolfiles_write=True, flowmap_maxpoints=10000):
         """
         Parameters
         ----------
@@ -29,6 +33,12 @@ class RANSLUT(All2AllIterative):
         turbulenceModel : TurbulenceModel
             Model describing the amount of added turbulence in the wake
         """
+        self.power_as_RANS = power_as_RANS
+        self.flowmap_maxpoints = flowmap_maxpoints
+        if not isinstance(ADcontrolfiles, list):
+            self.ADcontrolfiles = [ADcontrolfiles]
+        else:
+            self.ADcontrolfiles = ADcontrolfiles
         lut = xr.load_dataset(path_LUT)
         if 'type_i' not in lut.coords:
             lut = self.rescale_lut_coords(lut, zRef, Dref)
@@ -41,6 +51,19 @@ class RANSLUT(All2AllIterative):
                                   blockage_deficitModel=deficit,
                                   turbulenceModel=turb,
                                   superpositionModel=LinearSum())
+        if power_as_RANS:
+            # CP and CT as function of disk-avereaged wind speed used for post processing
+            self.fint_CPstar = []
+            self.fint_CTstar = []
+            if ADcontrolfiles is None:
+                starttime = time.time()
+                lw_j = self.site.local_wind(h=zRef)
+                Ti = lw_j.TI_ilk[0, 0, 0]
+                self.cal_lut(Ti, nr=nr, ntheta=ntheta, write=ADcontrolfiles_write)
+                endtime = time.time()
+                print('cal time', endtime - starttime, 'sec')
+            else:
+                self.read_ad_controlfiles()
 
     def rescale_lut_coords(self, lut, zRef, Dref):
         if Dref is not None and zRef is not None:
@@ -64,6 +87,311 @@ class RANSLUT(All2AllIterative):
             if lutvars[i] in lut.coords:
                 d[lutvars[i]] = renamevars[i]
         return lut.rename(d)
+
+    def read_ad_controlfiles(self):
+        # RANS based calibrated control file for CPstar and CTstar as function of the disk averaged velocity UAD provided by the user
+        for ADcontrolfile in self.ADcontrolfiles:
+            RANScal = np.genfromtxt(ADcontrolfile, skip_header=True)
+            RANS_UAD = RANScal[:, 0]
+            RANS_CPstar = RANScal[:, 2]
+            RANS_CTstar = RANScal[:, 1]
+            self.fint_CPstar.append(interp1d(RANS_UAD, RANS_CPstar, fill_value=0.0, bounds_error=False))
+            self.fint_CTstar.append(interp1d(RANS_UAD, RANS_CTstar, fill_value=0.0, bounds_error=False))
+
+    def cal_lut(self, ti, nr=10, ntheta=32, density=1.225, cmu=0.03, kappa=0.4, write=False):
+        # Calculcate CPstar, CTstar = f(UAD) directly from single wake RANS-LUT
+        data = self.wake_deficitModel.da.interp(dw_ijlk=0.0)
+
+        cxy, area, totalarea = EllipSys_polar_grid(nr, ntheta, 1.0)
+        nodes_xy = cxy
+        weights_xy = area / totalarea
+        # nodes_xy, weights_xy = EllipSysPolarRotorAvg(nr, ntheta)
+        weights = weights_xy.flatten()[na, :]
+        cxyz = np.zeros((nr - 1, ntheta, 3))
+        cxyz[:, :, 0:2] = nodes_xy
+
+        uStar_UH = ti * np.sqrt(1.5 * np.sqrt(cmu))
+        # z0 = zRef / (np.exp(kappa / uStar_UH) - 1)
+
+        if 'type_i_ilk' in data.dims:
+            types = data.type_i_ilk.values
+        else:
+            types = [0]
+
+        for type in types:
+            if 'type' in self.windTurbines.powerCtFunction.required_inputs:
+                _kwargs = {'type': type}
+            else:
+                _kwargs = {}
+            cutin = self.windTurbines.cutin[type]
+            cutout = self.windTurbines.cutout[type]
+            dws = self.windTurbines.dws[type]
+            ws = np.arange(cutin, cutout + dws, dws)
+            Dref = self.windTurbines.diameter(type)
+            zH = self.windTurbines.hub_height(type)
+
+            cxyzg_i = cxzy_to_cxyzg(cxyz[na, :, :, :] * Dref, np.array([[1.0, 0.0, 0.0]]), np.array([[0.0, 0.0, 1.0]]), np.array([[0.0, 0.0, zH]]))
+            y_j = cxyzg_i[:, :, :, 1].flatten()
+            h_j = cxyzg_i[:, :, :, 2].flatten()
+            if 'type_i_ilk' in data.dims:
+                Udata = data.sel(type_i_ilk=type).interp(TI_eff_ilk=ti).interp(hcw_ijlk=('i', y_j), z_ijlk=('i', h_j))
+            else:
+                Udata = data.interp(TI_eff_ilk=ti).interp(hcw_ijlk=('i', y_j), z_ijlk=('i', h_j))
+
+            cts = self.windTurbines.ct(ws=ws, **_kwargs)
+            cps = (self.windTurbines.power(ws=ws, **_kwargs) / (0.125 * density * Dref ** 2 * np.pi * ws ** 3))
+
+            U_CT_CP_AD = np.zeros((len(ws), 3))
+            # PWE: z0 is added to h_j and zH
+            # logshear = np.log(h_j / z0) / np.log(zRef / z0)
+            z0 = zH / (np.exp(kappa / uStar_UH) - 1)
+            logshear = np.log(h_j / z0) / np.log(zH / z0)
+            U = logshear[na, :] - 1.0 + Udata.interp(ct_ilk=cts, kwargs={"fill_value": "extrapolate"}).values
+            UAD = ws * np.sum(np.reshape(U, (len(ws), (ntheta * (nr - 1)))) * weights, axis=1)
+            U_CT_CP_AD[:, 0] = UAD
+            ratio = ws / UAD
+            U_CT_CP_AD[:, 1] = cts * ratio ** 2
+            U_CT_CP_AD[:, 2] = cps * ratio ** 3
+
+            if write:
+                outfile = 'lutcal_WT%g_Ti%g.dat' % (Dref, ti)
+                f = open(outfile, 'w')
+                f.write('%s %s\n' % (str(ws.size + 2), ' 4'))
+                f.write('%16.14f %16.14f %16.14f %16.14f\n' % (0.95 * U_CT_CP_AD[0, 0], U_CT_CP_AD[0, 1], U_CT_CP_AD[0, 2], 0.95 * ws[0]))
+                for k in range(len(ws)):
+                    f.write('%16.14f %16.14f %16.14f %16.14f\n' % (U_CT_CP_AD[k, 0], U_CT_CP_AD[k, 1], U_CT_CP_AD[k, 2], ws[k]))
+                f.write('%16.14f %16.14f %16.14f %16.14f\n' % (ws[-1], 0.0, 0.0, ws[-1]))
+                f.close()
+
+            self.fint_CPstar.append(interp1d(U_CT_CP_AD[:, 0], U_CT_CP_AD[:, 2], fill_value=0.0, bounds_error=False))
+            self.fint_CTstar.append(interp1d(U_CT_CP_AD[:, 0], U_CT_CP_AD[:, 1], fill_value=0.0, bounds_error=False))
+
+    def calc_wt_interaction(self, x_ilk, y_ilk, h_i=None, type_i=0, wd=None, ws=None, time=False,
+                            WS_eff_ilk=None,
+                            n_cpu=1, wd_chunks=None, ws_chunks=1,
+                            **kwargs):
+        """See WindFarmModel.calc_wt_interaction and additional parameters below
+
+        Parameters
+        ----------
+        n_cpu : int or None, optional
+            Number of CPUs to be used for execution.
+            If 1 (default), the execution is not parallized
+            If None, the available number of CPUs are used
+        wd_chunks : int or None, optional
+            If n_cpu>1, the wind directions are divided into <wd_chunks> chunks and executed in parallel.
+            If wd_chunks is None, wd_chunks is set to the available number of CPUs
+        ws_chunks : int or None, optional
+            If n_cpu>1, the wind speeds are divided into <ws_chunks> chunks and executed in parallel.
+            If ws_chunks is None, ws_chunks is set to 1
+        """
+
+        h_i, D_i = self.windTurbines.get_defaults(len(x_ilk), type_i, h_i)
+        wd, ws = self.site.get_defaults(wd, ws)
+        I, L, K, = len(x_ilk), len(wd), (1, len(ws))[time is False]
+        kwargs.update(dict(x_ilk=x_ilk, y_ilk=y_ilk, h_ilk=h_i[:, na, na], wd=wd, ws=ws, time=time,
+                           type_i=np.zeros_like(D_i) + type_i))
+
+        for inputModifierModel in self.inputModifierModels:
+            kwargs.update(inputModifierModel.setup(**kwargs))
+
+        # Find local wind speed, wind direction, turbulence intensity and probability
+        lw = self.site.local_wind(x=np.mean(x_ilk, (1, 2)), y=np.mean(y_ilk, (1, 2)), h=h_i,
+                                  wd=kwargs['wd'], ws=kwargs['ws'], time=kwargs['time'])
+        for k in ['WS_ilk', 'WD_ilk', 'TI_ilk']:
+            if k in kwargs:
+                lw.add_ilk(k, kwargs.pop(k))
+
+        ri, oi = self.windTurbines.function_inputs
+
+        kwargs.update({'WD_ilk': lw.WD_ilk,
+                       'WS_ilk': lw.WS_ilk,
+                       'WS_eff_ilk': WS_eff_ilk,
+                       'D_i': D_i,
+                       'I': I, 'L': L, 'K': K,
+                       **{k + '_ilk': self.site.interp(self.site.ds[k], lw) for k in ri + oi if k in self.site.ds},
+                       })
+        if hasattr(lw, 'TI_ilk'):
+            kwargs['TI_ilk'] = lw.TI_ilk
+            kwargs['TI_eff_ilk'] = lw.TI_ilk + 0.  # autograd-friendly copy
+
+        if 'type_i_ilk' not in kwargs:
+            kwargs.update({'type_i_ilk': kwargs['type_i'][:, na, na]})
+        self._check_input(kwargs)
+
+        if n_cpu != 1 or wd_chunks or ws_chunks > 1:
+            # parallel execution
+            map_func, arg_lst, wd_chunks, ws_chunks = self._multiprocessing_chunks(
+                n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
+                **kwargs)
+
+            WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, _, kwargs = list(
+                zip(*map_func(self._calc_wt_interaction_args, arg_lst)))
+
+            def concatenate(v_ilk):
+                v_ilk = [fix_shape(v, WS_eff.shape) for v, WS_eff in zip(v_ilk, WS_eff_ilk)]
+                if kwargs[0]['time'] is False:
+                    return np.concatenate([np.concatenate(v_ilk[i::ws_chunks], axis=1)
+                                           for i in range(ws_chunks)], axis=2)
+                else:
+                    return np.concatenate(v_ilk, axis=1)
+
+            return ([concatenate(v) for v in [WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk]] +
+                    [lw,
+                     {'type_i': kwargs[0]['type_i'],
+                      **{k: concatenate([wt_i[k] for wt_i in kwargs]) for k in kwargs[0] if k.endswith('_ilk')}}])
+
+        # Calculate down-wind and cross-wind distances
+        z_ilk = self.site.elevation(kwargs['x_ilk'], kwargs['y_ilk'])
+        self.site.distance.setup(
+            np.asarray(kwargs['x_ilk']), np.asarray(kwargs['y_ilk']), np.asarray(kwargs['h_ilk']), np.asarray(z_ilk))
+
+        if self.power_as_RANS:
+            # Run seperately for every wind direction and calculate power from UAD afterwards
+            power_ilk, WS_eff_ilk, ct_ilk, TI_eff_ilk = self.post_wt_output(kwargs, yaw_ilk=0.0, nr=10, ntheta=32)
+            del kwargs['WS_eff_ilk']
+            del kwargs['TI_eff_ilk']
+        else:
+            WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs = self._calc_wt_interaction(**kwargs)
+            power_ilk = self.windTurbines.power(ws=WS_eff_ilk, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
+
+        kwargs.update({'time': time, 'type_i': type_i})
+        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, lw, kwargs
+
+    def post_wt_output(self, kwargs, yaw_ilk=0.0, nr=10, ntheta=32):
+        """
+        Run lut model and calculate wt power and thrust by the integrating rotor averaged
+        wind speed as done in EllipSys. flow_map is used to interpolate the integration points;
+        this method requires a lot of memory when many points are extracted at the same time in
+        combination with a large wind farm. The variable flowmap_maxpoints can be used to reduce
+        the number of points per flow_map call for the cost of computational speed.
+        """
+
+        # Integrate UAD from PyWake LUT with the aim of getting the same UAD as PyWakeEllipSys
+
+        type_i = np.asarray(kwargs['type_i'], dtype=int)
+        uniquetypes = np.unique(type_i)
+        types = []
+        Prated = np.zeros((len(uniquetypes)))
+        for i in range(len(uniquetypes)):
+            types.append(np.where(type_i == uniquetypes[i])[0])
+            Prated[i] = self.windTurbines.rated_powers_w[uniquetypes[i]]
+        zRefs = self.windTurbines.hub_height(uniquetypes)
+        Drefs = self.windTurbines.diameter(uniquetypes)
+
+        # Calculate ad integration parameters
+        cxy, area, totalarea = EllipSys_polar_grid(nr, ntheta, 1.0)
+        nodes_xy = cxy
+        weights_xy = area / totalarea
+        nWT = kwargs['I']
+        pos = np.zeros((nWT, 3))
+        for i in range(len(uniquetypes)):
+            pos[types[i], 2] = zRefs[i]
+        o3 = np.zeros((nWT, 3))
+        o3[:, 0] = 1.0
+        o3[:, 1] = 0.0
+        o3[:, 2] = 0.0
+        o2 = np.zeros((nWT, 3))
+        o2[:, 0] = 0.0
+        o2[:, 1] = 0.0
+        o2[:, 2] = 1.0
+        cxyz_i = np.zeros((nWT, nr - 1, ntheta, 3))
+        cxyz_i[:, :, :, 0:2] = nodes_xy[na, :, :]
+        for i in range(len(uniquetypes)):
+            cxyz_i[types[i], :, :, 0:2] = cxyz_i[types[i], :, :, 0:2] * Drefs[i]
+        weights = weights_xy.flatten()[na, :, na]
+
+        wd = kwargs['wd']
+        ws = kwargs['ws']
+        power_ilk = np.zeros((nWT, len(wd), len(ws)))
+        ct_ilk = np.zeros((nWT, len(wd), len(ws)))
+        WS_eff_ilk = np.zeros((nWT, len(wd), len(ws)))
+        TI_eff_ilk = np.zeros((nWT, len(wd), len(ws)))
+        Cnsts = 0.5 * 1.225 * np.asarray(Drefs) ** 2 * 0.25 * np.pi
+        if self.flowmap_maxpoints is not None:
+            flowmap_points = (nr - 1) * ntheta * nWT
+            nflowmaps = int(np.ceil(flowmap_points) / self.flowmap_maxpoints)
+            i1last = (nflowmaps - 1) * self.flowmap_maxpoints
+            WS_eff_jlk = np.zeros((flowmap_points, 1, len(ws)))
+            TI_eff_jlk = np.zeros((flowmap_points, 1, len(ws)))
+        for l in range(len(wd)):
+            wt_x_rot = kwargs['x_ilk'][:, l, 0]
+            wt_y_rot = kwargs['y_ilk'][:, l, 0]
+            print('wd=', wd[l])
+            sys.stdout.flush()
+            starttime = time.time()
+            kwargs2 = kwargs.copy()
+            kwargs2['x_ilk'][:, l, :] = wt_x_rot[:, na]
+            kwargs2['y_ilk'][:, l, :] = wt_y_rot[:, na]
+            kwargs2['h_ilk'] = kwargs['h_ilk'][:, l, :][:, na, :]
+            kwargs2['wd'] = [wd[l]]
+            kwargs2['L'] = 1
+            kwargs2['WD_ilk'][:, :, :] = wd[l]
+            kwargs2['WS_ilk'][:, :, :] = ws[na, na, :]
+            kwargs2['TI_ilk'][:, l, :] = kwargs['TI_ilk'][:, l, :][:, na, :]
+            kwargs2['TI_eff_ilk'][:, l, :] = kwargs['TI_eff_ilk'][:, l, :][:, na, :]
+
+            WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs3 = self._calc_wt_interaction(**kwargs2)
+
+            localWind = self.site.local_wind(x=wt_x_rot, y=wt_y_rot, h=kwargs2['h_ilk'][:, l, 0], wd=wd[l], ws=ws)
+            simres = SimulationResult(self, localWind=localWind,
+                                      WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk,
+                                      power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk, **kwargs3)
+
+            endtime = time.time()
+            print('sim time', endtime - starttime, 'sec')
+
+            starttime = time.time()
+            pos[:, 0] = wt_x_rot
+            pos[:, 1] = wt_y_rot
+            deg = 270.0 - wd[l]
+            cos = np.cos(deg * (np.pi / 180.0))
+            sin = np.sin(deg * (np.pi / 180.0))
+            o3[:, 0] = cos
+            o3[:, 1] = sin
+            cxyzg_i = cxzy_to_cxyzg(cxyz_i, o3, o2, pos)
+            x_j = cxyzg_i[:, :, :, 0].flatten()
+            y_j = cxyzg_i[:, :, :, 1].flatten()
+            h_j = cxyzg_i[:, :, :, 2].flatten()
+            if self.flowmap_maxpoints is None:
+                lw_j, WS_eff_jlk, TI_eff_jlk = self._flow_map(x_j, y_j, h_j, simres)
+            else:
+                for i in range(nflowmaps - 1):
+                    i1 = i * self.flowmap_maxpoints
+                    i2 = (i + 1) * self.flowmap_maxpoints
+                    lw_j, WS_eff_jlk[i1:i2, :, :], TI_eff_jlk[i1:i2, :, :] = self._flow_map(x_j[i1:i2], y_j[i1:i2], h_j[i1:i2], simres)
+                lw_j, WS_eff_jlk[i1last:, :, :], TI_eff_jlk[i1last:, :, :] = self._flow_map(x_j[i1last:], y_j[i1last:], h_j[i1last:], simres)
+
+            # Integrate U over AD
+            WS_eff_ilk[:, l, :] = np.sum(np.reshape(WS_eff_jlk, (nWT, ntheta * (nr - 1), len(ws))) * weights, axis=1)
+
+            # Interpolate CP and CT
+            if len(uniquetypes) > 1:
+                lut_cpstar = np.zeros(WS_eff_ilk[:, 0, :].shape)
+                for i in range(len(uniquetypes)):
+                    lut_cpstar[types[i], :] = self.fint_CPstar[i](WS_eff_ilk[types[i], l, :])
+                    ct_ilk[types[i], l, :] = self.fint_CTstar[i](WS_eff_ilk[types[i], l, :])
+            else:
+                lut_cpstar = self.fint_CPstar[0](WS_eff_ilk[:, l, :])
+                ct_ilk[:, l, :] = self.fint_CTstar[0](WS_eff_ilk[:, l, :])
+
+            # Calculate power and make sure to stay rated (due to CP interpolation errors)
+            if len(uniquetypes) > 1:
+                for i in range(len(uniquetypes)):
+                    power_ilk[types[i], l, :] = lut_cpstar[types[i], :] * Cnsts[i] * WS_eff_ilk[types[i], l, :] ** 3
+                    power_ilk[types[i], l, :][power_ilk[types[i], l, :] > Prated[i]] = Prated[i]
+            else:
+                power_ilk[:, l, :] = lut_cpstar * Cnsts[0] * WS_eff_ilk[:, l, :] ** 3
+                power_ilk[power_ilk > Prated[0]] = Prated[0]
+
+            # Set power and ct to zero for wts that were originally shut down
+            wt_shutdown = np.where(simres.power_ilk == 0.0)
+            ct_ilk[wt_shutdown] = 0.0
+            power_ilk[wt_shutdown] = 0.0
+            # print('power_ilk', power_ilk, 'WS_eff_ilk', WS_eff_ilk)
+            endtime = time.time()
+            print('post time:', endtime - starttime, 'sec')
+        return power_ilk, WS_eff_ilk, ct_ilk, TI_eff_ilk
 
 
 # The rans_lut from mmpe does not lead to satisfying results when using the shear correction for a row of wts.
