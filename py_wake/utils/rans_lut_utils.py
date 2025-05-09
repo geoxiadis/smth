@@ -1,4 +1,6 @@
 import xarray as xr
+import numpy as np
+from numpy import newaxis as na
 from py_wake.tests.test_files import tfp
 
 
@@ -52,3 +54,10 @@ def rename_lut(lut):
         if lutvars[i] in lut.coords:
             d[lutvars[i]] = renamevars[i]
     return lut.rename(d)
+
+
+def cxzy_to_cxyzg(cxyz, o3, o2, pos):
+    # Global poly center and orientation
+    o1 = np.cross(o2, o3)
+    cxyzg = cxyz[:, :, :, 0, na] * o1[:, na, na, :] + cxyz[:, :, :, 1, na] * o2[:, na, na, :] + cxyz[:, :, :, 2, na] * o3[:, na, na, :] + pos[:, na, na, :]
+    return cxyzg
