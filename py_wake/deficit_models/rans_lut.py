@@ -167,7 +167,7 @@ class RANSLUT(All2AllIterative):
             U_CT_CP_AD[:, 2] = cps * ratio ** 3
 
             if write:
-                outfile = 'lutcal_WT%g_Ti%g.dat' % (Dref, ti)
+                outfile = 'lutcal_WT%g_Ti%g_%i.dat' % (Dref, ti, type)
                 f = open(outfile, 'w')
                 f.write('%s %s\n' % (str(ws.size + 2), ' 4'))
                 f.write('%16.14f %16.14f %16.14f %16.14f\n' % (0.95 * U_CT_CP_AD[0, 0], U_CT_CP_AD[0, 1], U_CT_CP_AD[0, 2], 0.95 * ws[0]))
@@ -330,11 +330,11 @@ class RANSLUT(All2AllIterative):
             kwargs2['wd'] = [wd[l]]
             kwargs2['L'] = 1
             kwargs2['WD_ilk'][:, :, :] = wd[l]
-            WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs3 = self._calc_wt_interaction(**kwargs2)
+            WS_eff_ilk, TI_eff_ilk[:, l, :][:, na, :], ct_ilk, kwargs3 = self._calc_wt_interaction(**kwargs2)
 
             localWind = self.site.local_wind(x=kwargs['x_ilk'][:, l, 0], y=kwargs['y_ilk'][:, l, 0], h=kwargs2['h_ilk'][:, l, 0], wd=wd[l], ws=ws)
             simres = SimulationResult(self, localWind=localWind,
-                                      WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk,
+                                      WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
                                       power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk, **kwargs3)
 
             endtime = time.time()
@@ -399,8 +399,8 @@ class RANSLUTDeficit(XRLUTDeficitModel):
     """ Expects LUT velocity deficit xarray with coords in [m] and PyWake variable names """
     def __init__(self, lut=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False, shearcor=False):
         if lut is None:
-            lut, da_ti = fugalut2ranslut()
-            lut = lut.sel(TI_eff_ilk=0.075)
+            ds = fugalut2ranslut()
+            lut = ds.deficits.sel(TI_eff_ilk=0.075)
         if isinstance(lut, str):
             lut = xr.load_dataset(lut).deficits
         lut = (1 - lut)
