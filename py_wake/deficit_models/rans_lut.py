@@ -9,13 +9,15 @@ from py_wake.superposition_models import LinearSum
 from py_wake.wind_farm_models.engineering_models import All2AllIterative
 from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
 from py_wake.utils.rans_lut_utils import fugalut2ranslut, cxzy_to_cxyzg
-from py_wake.rotor_avg_models import EllipSys_polar_grid
+from py_wake.rotor_avg_models import EllipSysPolygonRotorAvg
 from py_wake.wind_farm_models.wind_farm_model import SimulationResult
 
 
 class RANSLUT(All2AllIterative):
-    def __init__(self, path_LUT, site, windTurbines, zRef, Dref, rotorAvgModel=None, power_as_RANS=True,
-                 ADcontrolfiles=None, nr=10, ntheta=32, ADcontrolfiles_write=True, flowmap_maxpoints=10000, ws_cutin=[4.0], ws_cutout=[25.0], Prated=[2e6], dws=1.0):
+    def __init__(self, path_LUT, site, windTurbines, zRef, Dref, rotorAvgModel=None,
+                 power_as_RANS=True, rotorAvgModelPost=EllipSysPolygonRotorAvg(n_r=9, n_theta=32),
+                 ADcontrolfiles=None, ADcontrolfiles_write=True, flowmap_maxpoints=10000,
+                 ws_cutin=[4.0], ws_cutout=[25.0], Prated=[2e6], dws=1.0):
         """
         Parameters
         ----------
@@ -25,16 +27,28 @@ class RANSLUT(All2AllIterative):
             Site object
         windTurbines : WindTurbines
             WindTurbines object representing the wake generating wind turbines
+        zRef : float
+            Reference height to rescale lut file for single wt type luts
+        Dref : float
+            Reference rotor diameter to rescale lut file for single wt type luts
         rotorAvgModel : RotorAvgModel, optional
             Model defining one or more points at the down stream rotors to
             calculate the rotor average wind speeds from.\n
             if None, default, the wind speed at the rotor center is used
-        deflectionModel : DeflectionModel
-            Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
-        turbulenceModel : TurbulenceModel
-            Model describing the amount of added turbulence in the wake
+        power_as_RANS : bool
+            If True, the turbine power is calculated as a post step following
+            a RANS approach using CPstar = CPstar * (U_inf / U_AD) ** 3 = func(U_AD),
+            where UAD a rotor averaged wind speed including the turbine induction
+            In addition, an alternative thrust coefficient is calculated
+            CTstar = CT * (U_inf / U_AD) ** 2 = func(U_AD).
+        rotorAvgModelPost : object
+            rotorAvgModel used to post process turbine output when power_as_RANS=True
+        ADcontrolfiles : list
+            If not None, a list of filename(s) is expected including
+            columns of U_AD, CTstar, CPstar, which could come from RANS.
         """
         self.power_as_RANS = power_as_RANS
+        self.rotorAvgModelPost = rotorAvgModelPost
         if not isinstance(ADcontrolfiles, list):
             self.ADcontrolfiles = [ADcontrolfiles]
         else:
@@ -63,9 +77,10 @@ class RANSLUT(All2AllIterative):
             self.fint_CTstar = []
             if ADcontrolfiles is None:
                 starttime = time.time()
+                # Could add a TI dimension interpolation lists
                 lw_j = self.site.local_wind(h=zRef)
                 Ti = lw_j.TI_ilk[0, 0, 0]
-                self.cal_lut(Ti, nr=nr, ntheta=ntheta, write=ADcontrolfiles_write)
+                self.cal_lut(Ti, write=ADcontrolfiles_write)
                 endtime = time.time()
                 print('cal time', endtime - starttime, 'sec')
             else:
@@ -98,23 +113,18 @@ class RANSLUT(All2AllIterative):
         # RANS based calibrated control file for CPstar and CTstar as function of the disk averaged velocity UAD provided by the user
         for ADcontrolfile in self.ADcontrolfiles:
             RANScal = np.genfromtxt(ADcontrolfile, skip_header=True)
-            RANS_UAD = RANScal[:, 0]
-            RANS_CPstar = RANScal[:, 2]
-            RANS_CTstar = RANScal[:, 1]
-            self.fint_CPstar.append(interp1d(RANS_UAD, RANS_CPstar, fill_value=0.0, bounds_error=False))
-            self.fint_CTstar.append(interp1d(RANS_UAD, RANS_CTstar, fill_value=0.0, bounds_error=False))
+            self.fint_CPstar.append(interp1d(RANScal[:, 0], RANScal[:, 2], fill_value=0.0, bounds_error=False))
+            self.fint_CTstar.append(interp1d(RANScal[:, 0], RANScal[:, 1], fill_value=0.0, bounds_error=False))
 
-    def cal_lut(self, ti, nr=10, ntheta=32, density=1.225, cmu=0.03, kappa=0.4, write=False):
+    def cal_lut(self, ti, density=1.225, cmu=0.03, kappa=0.4, write=False):
         # Calculcate CPstar, CTstar = f(UAD) directly from single wake RANS-LUT
         data = self.wake_deficitModel.da.interp(dw_ijlk=0.0)
-
-        cxy, area, totalarea = EllipSys_polar_grid(nr, ntheta, 1.0)
-        nodes_xy = cxy
-        weights_xy = area / totalarea
-        # nodes_xy, weights_xy = EllipSysPolarRotorAvg(nr, ntheta)
-        weights = weights_xy.flatten()[na, :]
+        weights = self.rotorAvgModelPost.nodes_weight[na, :]
+        nr = self.rotorAvgModelPost.n_rnodes
+        ntheta = self.rotorAvgModelPost.n_theta
         cxyz = np.zeros((nr - 1, ntheta, 3))
-        cxyz[:, :, 0:2] = nodes_xy
+        cxyz[:, :, 0] = 0.5 * self.rotorAvgModelPost.nodes_x.reshape((nr - 1, ntheta))
+        cxyz[:, :, 1] = 0.5 * self.rotorAvgModelPost.nodes_y.reshape((nr - 1, ntheta))
 
         uStar_UH = ti * np.sqrt(1.5 * np.sqrt(cmu))
         # z0 = zRef / (np.exp(kappa / uStar_UH) - 1)
@@ -251,7 +261,7 @@ class RANSLUT(All2AllIterative):
 
         if self.power_as_RANS:
             # Run seperately for every wind direction and calculate power from UAD afterwards
-            power_ilk, WS_eff_ilk, ct_ilk, TI_eff_ilk = self.post_wt_output(kwargs, yaw_ilk=0.0, nr=10, ntheta=32)
+            power_ilk, WS_eff_ilk, ct_ilk, TI_eff_ilk = self.run_and_post_wt_output(kwargs)
             del kwargs['WS_eff_ilk']
             del kwargs['TI_eff_ilk']
         else:
@@ -261,7 +271,7 @@ class RANSLUT(All2AllIterative):
         kwargs.update({'time': time, 'type_i': type_i})
         return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, lw, kwargs
 
-    def post_wt_output(self, kwargs, yaw_ilk=0.0, nr=10, ntheta=32):
+    def run_and_post_wt_output(self, kwargs):
         """
         Run lut model and calculate wt power and thrust by the integrating rotor averaged
         wind speed as done in EllipSys. flow_map is used to interpolate the integration points;
@@ -281,60 +291,48 @@ class RANSLUT(All2AllIterative):
         Drefs = self.windTurbines.diameter(uniquetypes)
 
         # Calculate ad integration parameters
-        cxy, area, totalarea = EllipSys_polar_grid(nr, ntheta, 1.0)
-        nodes_xy = cxy
-        weights_xy = area / totalarea
-        nWT = kwargs['I']
-        pos = np.zeros((nWT, 3))
+        weights = self.rotorAvgModelPost.nodes_weight[na, :, na]
+        nr = self.rotorAvgModelPost.n_rnodes
+        ntheta = self.rotorAvgModelPost.n_theta
+        I, L, K = kwargs['I'], kwargs['L'], kwargs['K']
+        pos = np.zeros((I, 3))
         for i in range(len(uniquetypes)):
             pos[types[i], 2] = zRefs[i]
-        o3 = np.zeros((nWT, 3))
-        o3[:, 0] = 1.0
-        o3[:, 1] = 0.0
-        o3[:, 2] = 0.0
-        o2 = np.zeros((nWT, 3))
-        o2[:, 0] = 0.0
-        o2[:, 1] = 0.0
-        o2[:, 2] = 1.0
-        cxyz_i = np.zeros((nWT, nr - 1, ntheta, 3))
-        cxyz_i[:, :, :, 0:2] = nodes_xy[na, :, :]
+        o3 = np.zeros((I, 3))
+        o3[:, :] = np.array([1.0, 0.0, 0.0])[na, :]
+        o2 = np.zeros((I, 3))
+        o2[:, :] = np.array([0.0, 0.0, 1.0])[na, :]
+        cxyz_i = np.zeros((I, nr - 1, ntheta, 3))
+        cxyz_i[:, :, :, 0] = 0.5 * self.rotorAvgModelPost.nodes_x.reshape((nr - 1, ntheta))[na, :, :]
+        cxyz_i[:, :, :, 1] = 0.5 * self.rotorAvgModelPost.nodes_y.reshape((nr - 1, ntheta))[na, :, :]
         for i in range(len(uniquetypes)):
             cxyz_i[types[i], :, :, 0:2] = cxyz_i[types[i], :, :, 0:2] * Drefs[i]
-        weights = weights_xy.flatten()[na, :, na]
 
         wd = kwargs['wd']
         ws = kwargs['ws']
-        power_ilk = np.zeros((nWT, len(wd), len(ws)))
-        ct_ilk = np.zeros((nWT, len(wd), len(ws)))
-        WS_eff_ilk = np.zeros((nWT, len(wd), len(ws)))
-        TI_eff_ilk = np.zeros((nWT, len(wd), len(ws)))
+        shape = (I, L, K)
+        power_ilk = np.zeros(shape)
+        ct_ilk = np.zeros(shape)
+        WS_eff_ilk = np.zeros(shape)
+        TI_eff_ilk = np.zeros(shape)
         Cnsts = 0.5 * 1.225 * np.asarray(Drefs) ** 2 * 0.25 * np.pi
         if self.flowmap_maxpoints is not None:
-            flowmap_points = (nr - 1) * ntheta * nWT
+            flowmap_points = (nr - 1) * ntheta * I
             nflowmaps = int(np.ceil(flowmap_points) / self.flowmap_maxpoints)
             i1last = (nflowmaps - 1) * self.flowmap_maxpoints
-            WS_eff_jlk = np.zeros((flowmap_points, 1, len(ws)))
-            TI_eff_jlk = np.zeros((flowmap_points, 1, len(ws)))
-        for l in range(len(wd)):
-            wt_x_rot = kwargs['x_ilk'][:, l, 0]
-            wt_y_rot = kwargs['y_ilk'][:, l, 0]
+            WS_eff_jlk = np.zeros((flowmap_points, 1, K))
+            TI_eff_jlk = np.zeros((flowmap_points, 1, K))
+        for l in range(L):
             print('wd=', wd[l])
             sys.stdout.flush()
             starttime = time.time()
             kwargs2 = kwargs.copy()
-            kwargs2['x_ilk'][:, l, :] = wt_x_rot[:, na]
-            kwargs2['y_ilk'][:, l, :] = wt_y_rot[:, na]
-            kwargs2['h_ilk'] = kwargs['h_ilk'][:, l, :][:, na, :]
             kwargs2['wd'] = [wd[l]]
             kwargs2['L'] = 1
             kwargs2['WD_ilk'][:, :, :] = wd[l]
-            kwargs2['WS_ilk'][:, :, :] = ws[na, na, :]
-            kwargs2['TI_ilk'][:, l, :] = kwargs['TI_ilk'][:, l, :][:, na, :]
-            kwargs2['TI_eff_ilk'][:, l, :] = kwargs['TI_eff_ilk'][:, l, :][:, na, :]
-
             WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs3 = self._calc_wt_interaction(**kwargs2)
 
-            localWind = self.site.local_wind(x=wt_x_rot, y=wt_y_rot, h=kwargs2['h_ilk'][:, l, 0], wd=wd[l], ws=ws)
+            localWind = self.site.local_wind(x=kwargs['x_ilk'][:, l, 0], y=kwargs['y_ilk'][:, l, 0], h=kwargs2['h_ilk'][:, l, 0], wd=wd[l], ws=ws)
             simres = SimulationResult(self, localWind=localWind,
                                       WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk,
                                       power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk, **kwargs3)
@@ -343,13 +341,11 @@ class RANSLUT(All2AllIterative):
             print('sim time', endtime - starttime, 'sec')
 
             starttime = time.time()
-            pos[:, 0] = wt_x_rot
-            pos[:, 1] = wt_y_rot
+            pos[:, 0] = kwargs['x_ilk'][:, l, 0]
+            pos[:, 1] = kwargs['y_ilk'][:, l, 0]
             deg = 270.0 - wd[l]
-            cos = np.cos(deg * (np.pi / 180.0))
-            sin = np.sin(deg * (np.pi / 180.0))
-            o3[:, 0] = cos
-            o3[:, 1] = sin
+            o3[:, 0] = np.cos(deg * (np.pi / 180.0))
+            o3[:, 1] = np.sin(deg * (np.pi / 180.0))
             cxyzg_i = cxzy_to_cxyzg(cxyz_i, o3, o2, pos)
             x_j = cxyzg_i[:, :, :, 0].flatten()
             y_j = cxyzg_i[:, :, :, 1].flatten()
@@ -364,7 +360,7 @@ class RANSLUT(All2AllIterative):
                 lw_j, WS_eff_jlk[i1last:, :, :], TI_eff_jlk[i1last:, :, :] = self._flow_map(x_j[i1last:], y_j[i1last:], h_j[i1last:], simres)
 
             # Integrate U over AD
-            WS_eff_ilk[:, l, :] = np.sum(np.reshape(WS_eff_jlk, (nWT, ntheta * (nr - 1), len(ws))) * weights, axis=1)
+            WS_eff_ilk[:, l, :] = np.sum(np.reshape(WS_eff_jlk, (I, ntheta * (nr - 1), len(ws))) * weights, axis=1)
 
             # Interpolate CP and CT
             if len(uniquetypes) > 1:
