@@ -241,6 +241,7 @@ class EllipSysPolygonRotorAvg(GridRotorAvg):
     """EllipSys3D Polygon polar grid grid rotor average model"""
 
     def __init__(self, n_r=4, n_theta=16):
-        n_rnodes = n_r + 1
-        cxy, area, totalarea = EllipSys_polar_grid(n_rnodes, n_theta, 2.0)
+        self.n_rnodes = n_r + 1
+        self.n_theta = n_theta
+        cxy, area, totalarea = EllipSys_polar_grid(self.n_rnodes, self.n_theta, 2.0)
         GridRotorAvg.__init__(self, nodes_x=cxy[:, :, 0].flatten(), nodes_y=cxy[:, :, 1].flatten(), nodes_weight=area[:, :].flatten() / totalarea)
