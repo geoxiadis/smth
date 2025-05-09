@@ -104,7 +104,7 @@ def test_rans_lut():
     # Test Power as RANS post step
     dataset = fugalut2ranslut(Dref=Dref, zRef=zRef, rename=False, nondim=True, cover_rotor_area=True)
     dataset.to_netcdf(lutname)
-    wfm = RANSLUT(lutname, site, wts, zRef, Dref, power_as_RANS=True, ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6])
+    wfm = RANSLUT(lutname, site, wts, zRef, Dref, power_as_RANS=True, ADcontrolfiles_write=True, ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6])
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
 
@@ -112,15 +112,25 @@ def test_rans_lut():
     # print(simres.ct_ilk.flatten())
     # print(simres.power_ilk.flatten() * 1e-6)
     # print(simres.TI_eff_ilk.flatten())
-    npt.assert_array_almost_equal(simres.power_ilk.flatten() * 1e-6, [1.34972737, 1.34155641, 0.88731729, 1.34972737, 1.09624206,
-                                                                      0.88731729, 0.73970888], 6)
-    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [8.49496922, 8.4703886, 7.31576317, 8.49496922, 7.86743257,
-                                                                7.31576317, 6.89186358], 6)
-    # CTstar
-    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [1.10297574, 1.10552849, 1.13160315, 1.10297574, 1.12403335,
-                                                            1.13160315, 1.13064446], 6)
-    npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), [0.075, 0.075, 0.05970602, 0.075, 0.06875403,
-                                                                0.05970602, 0.05390452], 6)
+    power_expected = [1.34972737, 1.34155641, 0.88731729, 1.34972737, 1.09624206, 0.88731729, 0.73970888]
+    UAD_expected = [8.49496922, 8.4703886, 7.31576317, 8.49496922, 7.86743257, 7.31576317, 6.89186358]
+    CTstar_expected = [1.10297574, 1.10552849, 1.13160315, 1.10297574, 1.12403335, 1.13160315, 1.13064446]
+    TI_eff_expected = [0.075, 0.075, 0.05970602, 0.075, 0.06875403, 0.05970602, 0.05390452]
+    npt.assert_array_almost_equal(simres.power_ilk.flatten() * 1e-6, power_expected, 6)
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), UAD_expected, 6)
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), CTstar_expected, 6)
+    npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), TI_eff_expected, 6)
+
+    # Test with provided control file
+    ADcontrolfile = 'lutcal_WT80_Ti0.075_0.dat'
+    wfm = RANSLUT(lutname, site, wts, zRef, Dref, power_as_RANS=True, ADcontrolfiles=ADcontrolfile, ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6])
+    simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
+                       profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
+    npt.assert_array_almost_equal(simres.power_ilk.flatten() * 1e-6, power_expected, 6)
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), UAD_expected, 6)
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), CTstar_expected, 6)
+    npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), TI_eff_expected, 6)
+
     # Test multi lut (using the same file for now)
     lut2 = xr.load_dataset(lutname)
     lut2.attrs['name'] = 'V80b'
@@ -133,12 +143,7 @@ def test_rans_lut():
     type_i = np.array([0, 1, 0, 0, 1, 1, 0])
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10], type_i=type_i)
-    npt.assert_array_almost_equal(simres.power_ilk.flatten() * 1e-6, [1.34972737, 1.34155641, 0.88731729, 1.34972737, 1.09624206,
-                                                                      0.88731729, 0.73970888], 6)
-    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [8.49496922, 8.4703886, 7.31576317, 8.49496922, 7.86743257,
-                                                                7.31576317, 6.89186358], 6)
-    # CTstar
-    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [1.10297574, 1.10552849, 1.13160315, 1.10297574, 1.12403335,
-                                                            1.13160315, 1.13064446], 6)
-    npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), [0.075, 0.075, 0.05970602, 0.075, 0.06875403,
-                                                                0.05970602, 0.05390452], 6)
+    npt.assert_array_almost_equal(simres.power_ilk.flatten() * 1e-6, power_expected, 6)
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), UAD_expected, 6)
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), CTstar_expected, 6)
+    npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), TI_eff_expected, 6)
