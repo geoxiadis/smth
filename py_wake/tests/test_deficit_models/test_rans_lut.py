@@ -100,3 +100,25 @@ def test_rans_lut():
         print(list(np.round(Z73.data[140, 100:400:10], 4)))
         plt.legend()
         plt.show()
+
+    # Test Power as RANS post step
+    lut, da_ti = fugalut2ranslut(Dref=Dref, zRef=zRef, rename=False, nondim=True, cover_rotor_area=True)
+    dataset = xr.Dataset(data_vars={'deficits': lut, 'added_ti': da_ti})
+    dataset.to_netcdf(lutname)
+    wfm = RANSLUT(lutname, site, wts, zRef, Dref, power_as_RANS=True, ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6])
+    simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
+                       profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
+
+    # print(simres.WS_eff_ilk.flatten())
+    # print(simres.ct_ilk.flatten())
+    # print(simres.power_ilk.flatten() * 1e-6)
+    # print(simres.TI_eff_ilk.flatten())
+    npt.assert_array_almost_equal(simres.power_ilk.flatten() * 1e-6, [1.34972737, 1.34155641, 0.88731729, 1.34972737, 1.09624206,
+                                                                      0.88731729, 0.73970888], 8)
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [8.49496922, 8.4703886, 7.31576317, 8.49496922, 7.86743257,
+                                                                7.31576317, 6.89186358], 8)
+    # CTstar
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [1.10297574, 1.10552849, 1.13160315, 1.10297574, 1.12403335,
+                                                            1.13160315, 1.13064446], 8)
+    npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), [0.075, 0.075, 0.05970602, 0.075, 0.06875403,
+                                                                0.05970602, 0.05390452], 8)

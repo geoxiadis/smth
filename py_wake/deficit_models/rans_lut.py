@@ -14,7 +14,8 @@ from py_wake.wind_farm_models.wind_farm_model import SimulationResult
 
 
 class RANSLUT(All2AllIterative):
-    def __init__(self, path_LUT, site, windTurbines, zRef, Dref, rotorAvgModel=None, power_as_RANS=True, ADcontrolfiles=None, nr=10, ntheta=32, ADcontrolfiles_write=True, flowmap_maxpoints=10000):
+    def __init__(self, path_LUT, site, windTurbines, zRef, Dref, rotorAvgModel=None, power_as_RANS=True,
+                 ADcontrolfiles=None, nr=10, ntheta=32, ADcontrolfiles_write=True, flowmap_maxpoints=10000, ws_cutin=[4.0], ws_cutout=[25.0], Prated=[2e6], dws=1.0):
         """
         Parameters
         ----------
@@ -34,11 +35,16 @@ class RANSLUT(All2AllIterative):
             Model describing the amount of added turbulence in the wake
         """
         self.power_as_RANS = power_as_RANS
-        self.flowmap_maxpoints = flowmap_maxpoints
         if not isinstance(ADcontrolfiles, list):
             self.ADcontrolfiles = [ADcontrolfiles]
         else:
             self.ADcontrolfiles = ADcontrolfiles
+        self.flowmap_maxpoints = flowmap_maxpoints
+        self.ws_cutin = ws_cutin
+        self.ws_cutout = ws_cutout
+        self.dws = dws
+        self.Prated = Prated
+
         lut = xr.load_dataset(path_LUT)
         if 'type_i' not in lut.coords:
             lut = self.rescale_lut_coords(lut, zRef, Dref)
@@ -123,10 +129,7 @@ class RANSLUT(All2AllIterative):
                 _kwargs = {'type': type}
             else:
                 _kwargs = {}
-            cutin = self.windTurbines.cutin[type]
-            cutout = self.windTurbines.cutout[type]
-            dws = self.windTurbines.dws[type]
-            ws = np.arange(cutin, cutout + dws, dws)
+            ws = np.arange(self.ws_cutin[type], self.ws_cutout[type] + self.dws, self.dws)
             Dref = self.windTurbines.diameter(type)
             zH = self.windTurbines.hub_height(type)
 
@@ -272,10 +275,8 @@ class RANSLUT(All2AllIterative):
         type_i = np.asarray(kwargs['type_i'], dtype=int)
         uniquetypes = np.unique(type_i)
         types = []
-        Prated = np.zeros((len(uniquetypes)))
         for i in range(len(uniquetypes)):
             types.append(np.where(type_i == uniquetypes[i])[0])
-            Prated[i] = self.windTurbines.rated_powers_w[uniquetypes[i]]
         zRefs = self.windTurbines.hub_height(uniquetypes)
         Drefs = self.windTurbines.diameter(uniquetypes)
 
@@ -379,10 +380,10 @@ class RANSLUT(All2AllIterative):
             if len(uniquetypes) > 1:
                 for i in range(len(uniquetypes)):
                     power_ilk[types[i], l, :] = lut_cpstar[types[i], :] * Cnsts[i] * WS_eff_ilk[types[i], l, :] ** 3
-                    power_ilk[types[i], l, :][power_ilk[types[i], l, :] > Prated[i]] = Prated[i]
+                    power_ilk[types[i], l, :][power_ilk[types[i], l, :] > self.Prated[i]] = self.Prated[i]
             else:
                 power_ilk[:, l, :] = lut_cpstar * Cnsts[0] * WS_eff_ilk[:, l, :] ** 3
-                power_ilk[power_ilk > Prated[0]] = Prated[0]
+                power_ilk[power_ilk > self.Prated[0]] = self.Prated[0]
 
             # Set power and ct to zero for wts that were originally shut down
             wt_shutdown = np.where(simres.power_ilk == 0.0)
