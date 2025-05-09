@@ -123,7 +123,7 @@ def test_rans_lut():
 
     # Test with provided control file
     ADcontrolfile = 'lutcal_WT80_Ti0.075_0.dat'
-    wfm = RANSLUT(lutname, site, wts, zRef, Dref, power_as_RANS=True, ADcontrolfiles=ADcontrolfile, ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6])
+    wfm = RANSLUT(lutname, site, wts, zRef, Dref, power_as_RANS=True, ADcontrolfiles=[ADcontrolfile], ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6])
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
     npt.assert_array_almost_equal(simres.power_ilk.flatten() * 1e-6, power_expected, 6)
@@ -139,7 +139,7 @@ def test_rans_lut():
     lutname_merged = 'rans_lut_merged.nc'
     merge_luts([lutname, lutname2], outfile=lutname_merged)
     wts = WindTurbine.from_WindTurbines([wts, wts])
-    wfm = RANSLUT(lutname_merged, site, wts, zRef, None, power_as_RANS=True, ws_cutin=[4.0] * 2, ws_cutout=[25.0] * 2, dws=1.0, Prated=[2e6] * 2)
+    wfm = RANSLUT(lutname_merged, site, wts, zRef, None, power_as_RANS=True, ws_cutin=[4.0] * 2, ws_cutout=[25.0] * 2, dws=1.0, Prated=[2e6] * 2, flowmap_maxpoints=None)
     type_i = np.array([0, 1, 0, 0, 1, 1, 0])
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10], type_i=type_i)
