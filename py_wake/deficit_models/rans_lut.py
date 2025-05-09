@@ -111,10 +111,10 @@ class RANSLUT(All2AllIterative):
             lut['x'] = lut['x'] * Dref
             lut['y'] = lut['y'] * Dref
             lut['z'] = lut['z'] * Dref + zRef
-        else:
-            if Dref is None:  # pragma: no cover
+        else:  # pragma: no cover
+            if Dref is None:
                 print('ERROR: lut coords cannot be rescaled because Dref is not specified')
-            elif zRef is None:  # pragma: no cover
+            elif zRef is None:
                 print('ERROR: lut coords cannot be rescaled because zRef is not specified')
             sys.exit()
         return lut
