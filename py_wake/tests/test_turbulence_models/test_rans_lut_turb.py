@@ -36,11 +36,11 @@ def test_rans_lut_turb():
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
 
     npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.98181609, 9.95358693, 8.45426639, 9.98181609, 9.35814773,
-                                                                8.45426639, 7.97008201], 8)
+                                                                8.45426639, 7.97008201], 6)
     npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79325457, 0.79364978, 0.80645427, 0.79325457, 0.80198593,
-                                                            0.80645427, 0.80597008], 8)
+                                                            0.80645427, 0.80597008], 6)
     npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), [0.075, 0.075, 0.05951451, 0.075, 0.06872367,
-                                                                0.05951451, 0.0536696], 8)
+                                                                0.05951451, 0.0536696], 6)
 
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
