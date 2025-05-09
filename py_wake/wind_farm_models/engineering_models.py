@@ -830,7 +830,7 @@ class All2AllIterative(EngineeringWindFarmModel):
     def __init__(self, site, windTurbines, wake_deficitModel,
                  superpositionModel=LinearSum(),
                  blockage_deficitModel=None, deflectionModel=None, turbulenceModel=None,
-                 convergence_tolerance=1e-6, rotorAvgModel=None, inputModifierModels=[]):
+                 convergence_tolerance=1e-6, rotorAvgModel=None, inputModifierModels=[], use_aa=False):
         """Initialize flow model
 
         Parameters
@@ -863,6 +863,7 @@ class All2AllIterative(EngineeringWindFarmModel):
                                           blockage_deficitModel=blockage_deficitModel, deflectionModel=deflectionModel,
                                           turbulenceModel=turbulenceModel, inputModifierModels=inputModifierModels)
         self.convergence_tolerance = convergence_tolerance
+        self.use_aa = use_aa
 
     def _calc_wt_interaction(self, ws, wd, WD_ilk, WS_ilk, TI_ilk,
                              WS_eff_ilk, TI_eff_ilk,
@@ -890,11 +891,13 @@ class All2AllIterative(EngineeringWindFarmModel):
             WS_eff_ilk = WS_ILK + 0.
         else:
             WS_eff_ilk = np.zeros((I, L, K)) + WS_eff_ilk
+        # gives better convergence
+        # WS_eff_ilk = WS_ILK + 0.
 
         WS_eff_ilk = WS_eff_ilk.astype(dtype)
         WS_eff_ilk_last = WS_eff_ilk + 0  # fast autograd-friendly copy
         diff_lk = np.zeros((L, K))
-        diff_lk_last = None
+        diff_lk_last = np.ones_like(diff_lk) * 1e6  # large initial difference
         max_diff_last = None
         a = 1
         dw_iilk, hcw_iilk, dh_iilk = self.site.distance(wd_l=wd, WD_ilk=WD_ilk)
@@ -938,8 +941,11 @@ class All2AllIterative(EngineeringWindFarmModel):
 
         i2i_zero = ~np.eye(I).astype(bool)[:, :, na, na]
 
+        F = []
+        G = []
+        m = 7
         # Iterate until convergence
-        for j in tqdm(range(max(I, 20)), disable=I <= 1 or not self.verbose,
+        for j in tqdm(range(1, max(I, 20) + 1), disable=I <= 1 or not self.verbose,
                       desc="Calculate flow interaction (All2AllIterative)", unit="Iteration"):
             ct_last_ilk = ct_ilk + 0.
             ct_ilk = self.windTurbines.ct(np.maximum(WS_eff_ilk, 0), **wt_kwargs)
@@ -1032,22 +1038,52 @@ class All2AllIterative(EngineeringWindFarmModel):
                 add_turb_ijlk *= i2i_zero
                 TI_eff_ilk = self.turbulenceModel.calc_effective_TI(TI_ilk, add_turb_ijlk)
 
+            if self.use_aa:
+                F.append((WS_eff_ilk + 0.0).flatten())
+                G.append((WS_eff_ilk - WS_eff_ilk_last).flatten())
+                if len(F) > m:
+                    F.pop(0)
+                    G.pop(0)
+                mk = min(m, j)
+                while mk > 0:
+                    Gk = np.column_stack(G[-mk:])  # shape: (n, mk)
+                    GTG = Gk.T @ Gk  # shape: (mk, mk)
+                    ones = np.ones((mk, 1))  # shape: (mk, 1)
+                    lhs = np.block([[GTG, ones], [ones.T, np.zeros((1, 1))]])
+                    rhs = np.zeros((mk + 1, 1))
+                    rhs[-1] = 1
+                    try:
+                        sol, _, _, s = np.linalg.lstsq(lhs, rhs, rcond=None)
+                        condition_number = s[0] / s[-1] if s[-1] > 1e-12 else np.inf
+                    except np.linalg.LinAlgError:
+                        condition_number = np.inf
+                    alpha = sol[:-1].flatten()
+                    fk_window = np.column_stack(F[-mk:])  # shape: (n, mk)
+                    if condition_number < 5:
+                        break  # Found a stable solution
+                    mk -= 1
+
             # Check if converged
             diff_ilk = cabs(WS_eff_ilk_last - WS_eff_ilk)
             diff_lk = diff_ilk.mean(0)
             max_diff = np.max(diff_ilk.max(0))
 
-            if max_diff_last and max_diff >= max_diff_last:
-                a = 0.5
-            else:
-                a = np.minimum(a + .1, 1)
+            if not self.use_aa:
+                if max_diff_last and max_diff >= max_diff_last:
+                    a = 0.5
+                else:
+                    a = np.minimum(a + .1, 1)
             # print(j, a, wd[:3], max_diff, self.convergence_tolerance)
 
             if (self.convergence_tolerance is None or
                     (self.convergence_tolerance and max_diff < self.convergence_tolerance)):
                 break
 
-            WS_eff_ilk = (WS_eff_ilk * a) + (1 - a) * WS_eff_ilk_last
+            if not self.use_aa:
+                WS_eff_ilk = (WS_eff_ilk * a) + (1 - a) * WS_eff_ilk_last
+            else:
+                WS_eff_ilk = (fk_window @ alpha).reshape((I, L, K))  # shape: (I, L, K)
+
             # i_, l_, k_ = list(zip(*np.where(diff_ilk == max_diff)))[0]
             # wsi, wsl, wsk = WS_ilk.shape
             # print("Iteration: %d, max diff_ilk: %.8f, WT: %d, WD: %d, WS: %f, WS_eff: %f" %
@@ -1057,8 +1093,10 @@ class All2AllIterative(EngineeringWindFarmModel):
             # print(j, diff_ilk.mean(0), WS_eff_ilk.squeeze())
 
             # assume flow case to be unstable if mean difference of two iterations increases
-            if j > 1:
+            if j > 2:
                 unstable_lk |= diff_lk_last < diff_lk
+
+            # print(unstable_lk.sum(), np.prod(unstable_lk.shape), np.sum(ioff), np.prod(ioff.shape),)
 
             WS_eff_ilk_last = WS_eff_ilk + 0  # fast autograd-friendly copy
             diff_lk_last = diff_lk

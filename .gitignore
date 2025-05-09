@@ -126,3 +126,4 @@ archieve
 /.pydevproject
 /.pydevproject_old
 /.settings/org.eclipse.core.resources.prefs
+py_wake/version.py
