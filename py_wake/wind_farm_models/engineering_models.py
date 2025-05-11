@@ -221,6 +221,9 @@ class EngineeringWindFarmModel(WindFarmModel):
             kwargs['TI_ilk'] = lw.TI_ilk
             kwargs['TI_eff_ilk'] = lw.TI_ilk + 0.  # autograd-friendly copy
 
+        if 'type_i_ilk' not in kwargs:
+            kwargs.update({'type_i_ilk': kwargs['type_i'][:, na, na]})
+            kwargs.update({'type_i': np.zeros((I), dtype=int)})
         self._check_input(kwargs)
 
         if n_cpu != 1 or wd_chunks or ws_chunks > 1:
@@ -250,11 +253,19 @@ class EngineeringWindFarmModel(WindFarmModel):
         self.site.distance.setup(
             np.asarray(kwargs['x_ilk']), np.asarray(kwargs['y_ilk']), np.asarray(kwargs['h_ilk']), np.asarray(z_ilk))
 
-        WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs = self._calc_wt_interaction(**kwargs)
+        WS_eff_ilk, TI_eff_ilk, ct_ilk, res_kwargs = self._calc_wt_interaction(**kwargs)
 
+        kwargs.pop('WS_eff_ilk')
+        kwargs.pop('TI_eff_ilk')
+        WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk = self.get_wt_output(WS_eff_ilk, TI_eff_ilk, ct_ilk, **kwargs)
+
+        res_kwargs.update({'time': time, 'type_i': type_i})
+        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, lw, res_kwargs
+
+    def get_wt_output(self, WS_eff_ilk, TI_eff_ilk, ct_ilk, **kwargs):
+        """Calculate wind turbine power from power curve and hook for other models to change turbine output"""
         power_ilk = self.windTurbines.power(ws=WS_eff_ilk, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
-        kwargs.update({'time': time, 'type_i': type_i})
-        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, lw, kwargs
+        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk
 
     @abstractmethod
     def _calc_wt_interaction(self, **kwargs):
@@ -380,7 +391,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         if 'type' in (self.windTurbines.powerCtFunction.required_inputs +
                       self.windTurbines.powerCtFunction.optional_inputs):
             power_kwargs['type'] = type_j
-        power_jlk = self.windTurbines.power(WS_eff_jlk, **power_kwargs)
+        _, _, power_ilk, _ = self.get_wt_output(WS_eff_ilk, WS_eff_ilk, **power_kwargs)
 
         aep_j = (power_jlk * lw_j.P_ilk).sum((1, 2))
         return aep_j * 365 * 24 * 1e-9
