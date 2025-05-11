@@ -391,7 +391,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         if 'type' in (self.windTurbines.powerCtFunction.required_inputs +
                       self.windTurbines.powerCtFunction.optional_inputs):
             power_kwargs['type'] = type_j
-        _, _, power_jlk, _ = self.get_wt_output(WS_eff_jlk, WS_eff_jlk, WS_eff_jlk, **power_kwargs)
+        power_jlk = self.windTurbines.power(WS_eff_jlk, **power_kwargs)
 
         aep_j = (power_jlk * lw_j.P_ilk).sum((1, 2))
         return aep_j * 365 * 24 * 1e-9
