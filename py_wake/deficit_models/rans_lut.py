@@ -198,109 +198,20 @@ class RANSLUT(All2AllIterative):
             self.fint_CPstar.append(interp1d(U_CT_CP_AD[:, 0], U_CT_CP_AD[:, 2], fill_value=0.0, bounds_error=False))
             self.fint_CTstar.append(interp1d(U_CT_CP_AD[:, 0], U_CT_CP_AD[:, 1], fill_value=0.0, bounds_error=False))
 
-    def calc_wt_interaction(self, x_ilk, y_ilk, h_i=None, type_i=0, wd=None, ws=None, time=False,
-                            WS_eff_ilk=None,
-                            n_cpu=1, wd_chunks=None, ws_chunks=1,
-                            **kwargs):
-        """See WindFarmModel.calc_wt_interaction and additional parameters below
-
-        Parameters
-        ----------
-        n_cpu : int or None, optional
-            Number of CPUs to be used for execution.
-            If 1 (default), the execution is not parallized
-            If None, the available number of CPUs are used
-        wd_chunks : int or None, optional
-            If n_cpu>1, the wind directions are divided into <wd_chunks> chunks and executed in parallel.
-            If wd_chunks is None, wd_chunks is set to the available number of CPUs
-        ws_chunks : int or None, optional
-            If n_cpu>1, the wind speeds are divided into <ws_chunks> chunks and executed in parallel.
-            If ws_chunks is None, ws_chunks is set to 1
+    def get_wt_output(self, WS_eff_ilk_in, TI_eff_ilk_in, ct_ilk_in, **kwargs):
         """
-
-        h_i, D_i = self.windTurbines.get_defaults(len(x_ilk), type_i, h_i)
-        wd, ws = self.site.get_defaults(wd, ws)
-        I, L, K, = len(x_ilk), len(wd), (1, len(ws))[time is False]
-        kwargs.update(dict(x_ilk=x_ilk, y_ilk=y_ilk, h_ilk=h_i[:, na, na], wd=wd, ws=ws, time=time,
-                           type_i=np.zeros_like(D_i) + type_i))
-
-        for inputModifierModel in self.inputModifierModels:
-            kwargs.update(inputModifierModel.setup(**kwargs))
-
-        # Find local wind speed, wind direction, turbulence intensity and probability
-        lw = self.site.local_wind(x=np.mean(x_ilk, (1, 2)), y=np.mean(y_ilk, (1, 2)), h=h_i,
-                                  wd=kwargs['wd'], ws=kwargs['ws'], time=kwargs['time'])
-        for k in ['WS_ilk', 'WD_ilk', 'TI_ilk']:
-            if k in kwargs:
-                lw.add_ilk(k, kwargs.pop(k))
-
-        ri, oi = self.windTurbines.function_inputs
-
-        kwargs.update({'WD_ilk': lw.WD_ilk,
-                       'WS_ilk': lw.WS_ilk,
-                       'WS_eff_ilk': WS_eff_ilk,
-                       'D_i': D_i,
-                       'I': I, 'L': L, 'K': K,
-                       **{k + '_ilk': self.site.interp(self.site.ds[k], lw) for k in ri + oi if k in self.site.ds},
-                       })
-        if hasattr(lw, 'TI_ilk'):
-            kwargs['TI_ilk'] = lw.TI_ilk
-            kwargs['TI_eff_ilk'] = lw.TI_ilk + 0.  # autograd-friendly copy
-
-        if 'type_i_ilk' not in kwargs:
-            kwargs.update({'type_i_ilk': kwargs['type_i'][:, na, na]})
-        self._check_input(kwargs)
-
-        if n_cpu != 1 or wd_chunks or ws_chunks > 1:
-            # parallel execution
-            map_func, arg_lst, wd_chunks, ws_chunks = self._multiprocessing_chunks(
-                n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
-                **kwargs)
-
-            WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, _, kwargs = list(
-                zip(*map_func(self._calc_wt_interaction_args, arg_lst)))
-
-            def concatenate(v_ilk):
-                v_ilk = [fix_shape(v, WS_eff.shape) for v, WS_eff in zip(v_ilk, WS_eff_ilk)]
-                if kwargs[0]['time'] is False:
-                    return np.concatenate([np.concatenate(v_ilk[i::ws_chunks], axis=1)
-                                           for i in range(ws_chunks)], axis=2)
-                else:
-                    return np.concatenate(v_ilk, axis=1)
-
-            return ([concatenate(v) for v in [WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk]] +
-                    [lw,
-                     {'type_i': kwargs[0]['type_i'],
-                      **{k: concatenate([wt_i[k] for wt_i in kwargs]) for k in kwargs[0] if k.endswith('_ilk')}}])
-
-        # Calculate down-wind and cross-wind distances
-        z_ilk = self.site.elevation(kwargs['x_ilk'], kwargs['y_ilk'])
-        self.site.distance.setup(
-            np.asarray(kwargs['x_ilk']), np.asarray(kwargs['y_ilk']), np.asarray(kwargs['h_ilk']), np.asarray(z_ilk))
-
-        if self.power_as_RANS:
-            # Run seperately for every wind direction and calculate power from UAD afterwards
-            power_ilk, WS_eff_ilk, ct_ilk, TI_eff_ilk = self.run_and_post_wt_output(kwargs)
-            del kwargs['WS_eff_ilk']
-            del kwargs['TI_eff_ilk']
-        else:
-            WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs = self._calc_wt_interaction(**kwargs)
-            power_ilk = self.windTurbines.power(ws=WS_eff_ilk, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
-
-        kwargs.update({'time': time, 'type_i': type_i})
-        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, lw, kwargs
-
-    def run_and_post_wt_output(self, kwargs):
-        """
-        Run lut model and calculate wt power and thrust by the integrating rotor averaged
+        Recalculate wt power and thrust by the integrating rotor averaged
         wind speed as done in EllipSys. flow_map is used to interpolate the integration points;
         this method requires a lot of memory when many points are extracted at the same time in
         combination with a large wind farm. The variable flowmap_maxpoints can be used to reduce
         the number of points per flow_map call for the cost of computational speed.
         """
 
-        # Integrate UAD from PyWake LUT with the aim of getting the same UAD as PyWakeEllipSys
+        if not self.power_as_RANS:
+            power_ilk = self.windTurbines.power(ws=WS_eff_ilk_in, **self.get_wt_kwargs(TI_eff_ilk_in, kwargs))
+            return WS_eff_ilk_in, TI_eff_ilk_in, ct_ilk_in, power_ilk
 
+        starttime = time.time()
         type_i = np.asarray(kwargs['type_i'], dtype=int)
         uniquetypes = np.unique(type_i)
         types = []
@@ -313,7 +224,8 @@ class RANSLUT(All2AllIterative):
         weights = self.rotorAvgModelPost.nodes_weight[na, :, na]
         nr = self.rotorAvgModelPost.n_rnodes
         ntheta = self.rotorAvgModelPost.n_theta
-        I, L, K = kwargs['I'], kwargs['L'], kwargs['K']
+        shape = WS_eff_ilk_in.shape
+        I, L, K = shape
         pos = np.zeros((I, 3))
         for i in range(len(uniquetypes)):
             pos[types[i], 2] = zRefs[i]
@@ -329,7 +241,6 @@ class RANSLUT(All2AllIterative):
 
         wd = kwargs['wd']
         ws = kwargs['ws']
-        shape = (I, L, K)
         power_ilk = np.zeros(shape)
         ct_ilk = np.zeros(shape)
         WS_eff_ilk = np.zeros(shape)
@@ -344,22 +255,14 @@ class RANSLUT(All2AllIterative):
         for l in range(L):
             print('wd=', wd[l])
             sys.stdout.flush()
-            starttime = time.time()
             kwargs2 = kwargs.copy()
             kwargs2['wd'] = [wd[l]]
             kwargs2['L'] = 1
             kwargs2['WD_ilk'][:, :, :] = wd[l]
-            WS_eff_ilk, TI_eff_ilk[:, l, :][:, na, :], ct_ilk, kwargs3 = self._calc_wt_interaction(**kwargs2)
-
             localWind = self.site.local_wind(x=kwargs['x_ilk'][:, l, 0], y=kwargs['y_ilk'][:, l, 0], h=kwargs2['h_ilk'][:, l, 0], wd=wd[l], ws=ws)
             simres = SimulationResult(self, localWind=localWind,
-                                      WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
-                                      power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk, **kwargs3)
-
-            endtime = time.time()
-            print('sim time', endtime - starttime, 'sec')
-
-            starttime = time.time()
+                                      WS_eff_ilk=WS_eff_ilk_in, TI_eff_ilk=TI_eff_ilk_in[:, l, :][:, na, :],
+                                      power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk_in, **kwargs2)
             pos[:, 0] = kwargs['x_ilk'][:, l, 0]
             pos[:, 1] = kwargs['y_ilk'][:, l, 0]
             deg = 270.0 - wd[l]
@@ -406,8 +309,8 @@ class RANSLUT(All2AllIterative):
             power_ilk[wt_shutdown] = 0.0
             # print('power_ilk', power_ilk, 'WS_eff_ilk', WS_eff_ilk)
             endtime = time.time()
-            print('post time:', endtime - starttime, 'sec')
-        return power_ilk, WS_eff_ilk, ct_ilk, TI_eff_ilk
+            print('post time', endtime - starttime, 'sec')
+        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk
 
 
 # The rans_lut from mmpe does not lead to satisfying results when using the shear correction for a row of wts.
