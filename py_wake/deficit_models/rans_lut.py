@@ -198,7 +198,7 @@ class RANSLUT(All2AllIterative):
             self.fint_CPstar.append(interp1d(U_CT_CP_AD[:, 0], U_CT_CP_AD[:, 2], fill_value=0.0, bounds_error=False))
             self.fint_CTstar.append(interp1d(U_CT_CP_AD[:, 0], U_CT_CP_AD[:, 1], fill_value=0.0, bounds_error=False))
 
-    def get_wt_output(self, WS_eff_ilk_in, TI_eff_ilk_in, ct_ilk_in, **kwargs):
+    def get_wt_output(self, WS_eff_ilk_in, TI_eff_ilk, ct_ilk_in, **kwargs):
         """
         Recalculate wt power and thrust by the integrating rotor averaged
         wind speed as done in EllipSys. flow_map is used to interpolate the integration points;
@@ -208,8 +208,8 @@ class RANSLUT(All2AllIterative):
         """
 
         if not self.power_as_RANS:
-            power_ilk = self.windTurbines.power(ws=WS_eff_ilk_in, **self.get_wt_kwargs(TI_eff_ilk_in, kwargs))
-            return WS_eff_ilk_in, TI_eff_ilk_in, ct_ilk_in, power_ilk
+            power_ilk = self.windTurbines.power(ws=WS_eff_ilk_in, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
+            return WS_eff_ilk_in, TI_eff_ilk, power_ilk, ct_ilk_in
 
         starttime = time.time()
         type_i = np.asarray(kwargs['type_i'], dtype=int)
@@ -244,7 +244,6 @@ class RANSLUT(All2AllIterative):
         power_ilk = np.zeros(shape)
         ct_ilk = np.zeros(shape)
         WS_eff_ilk = np.zeros(shape)
-        TI_eff_ilk = np.zeros(shape)
         Cnsts = 0.5 * 1.225 * np.asarray(Drefs) ** 2 * 0.25 * np.pi
         if self.flowmap_maxpoints is not None:
             flowmap_points = (nr - 1) * ntheta * I
@@ -261,7 +260,7 @@ class RANSLUT(All2AllIterative):
             kwargs2['WD_ilk'][:, :, :] = wd[l]
             localWind = self.site.local_wind(x=kwargs['x_ilk'][:, l, 0], y=kwargs['y_ilk'][:, l, 0], h=kwargs2['h_ilk'][:, l, 0], wd=wd[l], ws=ws)
             simres = SimulationResult(self, localWind=localWind,
-                                      WS_eff_ilk=WS_eff_ilk_in, TI_eff_ilk=TI_eff_ilk_in[:, l, :][:, na, :],
+                                      WS_eff_ilk=WS_eff_ilk_in, TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
                                       power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk_in, **kwargs2)
             pos[:, 0] = kwargs['x_ilk'][:, l, 0]
             pos[:, 1] = kwargs['y_ilk'][:, l, 0]
