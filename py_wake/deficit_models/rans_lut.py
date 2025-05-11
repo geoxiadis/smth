@@ -200,8 +200,9 @@ class RANSLUT(All2AllIterative):
 
     def get_wt_output(self, WS_eff_ilk_in, TI_eff_ilk, ct_ilk_in, **kwargs):
         """
-        Recalculate wt power and thrust by the integrating rotor averaged
-        wind speed as done in EllipSys. flow_map is used to interpolate the integration points;
+        Recalculate wt power and thrust by the integrating rotor averaged wind speed
+        including induction and interpolation with a CPstar, CTstar = f(U_AD) relation,
+        as done in EllipSys. flow_map is used to interpolate the integration points;
         this method requires a lot of memory when many points are extracted at the same time in
         combination with a large wind farm. The variable flowmap_maxpoints can be used to reduce
         the number of points per flow_map call for the cost of computational speed.
