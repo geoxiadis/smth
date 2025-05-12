@@ -213,13 +213,12 @@ class RANSLUT(All2AllIterative):
             return WS_eff_ilk_in, TI_eff_ilk, power_ilk_org, ct_ilk_in
 
         starttime = time.time()
+        # type_i = np.asarray(kwargs['type_i_ilk'][:, 0, 0], dtype=int)
         type_i = np.asarray(kwargs['type_i'], dtype=int)
         uniquetypes = np.unique(type_i)
         types = []
         for i in range(len(uniquetypes)):
             types.append(np.where(type_i == uniquetypes[i])[0])
-        zRefs = self.windTurbines.hub_height(uniquetypes)
-        Drefs = self.windTurbines.diameter(uniquetypes)
 
         # Calculate ad integration parameters
         weights = self.rotorAvgModelPost.nodes_weight[na, :, na]
@@ -228,47 +227,44 @@ class RANSLUT(All2AllIterative):
         shape = WS_eff_ilk_in.shape
         I, L, K = shape
         pos = np.zeros((I, 3))
-        for i in range(len(uniquetypes)):
-            pos[types[i], 2] = zRefs[i]
-        o3 = np.zeros((I, 3))
-        o3[:, :] = np.array([1.0, 0.0, 0.0])[na, :]
+        pos[:, 0] = kwargs['x_ilk'][:, 0, 0]
+        pos[:, 1] = kwargs['y_ilk'][:, 0, 0]
+        pos[:, 2] = kwargs['h_ilk'][:, 0, 0]
+        deg = 270.0 - kwargs['wd']
+        o3 = np.zeros((I, L, 3))
+        o3[:, :, :] = np.array([1.0, 0.0, 0.0])[na, :]
+        o3[:, :, 0] = np.cos(deg * (np.pi / 180.0))[na, :]
+        o3[:, :, 1] = np.sin(deg * (np.pi / 180.0))[na, :]
         o2 = np.zeros((I, 3))
         o2[:, :] = np.array([0.0, 0.0, 1.0])[na, :]
         cxyz_i = np.zeros((I, nr - 1, ntheta, 3))
         cxyz_i[:, :, :, 0] = 0.5 * self.rotorAvgModelPost.nodes_x.reshape((nr - 1, ntheta))[na, :, :]
         cxyz_i[:, :, :, 1] = 0.5 * self.rotorAvgModelPost.nodes_y.reshape((nr - 1, ntheta))[na, :, :]
-        for i in range(len(uniquetypes)):
-            cxyz_i[types[i], :, :, 0:2] = cxyz_i[types[i], :, :, 0:2] * Drefs[i]
-
-        wd = kwargs['wd']
-        ws = kwargs['ws']
+        cxyz_i[:, :, :, 0:2] = cxyz_i[:, :, :, 0:2] * kwargs['D_i'][:, na, na, na]
         power_ilk = np.zeros(shape)
         ct_ilk = np.zeros(shape)
         WS_eff_ilk = np.zeros(shape)
-        Cnsts = 0.5 * 1.225 * np.asarray(Drefs) ** 2 * 0.25 * np.pi
+        Cnsts = 0.5 * 1.225 * np.asarray(kwargs['D_i']) ** 2 * 0.25 * np.pi
         if self.flowmap_maxpoints is not None:
             flowmap_points = (nr - 1) * ntheta * I
             nflowmaps = int(np.ceil(flowmap_points) / self.flowmap_maxpoints)
             i1last = (nflowmaps - 1) * self.flowmap_maxpoints
             WS_eff_jlk = np.zeros((flowmap_points, 1, K))
             TI_eff_jlk = np.zeros((flowmap_points, 1, K))
+        # Loop over wind directions because flow_map cannot include interpolation points (x_j, y_j, h_j) vectorized over wds
+        # since they change orientation per wind directoin
         for l in range(L):
-            print('wd=', wd[l])
-            sys.stdout.flush()
+            # print('wd=', kwargs['wd'][l])
+            # sys.stdout.flush()
+            localWind = self.site.local_wind(x=kwargs['x_ilk'][:, 0, 0], y=kwargs['y_ilk'][:, 0, 0], h=kwargs['h_ilk'][:, 0, 0], wd=kwargs['wd'][l], ws=kwargs['ws'])
             kwargs2 = kwargs.copy()
-            kwargs2['wd'] = [wd[l]]
+            kwargs2['wd'] = [kwargs['wd'][l]]
             kwargs2['L'] = 1
-            kwargs2['WD_ilk'] = np.array([[wd[l]]])
-            localWind = self.site.local_wind(x=kwargs['x_ilk'][:, 0, 0], y=kwargs['y_ilk'][:, 0, 0], h=kwargs2['h_ilk'][:, 0, 0], wd=wd[l], ws=ws)
+            kwargs2['WD_ilk'] = np.array([[kwargs['wd'][l]]])
             simres = SimulationResult(self, localWind=localWind,
                                       WS_eff_ilk=WS_eff_ilk_in[:, l, :][:, na, :], TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
                                       power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk_in[:, l, :][:, na, :], **kwargs2)
-            pos[:, 0] = kwargs['x_ilk'][:, 0, 0]
-            pos[:, 1] = kwargs['y_ilk'][:, 0, 0]
-            deg = 270.0 - wd[l]
-            o3[:, 0] = np.cos(deg * (np.pi / 180.0))
-            o3[:, 1] = np.sin(deg * (np.pi / 180.0))
-            cxyzg_i = cxzy_to_cxyzg(cxyz_i, o3, o2, pos)
+            cxyzg_i = cxzy_to_cxyzg(cxyz_i, o3[:, l, :], o2, pos)
             x_j = cxyzg_i[:, :, :, 0].flatten()
             y_j = cxyzg_i[:, :, :, 1].flatten()
             h_j = cxyzg_i[:, :, :, 2].flatten()
@@ -282,26 +278,24 @@ class RANSLUT(All2AllIterative):
                 lw_j, WS_eff_jlk[i1last:, :, :], TI_eff_jlk[i1last:, :, :] = self._flow_map(x_j[i1last:], y_j[i1last:], h_j[i1last:], simres)
 
             # Integrate U over AD
-            WS_eff_ilk[:, l, :] = np.sum(np.reshape(WS_eff_jlk, (I, ntheta * (nr - 1), len(ws))) * weights, axis=1)
+            WS_eff_ilk[:, l, :] = np.sum(np.reshape(WS_eff_jlk, (I, ntheta * (nr - 1), K)) * weights, axis=1)
 
-            # Interpolate CP and CT
-            if len(uniquetypes) > 1:
-                lut_cpstar = np.zeros(WS_eff_ilk[:, 0, :].shape)
-                for i in range(len(uniquetypes)):
-                    lut_cpstar[types[i], :] = self.fint_CPstar[i](WS_eff_ilk[types[i], l, :])
-                    ct_ilk[types[i], l, :] = self.fint_CTstar[i](WS_eff_ilk[types[i], l, :])
-            else:
-                lut_cpstar = self.fint_CPstar[0](WS_eff_ilk[:, l, :])
-                ct_ilk[:, l, :] = self.fint_CTstar[0](WS_eff_ilk[:, l, :])
+        # Interpolate CP and CT
+        # Calculate power and make sure to stay rated (due to CP interpolation errors)
+        if len(uniquetypes) > 1:
+            lut_cpstar = np.zeros(WS_eff_ilk[:, :, :].shape)
+            for i in range(len(uniquetypes)):
+                lut_cpstar[types[i], :, :] = self.fint_CPstar[i](WS_eff_ilk[types[i], :, :])
+                ct_ilk[types[i], :, :] = self.fint_CTstar[i](WS_eff_ilk[types[i], :, :])
+                power_ilk[types[i], :, :] = lut_cpstar[types[i], :, :] * Cnsts[types[i]][0] * WS_eff_ilk[types[i], :, :] ** 3
+                power_ilk[types[i], :, :][power_ilk[types[i], :, :] > self.Prated[i]] = self.Prated[i]
 
-            # Calculate power and make sure to stay rated (due to CP interpolation errors)
-            if len(uniquetypes) > 1:
-                for i in range(len(uniquetypes)):
-                    power_ilk[types[i], l, :] = lut_cpstar[types[i], :] * Cnsts[i] * WS_eff_ilk[types[i], l, :] ** 3
-                    power_ilk[types[i], l, :][power_ilk[types[i], l, :] > self.Prated[i]] = self.Prated[i]
-            else:
-                power_ilk[:, l, :] = lut_cpstar * Cnsts[0] * WS_eff_ilk[:, l, :] ** 3
-                power_ilk[power_ilk > self.Prated[0]] = self.Prated[0]
+        else:
+            lut_cpstar = self.fint_CPstar[0](WS_eff_ilk[:, :, :])
+            ct_ilk[:, :, :] = self.fint_CTstar[0](WS_eff_ilk[:, :, :])
+            power_ilk[:, :, :] = lut_cpstar * Cnsts[0] * WS_eff_ilk[:, :, :] ** 3
+            power_ilk[power_ilk > self.Prated[0]] = self.Prated[0]
+
         # Set power and ct to zero for wts that were originally shut down
         wt_shutdown = np.where(power_ilk_org == 0.0)
         ct_ilk[wt_shutdown] = 0.0
