@@ -131,7 +131,6 @@ def test_rans_lut():
     npt.assert_array_almost_equal(simres.ct_ilk.flatten(), CTstar_expected, 6)
     npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), TI_eff_expected, 6)
 
-    '''
     # Test multi lut (using the same file for now)
     lut2 = xr.load_dataset(lutname)
     lut2.attrs['name'] = 'V80b'
@@ -142,10 +141,8 @@ def test_rans_lut():
     wts = WindTurbine.from_WindTurbines([wts, wts])
     wfm = RANSLUT(lutname_merged, site, wts, zRef, None, power_as_RANS=True, ws_cutin=[4.0] * 2, ws_cutout=[25.0] * 2, dws=1.0, Prated=[2e6] * 2, flowmap_maxpoints=None)
     type_i = np.array([0, 1, 0, 0, 1, 1, 0])
-    h_i = np.ones((len(wt_x))) * zRef
-    simres = wfm(wt_x, wt_y, h_i, type_i, [30.0], [10.0])
+    simres = wfm(wt_x, wt_y, type=type_i, wd=[30.0], ws=[10.0])
     npt.assert_array_almost_equal(simres.power_ilk.flatten() * 1e-6, power_expected, 6)
     npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), UAD_expected, 6)
     npt.assert_array_almost_equal(simres.ct_ilk.flatten(), CTstar_expected, 6)
     npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), TI_eff_expected, 6)
-    '''
