@@ -207,10 +207,10 @@ class RANSLUT(All2AllIterative):
         combination with a large wind farm. The variable flowmap_maxpoints can be used to reduce
         the number of points per flow_map call for the cost of computational speed.
         """
+        power_ilk_org = self.windTurbines.power(ws=WS_eff_ilk_in, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
 
         if not self.power_as_RANS:
-            power_ilk = self.windTurbines.power(ws=WS_eff_ilk_in, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
-            return WS_eff_ilk_in, TI_eff_ilk, power_ilk, ct_ilk_in
+            return WS_eff_ilk_in, TI_eff_ilk, power_ilk_org, ct_ilk_in
 
         starttime = time.time()
         type_i = np.asarray(kwargs['type_i'], dtype=int)
@@ -258,13 +258,13 @@ class RANSLUT(All2AllIterative):
             kwargs2 = kwargs.copy()
             kwargs2['wd'] = [wd[l]]
             kwargs2['L'] = 1
-            kwargs2['WD_ilk'][:, :, :] = wd[l]
-            localWind = self.site.local_wind(x=kwargs['x_ilk'][:, l, 0], y=kwargs['y_ilk'][:, l, 0], h=kwargs2['h_ilk'][:, l, 0], wd=wd[l], ws=ws)
+            kwargs2['WD_ilk'] = np.array([[wd[l]]])
+            localWind = self.site.local_wind(x=kwargs['x_ilk'][:, 0, 0], y=kwargs['y_ilk'][:, 0, 0], h=kwargs2['h_ilk'][:, 0, 0], wd=wd[l], ws=ws)
             simres = SimulationResult(self, localWind=localWind,
-                                      WS_eff_ilk=WS_eff_ilk_in, TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
-                                      power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk_in, **kwargs2)
-            pos[:, 0] = kwargs['x_ilk'][:, l, 0]
-            pos[:, 1] = kwargs['y_ilk'][:, l, 0]
+                                      WS_eff_ilk=WS_eff_ilk_in[:, l, :][:, na, :], TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
+                                      power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk_in[:, l, :][:, na, :], **kwargs2)
+            pos[:, 0] = kwargs['x_ilk'][:, 0, 0]
+            pos[:, 1] = kwargs['y_ilk'][:, 0, 0]
             deg = 270.0 - wd[l]
             o3[:, 0] = np.cos(deg * (np.pi / 180.0))
             o3[:, 1] = np.sin(deg * (np.pi / 180.0))
@@ -302,14 +302,13 @@ class RANSLUT(All2AllIterative):
             else:
                 power_ilk[:, l, :] = lut_cpstar * Cnsts[0] * WS_eff_ilk[:, l, :] ** 3
                 power_ilk[power_ilk > self.Prated[0]] = self.Prated[0]
-
-            # Set power and ct to zero for wts that were originally shut down
-            wt_shutdown = np.where(simres.power_ilk == 0.0)
-            ct_ilk[wt_shutdown] = 0.0
-            power_ilk[wt_shutdown] = 0.0
-            # print('power_ilk', power_ilk, 'WS_eff_ilk', WS_eff_ilk)
-            endtime = time.time()
-            print('post time', endtime - starttime, 'sec')
+        # Set power and ct to zero for wts that were originally shut down
+        wt_shutdown = np.where(power_ilk_org == 0.0)
+        ct_ilk[wt_shutdown] = 0.0
+        power_ilk[wt_shutdown] = 0.0
+        # print('power_ilk', power_ilk, 'WS_eff_ilk', WS_eff_ilk)
+        endtime = time.time()
+        print('post time', endtime - starttime, 'sec')
         return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk
 
 
