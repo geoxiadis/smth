@@ -16,7 +16,7 @@ from py_wake.examples.data.hornsrev1 import Hornsrev1Site
 from py_wake.examples.data.iea37 import iea37_path
 from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
 from py_wake.examples.data.iea37.iea37_reader import read_iea37_windfarm
-from py_wake.flow_map import HorizontalGrid, XYGrid, YZGrid
+from py_wake.flow_map import HorizontalGrid, XYGrid, YZGrid, Points
 from py_wake.superposition_models import SquaredSum, WeightedSum, LinearSum
 from py_wake.tests import npt
 from py_wake.tests.test_files import tfp
@@ -29,7 +29,7 @@ from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.rotor_avg_models.rotor_avg_model import CGIRotorAvg
 import warnings
 from py_wake.deficit_models.utils import ct2a_mom1d
-from py_wake.wind_turbines._wind_turbines import WindTurbine
+from py_wake.wind_turbines._wind_turbines import WindTurbine, WindTurbines
 from py_wake.site._site import UniformSite
 
 
@@ -606,3 +606,29 @@ def test_flow_map_symmetry(deficitModel):
         assert min(ws) < 9
         npt.assert_array_less(ws_center[10:], 9)
     npt.assert_array_almost_equal(ws_center[:10], 10)
+
+
+def test_type_i():
+    class MyWakeModel(NOJDeficit):
+        def calc_deficit(self, ct_ilk, D_src_il, dw_ijlk, cw_ijlk, type_i, **kwargs):
+            term_numerator_ilk = 2. * self.ct2a(ct_ilk)
+            WS_ref_ilk = kwargs[self.WS_key]
+            R_src_il = D_src_il / 2
+
+            k_ijl = np.atleast_3d(self.k_ilk(**kwargs))[:, na, :, 0] * type_i[:, na, na]
+            wake_radius_ijl = (k_ijl * dw_ijlk[:, :, :, 0] + D_src_il[:, na, :] / 2)
+            term_denominator_ijlk = np.where(dw_ijlk > 0, ((wake_radius_ijl / R_src_il[:, na, :])**2)[..., na], 1)
+
+            in_wake_ijlk = wake_radius_ijl[..., na] > cw_ijlk
+
+            layout_factor_ijlk = WS_ref_ilk[:, na] * (in_wake_ijlk / term_denominator_ijlk)
+            return term_numerator_ilk[:, na] * layout_factor_ijlk
+
+    wts = WindTurbines.from_WindTurbine_lst([IEA37_WindTurbines(), IEA37_WindTurbines()])
+    wfm = PropagateDownwind(UniformSite(), wts, MyWakeModel(rotorAvgModel=None))
+    sim_res = wfm([0, 0, 0], [0, 200, 400], wd=270, ws=10, type=[0, 1, 1])
+    fm = sim_res.flow_map(Points(x=[200, 200, 200], y=[0, 200, 400], h=[110, 110, 110]))
+    npt.assert_allclose(fm.WS_eff, [3.4, 6.1, 6.1], atol=.1)
+    if 0:
+        sim_res.flow_map().plot_wake_map()
+        plt.show()
