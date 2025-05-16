@@ -120,8 +120,8 @@ class RANSLUT(All2AllIterative):
         return lut
 
     def rename_lut(self, lut):
-        lutvars = ['x', 'y', 'z', 'ct', 'ti', 'yaw', 'type_i']
-        renamevars = ['dw_ijlk', 'hcw_ijlk', 'z_ijlk', 'ct_ilk', 'TI_eff_ilk', 'yaw_ilk', 'type_i_ilk']
+        lutvars = ['x', 'y', 'z', 'ct', 'ti', 'yaw']
+        renamevars = ['dw_ijlk', 'hcw_ijlk', 'z_ijlk', 'ct_ilk', 'TI_eff_ilk', 'yaw_ilk']
         d = {}
         for i in range(len(lutvars)):
             if lutvars[i] in lut.coords:
@@ -129,7 +129,8 @@ class RANSLUT(All2AllIterative):
         return lut.rename(d)
 
     def read_ad_controlfiles(self):
-        # RANS based calibrated control file for CPstar and CTstar as function of the disk averaged velocity UAD provided by the user
+        # RANS based calibrated control file for CPstar and CTstar as function of
+        # the disk averaged velocity UAD provided by the user
         for ADcontrolfile in self.ADcontrolfiles:
             RANScal = np.genfromtxt(ADcontrolfile, skip_header=True)
             self.fint_CPstar.append(interp1d(RANScal[:, 0], RANScal[:, 2], fill_value=0.0, bounds_error=False))
@@ -162,11 +163,12 @@ class RANSLUT(All2AllIterative):
             Dref = self.windTurbines.diameter(type)
             zH = self.windTurbines.hub_height(type)
 
-            cxyzg_i = cxzy_to_cxyzg(cxyz[na, :, :, :] * Dref, np.array([[1.0, 0.0, 0.0]]), np.array([[0.0, 0.0, 1.0]]), np.array([[0.0, 0.0, zH]]))
+            cxyzg_i = cxzy_to_cxyzg(cxyz[na, :, :, :] * Dref, np.array([[1.0, 0.0, 0.0]]),
+                                    np.array([[0.0, 0.0, 1.0]]), np.array([[0.0, 0.0, zH]]))
             y_j = cxyzg_i[:, :, :, 1].flatten()
             h_j = cxyzg_i[:, :, :, 2].flatten()
-            if 'type_i_ilk' in data.dims:
-                Udata = data.sel(type_i_ilk=type).interp(TI_eff_ilk=ti).interp(hcw_ijlk=('i', y_j), z_ijlk=('i', h_j))
+            if 'type_i' in data.dims:
+                Udata = data.sel(type_i=type).interp(TI_eff_ilk=ti).interp(hcw_ijlk=('i', y_j), z_ijlk=('i', h_j))
             else:
                 Udata = data.interp(TI_eff_ilk=ti).interp(hcw_ijlk=('i', y_j), z_ijlk=('i', h_j))
 
@@ -189,9 +191,11 @@ class RANSLUT(All2AllIterative):
                 outfile = 'lutcal_WT%g_Ti%g_%i.dat' % (Dref, ti, type)
                 f = open(outfile, 'w')
                 f.write('%s %s\n' % (str(ws.size + 2), ' 4'))
-                f.write('%16.14f %16.14f %16.14f %16.14f\n' % (0.95 * U_CT_CP_AD[0, 0], U_CT_CP_AD[0, 1], U_CT_CP_AD[0, 2], 0.95 * ws[0]))
+                f.write('%16.14f %16.14f %16.14f %16.14f\n' %
+                        (0.95 * U_CT_CP_AD[0, 0], U_CT_CP_AD[0, 1], U_CT_CP_AD[0, 2], 0.95 * ws[0]))
                 for k in range(len(ws)):
-                    f.write('%16.14f %16.14f %16.14f %16.14f\n' % (U_CT_CP_AD[k, 0], U_CT_CP_AD[k, 1], U_CT_CP_AD[k, 2], ws[k]))
+                    f.write('%16.14f %16.14f %16.14f %16.14f\n' %
+                            (U_CT_CP_AD[k, 0], U_CT_CP_AD[k, 1], U_CT_CP_AD[k, 2], ws[k]))
                 f.write('%16.14f %16.14f %16.14f %16.14f\n' % (ws[-1], 0.0, 0.0, ws[-1]))
                 f.close()
 
@@ -256,13 +260,15 @@ class RANSLUT(All2AllIterative):
         for l in range(L):
             # print('wd=', kwargs['wd'][l])
             # sys.stdout.flush()
-            localWind = self.site.local_wind(x=kwargs['x_ilk'][:, 0, 0], y=kwargs['y_ilk'][:, 0, 0], h=kwargs['h_ilk'][:, 0, 0], wd=kwargs['wd'][l], ws=kwargs['ws'])
+            localWind = self.site.local_wind(
+                x=kwargs['x_ilk'][:, 0, 0], y=kwargs['y_ilk'][:, 0, 0], h=kwargs['h_ilk'][:, 0, 0], wd=kwargs['wd'][l], ws=kwargs['ws'])
             kwargs2 = kwargs.copy()
             kwargs2['wd'] = [kwargs['wd'][l]]
             kwargs2['L'] = 1
             kwargs2['WD_ilk'] = np.array([[kwargs['wd'][l]]])
             simres = SimulationResult(self, localWind=localWind,
-                                      WS_eff_ilk=WS_eff_ilk_in[:, l, :][:, na, :], TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
+                                      WS_eff_ilk=WS_eff_ilk_in[:, l, :][:, na,
+                                                                        :], TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
                                       power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk_in[:, l, :][:, na, :], **kwargs2)
             cxyzg_i = cxzy_to_cxyzg(cxyz_i, o3[:, l, :], o2, pos)
             x_j = cxyzg_i[:, :, :, 0].flatten()
@@ -274,8 +280,10 @@ class RANSLUT(All2AllIterative):
                 for i in range(nflowmaps - 1):
                     i1 = i * self.flowmap_maxpoints
                     i2 = (i + 1) * self.flowmap_maxpoints
-                    lw_j, WS_eff_jlk[i1:i2, :, :], TI_eff_jlk[i1:i2, :, :] = self._flow_map(x_j[i1:i2], y_j[i1:i2], h_j[i1:i2], simres)
-                lw_j, WS_eff_jlk[i1last:, :, :], TI_eff_jlk[i1last:, :, :] = self._flow_map(x_j[i1last:], y_j[i1last:], h_j[i1last:], simres)
+                    lw_j, WS_eff_jlk[i1:i2, :, :], TI_eff_jlk[i1:i2, :, :] = self._flow_map(
+                        x_j[i1:i2], y_j[i1:i2], h_j[i1:i2], simres)
+                lw_j, WS_eff_jlk[i1last:, :, :], TI_eff_jlk[i1last:, :, :] = self._flow_map(
+                    x_j[i1last:], y_j[i1last:], h_j[i1last:], simres)
 
             # Integrate U over AD
             WS_eff_ilk[:, l, :] = np.sum(np.reshape(WS_eff_jlk, (I, ntheta * (nr - 1), K)) * weights, axis=1)
@@ -287,7 +295,8 @@ class RANSLUT(All2AllIterative):
             for i in range(len(uniquetypes)):
                 lut_cpstar[types[i], :, :] = self.fint_CPstar[i](WS_eff_ilk[types[i], :, :])
                 ct_ilk[types[i], :, :] = self.fint_CTstar[i](WS_eff_ilk[types[i], :, :])
-                power_ilk[types[i], :, :] = lut_cpstar[types[i], :, :] * Cnsts[types[i]][0] * WS_eff_ilk[types[i], :, :] ** 3
+                power_ilk[types[i], :, :] = lut_cpstar[types[i], :, :] * \
+                    Cnsts[types[i]][0] * WS_eff_ilk[types[i], :, :] ** 3
                 power_ilk[types[i], :, :][power_ilk[types[i], :, :] > self.Prated[i]] = self.Prated[i]
 
         else:
@@ -312,7 +321,9 @@ class RANSLUT(All2AllIterative):
 # lut files with multple turbines can be provided using type_i dimension. In this case, the coords need to be in [m]
 class RANSLUTDeficit(XRLUTDeficitModel):
     """ Expects LUT velocity deficit xarray with coords in [m] and PyWake variable names """
-    def __init__(self, lut=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False, shearcor=False):
+
+    def __init__(self, lut=None, rotorAvgModel=None, groundModel=None,
+                 use_effective_ws=True, use_effective_ti=False, shearcor=False):
         if lut is None:
             ds = fugalut2ranslut()
             lut = ds.deficits.sel(TI_eff_ilk=0.075)
