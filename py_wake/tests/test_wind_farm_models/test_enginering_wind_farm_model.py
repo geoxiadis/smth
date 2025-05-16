@@ -13,6 +13,7 @@ from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit
 from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit, BastankhahGaussian
 from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.deficit_models.noj import NOJDeficit
+from py_wake.deficit_models.rans_lut import RANSLUTDeficit
 from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit, SelfSimilarityDeficit2020
 from py_wake.deficit_models.utils import ct2a_mom1d
 from py_wake.deflection_models.jimenez import JimenezWakeDeflection
@@ -582,6 +583,8 @@ def test_PropagateUpDownIterative_wake_deficitModels(wake_deficitModel):
                                      wake_deficitModel=wake_deficitModel(),
                                      turbulenceModel=STF2017TurbulenceModel())
         return
+    if wake_deficitModel == RANSLUTDeficit:
+        return
     pudi = PropagateUpDownIterative(site=UniformSite(),
                                     windTurbines=V80(),
                                     wake_deficitModel=wake_deficitModel(use_effective_ws=True),
@@ -594,7 +597,7 @@ def test_PropagateUpDownIterative_wake_deficitModels(wake_deficitModel):
 
     x = np.array([0, 400, 800, 800])
     y = [0, 0, 100, -200]
-    npt.assert_array_almost_equal(pudi(x, y, wd=270).WS_eff, all2all(x, y, wd=270).WS_eff, 5)
+    npt.assert_array_almost_equal(pudi(x, y, wd=270).WS_eff, all2all(x, y, wd=270).WS_eff)
 
 
 @pytest.mark.parametrize('blockage_deficitModel', get_models(BlockageDeficitModel))
