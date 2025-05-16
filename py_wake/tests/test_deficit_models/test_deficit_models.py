@@ -131,7 +131,7 @@ def test_IEA37_ex16(deficitModel, aep_ref):
 
 @pytest.mark.parametrize('deficitModel', get_models(WakeDeficitModel))
 def test_huge_distance(deficitModel):
-    if wake_deficitModel == RANSLUTDeficit:
+    if deficitModel == RANSLUTDeficit:
         return
     ref = {"NOJDeficit": 9.799733,
            "FugaDeficit": 9.8,
