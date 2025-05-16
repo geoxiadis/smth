@@ -149,8 +149,8 @@ class RANSLUT(All2AllIterative):
         uStar_UH = ti * np.sqrt(1.5 * np.sqrt(cmu))
         # z0 = zRef / (np.exp(kappa / uStar_UH) - 1)
 
-        if 'type_i_ilk' in data.dims:
-            types = data.type_i_ilk.values
+        if 'type_i' in data.dims:
+            types = data.type_i.values
         else:
             types = [0]
 
