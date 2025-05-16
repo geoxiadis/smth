@@ -221,9 +221,6 @@ class EngineeringWindFarmModel(WindFarmModel):
             kwargs['TI_ilk'] = lw.TI_ilk
             kwargs['TI_eff_ilk'] = lw.TI_ilk + 0.  # autograd-friendly copy
 
-        # if 'type_i_ilk' not in kwargs:
-        #     kwargs.update({'type_i_ilk': kwargs['type_i'][:, na, na]})
-        #     kwargs.update({'type_i': np.zeros((I), dtype=int)})
         self._check_input(kwargs)
 
         if n_cpu != 1 or wd_chunks or ws_chunks > 1:
