@@ -288,22 +288,17 @@ class RANSLUT(All2AllIterative):
             # Integrate U over AD
             WS_eff_ilk[:, l, :] = np.sum(np.reshape(WS_eff_jlk, (I, ntheta * (nr - 1), K)) * weights, axis=1)
 
-        # Interpolate CP and CT
-        # Calculate power and make sure to stay rated (due to CP interpolation errors)
-        if len(uniquetypes) > 1:
-            lut_cpstar = np.zeros(WS_eff_ilk[:, :, :].shape)
-            for i in range(len(uniquetypes)):
-                lut_cpstar[types[i], :, :] = self.fint_CPstar[i](WS_eff_ilk[types[i], :, :])
-                ct_ilk[types[i], :, :] = self.fint_CTstar[i](WS_eff_ilk[types[i], :, :])
-                power_ilk[types[i], :, :] = lut_cpstar[types[i], :, :] * \
-                    Cnsts[types[i]][0] * WS_eff_ilk[types[i], :, :] ** 3
-                power_ilk[types[i], :, :][power_ilk[types[i], :, :] > self.Prated[i]] = self.Prated[i]
-
-        else:
-            lut_cpstar = self.fint_CPstar[0](WS_eff_ilk[:, :, :])
-            ct_ilk[:, :, :] = self.fint_CTstar[0](WS_eff_ilk[:, :, :])
-            power_ilk[:, :, :] = lut_cpstar * Cnsts[0] * WS_eff_ilk[:, :, :] ** 3
-            power_ilk[power_ilk > self.Prated[0]] = self.Prated[0]
+        # Interpolate CP and CT and calculate power
+        lut_cpstar = np.zeros(WS_eff_ilk[:, :, :].shape)
+        for i in range(len(uniquetypes)):
+            lut_cpstar[types[i], :, :] = self.fint_CPstar[i](WS_eff_ilk[types[i], :, :])
+            ct_ilk[types[i], :, :] = self.fint_CTstar[i](WS_eff_ilk[types[i], :, :])
+            power_ilk[types[i], :, :] = lut_cpstar[types[i], :, :] * \
+                Cnsts[types[i]][0] * WS_eff_ilk[types[i], :, :] ** 3
+            # Make sure to stay rated (due to CP interpolation errors)
+            power_ilk_i = power_ilk[types[i], :, :]
+            power_ilk_i[power_ilk_i > self.Prated[i]] = self.Prated[i]
+            power_ilk[types[i], :, :] = power_ilk_i
 
         # Set power and ct to zero for wts that were originally shut down
         wt_shutdown = np.where(power_ilk_org == 0.0)
