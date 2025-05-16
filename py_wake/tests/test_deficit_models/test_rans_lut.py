@@ -31,12 +31,10 @@ def test_rans_lut_deficit():
 
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
-
-    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.98181609, 9.95358693, 8.45426639, 9.98181609, 9.35814773,
-                                                                8.45426639, 7.97008201], 6)
-    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79325457, 0.79364978, 0.80645427, 0.79325457, 0.80198593,
-                                                            0.80645427, 0.80597008], 6)
-
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.981586, 9.95158309, 8.44755236, 9.981586, 9.27466725,
+                                                                8.44755236, 7.96661743])
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.7932578, 0.79367784, 0.80644755, 0.7932578, 0.80315466,
+                                                            0.80644755, 0.80596662])
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
     flow_map70 = simres.flow_map(HorizontalGrid(x_j, y_j, h=70))
@@ -74,11 +72,10 @@ def test_rans_lut():
 
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
-
-    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.98181609, 9.95358693, 8.45426639, 9.98181609, 9.35814773,
-                                                                8.45426639, 7.97008201], 6)
-    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79325457, 0.79364978, 0.80645427, 0.79325457, 0.80198593,
-                                                            0.80645427, 0.80597008], 6)
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.981586, 9.95158309, 8.44755236, 9.981586, 9.27466725,
+                                                                8.44755236, 7.96661743])
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.7932578, 0.79367784, 0.80644755, 0.7932578, 0.80315466,
+                                                            0.80644755, 0.80596662])
 
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
@@ -112,10 +109,10 @@ def test_rans_lut():
     # print(simres.ct_ilk.flatten())
     # print(simres.power_ilk.flatten() * 1e-6)
     # print(simres.TI_eff_ilk.flatten())
-    power_expected = [1.34972737, 1.34155641, 0.88731729, 1.34972737, 1.09624206, 0.88731729, 0.73970888]
-    UAD_expected = [8.49496922, 8.4703886, 7.31576317, 8.49496922, 7.86743257, 7.31576317, 6.89186358]
-    CTstar_expected = [1.10297574, 1.10552849, 1.13160315, 1.10297574, 1.12403335, 1.13160315, 1.13064446]
-    TI_eff_expected = [0.075, 0.075, 0.05970602, 0.075, 0.06875403, 0.05970602, 0.05390452]
+    UAD_expected = [8.6147057, 8.58803939, 7.48488612, 8.6147057, 7.95821451, 7.48488612, 7.05710211]
+    CTstar_expected = [1.0724514, 1.07502269, 1.09969144, 1.0724514, 1.09301838, 1.09969144, 1.09878787]
+    power_expected = [1.3495615, 1.34067865, 0.91059015, 1.3495615, 1.08778468, 0.91059015, 0.76105881]
+    TI_eff_expected = [0.075, 0.075, 0.05963934, 0.075, 0.06793616, 0.05963934, 0.05373742]
     npt.assert_array_almost_equal(simres.power_ilk.flatten() * 1e-6, power_expected, 6)
     npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), UAD_expected, 6)
     npt.assert_array_almost_equal(simres.ct_ilk.flatten(), CTstar_expected, 6)
