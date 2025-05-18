@@ -17,7 +17,7 @@ class RANSLUT(All2AllIterative):
     def __init__(self, path_LUT, site, windTurbines, zRef, Dref, rotorAvgModel=None,
                  power_as_RANS=True, rotorAvgModelPost=EllipSysPolygonRotorAvg(n_r=9, n_theta=32),
                  flowmap_maxpoints=10000,
-                 ADcontrolfiles=None, ADcontrolfiles_write=False,
+                 ADcontrolfiles=None, ADcontrolfiles_write=False, cal_TI=0.075,
                  ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6]):
         """
         Parameters
@@ -55,6 +55,9 @@ class RANSLUT(All2AllIterative):
         ADcontrolfiles_write : bool
             If True and ADcontrolfiles is None, then the lut calculated
             CTstar, CPstar = f(U_AD) relationship is written to a file.
+        cal_TI : float
+            Reference Ti value to calculate shear for CTstar, CPstar = f(U_AD) relationship,
+            only used to when ADcontrolfiles is None.
         ws_cutin : list
             List of cutin wind speeds with length equal to number of different wts,
             only used to when ADcontrolfiles is None.
@@ -66,12 +69,13 @@ class RANSLUT(All2AllIterative):
             only used to when ADcontrolfiles is None.
         Prated : list
             List of rated power in [W] with length equal to number of different wts,
-            only used when power_as_RANS=True.
         """
         self.power_as_RANS = power_as_RANS
         self.rotorAvgModelPost = rotorAvgModelPost
-        self.ADcontrolfiles = ADcontrolfiles
         self.flowmap_maxpoints = flowmap_maxpoints
+        self.ADcontrolfiles = ADcontrolfiles
+        self.ADcontrolfiles_write = ADcontrolfiles_write
+        self.cal_TI = cal_TI
         self.ws_cutin = ws_cutin
         self.ws_cutout = ws_cutout
         self.dws = dws
@@ -90,20 +94,7 @@ class RANSLUT(All2AllIterative):
                                   turbulenceModel=turb,
                                   superpositionModel=LinearSum())
 
-        if power_as_RANS:
-            # CP and CT as function of disk-avereaged wind speed used for post processing
-            self.fint_CPstar = []
-            self.fint_CTstar = []
-            if ADcontrolfiles is None:
-                starttime = time.time()
-                # Could add a TI dimension interpolation lists
-                lw_j = self.site.local_wind(h=zRef)
-                Ti = lw_j.TI_ilk[0, 0, 0]
-                self.cal_lut(Ti, write=ADcontrolfiles_write)
-                endtime = time.time()
-                print('cal time', endtime - starttime, 'sec')
-            else:
-                self.read_ad_controlfiles()
+        self.get_CPCTstar_lut()
 
     def rescale_lut_coords(self, lut, zRef, Dref):
         if Dref is not None and zRef is not None:
@@ -128,6 +119,16 @@ class RANSLUT(All2AllIterative):
                 d[lutvars[i]] = renamevars[i]
         return lut.rename(d)
 
+    def get_CPCTstar_lut(self):
+        if self.power_as_RANS:
+            # CP and CT as function of rotot-averaged wind speed used for post processing
+            self.fint_CPstar = []
+            self.fint_CTstar = []
+            if self.ADcontrolfiles is None:
+                self.cal_lut()
+            else:
+                self.read_ad_controlfiles()
+
     def read_ad_controlfiles(self):
         # RANS based calibrated control file for CPstar and CTstar as function of
         # the disk averaged velocity UAD provided by the user
@@ -136,7 +137,8 @@ class RANSLUT(All2AllIterative):
             self.fint_CPstar.append(interp1d(RANScal[:, 0], RANScal[:, 2], fill_value=0.0, bounds_error=False))
             self.fint_CTstar.append(interp1d(RANScal[:, 0], RANScal[:, 1], fill_value=0.0, bounds_error=False))
 
-    def cal_lut(self, ti, density=1.225, cmu=0.03, kappa=0.4, write=False):
+    def cal_lut(self, density=1.225, cmu=0.03, kappa=0.4):
+        starttime = time.time()
         # Calculcate CPstar, CTstar = f(UAD) directly from single wake RANS-LUT
         data = self.wake_deficitModel.da.interp(dw_ijlk=0.0)
         weights = self.rotorAvgModelPost.nodes_weight[na, :]
@@ -146,7 +148,7 @@ class RANSLUT(All2AllIterative):
         cxyz[:, :, 0] = 0.5 * self.rotorAvgModelPost.nodes_x.reshape((nr - 1, ntheta))
         cxyz[:, :, 1] = 0.5 * self.rotorAvgModelPost.nodes_y.reshape((nr - 1, ntheta))
 
-        uStar_UH = ti * np.sqrt(1.5 * np.sqrt(cmu))
+        uStar_UH = self.cal_TI * np.sqrt(1.5 * np.sqrt(cmu))
         # z0 = zRef / (np.exp(kappa / uStar_UH) - 1)
 
         if 'type_i' in data.dims:
@@ -168,9 +170,9 @@ class RANSLUT(All2AllIterative):
             y_j = cxyzg_i[:, :, :, 1].flatten()
             h_j = cxyzg_i[:, :, :, 2].flatten()
             if 'type_i' in data.dims:
-                Udata = data.sel(type_i=type).interp(TI_eff_ilk=ti).interp(hcw_ijlk=('i', y_j), z_ijlk=('i', h_j))
+                Udata = data.sel(type_i=type).interp(TI_eff_ilk=self.cal_TI).interp(hcw_ijlk=('i', y_j), z_ijlk=('i', h_j))
             else:
-                Udata = data.interp(TI_eff_ilk=ti).interp(hcw_ijlk=('i', y_j), z_ijlk=('i', h_j))
+                Udata = data.interp(TI_eff_ilk=self.cal_TI).interp(hcw_ijlk=('i', y_j), z_ijlk=('i', h_j))
 
             cts = self.windTurbines.ct(ws=ws, **_kwargs)
             cps = (self.windTurbines.power(ws=ws, **_kwargs) / (0.125 * density * Dref ** 2 * np.pi * ws ** 3))
@@ -187,8 +189,8 @@ class RANSLUT(All2AllIterative):
             U_CT_CP_AD[:, 1] = cts * ratio ** 2
             U_CT_CP_AD[:, 2] = cps * ratio ** 3
 
-            if write:
-                outfile = 'lutcal_WT%g_Ti%g_%i.dat' % (Dref, ti, type)
+            if self.ADcontrolfiles_write:
+                outfile = 'lutcal_WT%g_Ti%g_%i.dat' % (Dref, self.cal_TI, type)
                 f = open(outfile, 'w')
                 f.write('%s %s\n' % (str(ws.size + 2), ' 4'))
                 f.write('%16.14f %16.14f %16.14f %16.14f\n' %
@@ -201,6 +203,8 @@ class RANSLUT(All2AllIterative):
 
             self.fint_CPstar.append(interp1d(U_CT_CP_AD[:, 0], U_CT_CP_AD[:, 2], fill_value=0.0, bounds_error=False))
             self.fint_CTstar.append(interp1d(U_CT_CP_AD[:, 0], U_CT_CP_AD[:, 1], fill_value=0.0, bounds_error=False))
+            endtime = time.time()
+            print('cal time', endtime - starttime, 'sec')
 
     def get_wt_output(self, WS_eff_ilk_in, TI_eff_ilk, ct_ilk_in, **kwargs):
         """
@@ -267,8 +271,7 @@ class RANSLUT(All2AllIterative):
             kwargs2['L'] = 1
             kwargs2['WD_ilk'] = np.array([[kwargs['wd'][l]]])
             simres = SimulationResult(self, localWind=localWind,
-                                      WS_eff_ilk=WS_eff_ilk_in[:, l, :][:, na,
-                                                                        :], TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
+                                      WS_eff_ilk=WS_eff_ilk_in[:, l, :][:, na, :], TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
                                       power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk_in[:, l, :][:, na, :], **kwargs2)
             cxyzg_i = cxzy_to_cxyzg(cxyz_i, o3[:, l, :], o2, pos)
             x_j = cxyzg_i[:, :, :, 0].flatten()
@@ -310,15 +313,11 @@ class RANSLUT(All2AllIterative):
         return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk
 
 
-# The rans_lut from mmpe does not lead to satisfying results when using the shear correction for a row of wts.
-# The shear correction does work well for the power of a single wt.
-# This needs to be future investigated
-# lut files with multple turbines can be provided using type_i dimension. In this case, the coords need to be in [m]
 class RANSLUTDeficit(XRLUTDeficitModel):
     """ Expects LUT velocity deficit xarray with coords in [m] and PyWake variable names """
 
     def __init__(self, lut=None, rotorAvgModel=None, groundModel=None,
-                 use_effective_ws=True, use_effective_ti=False, shearcor=False):
+                 use_effective_ws=True, use_effective_ti=False):
         if lut is None:
             ds = fugalut2ranslut()
             lut = ds.deficits.sel(TI_eff_ilk=0.075)
