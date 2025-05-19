@@ -113,10 +113,7 @@ class RANSLUT(All2AllIterative):
     def rename_lut(self, lut):
         lutvars = ['x', 'y', 'z', 'ct', 'ti', 'yaw']
         renamevars = ['dw_ijlk', 'hcw_ijlk', 'z_ijlk', 'ct_ilk', 'TI_eff_ilk', 'yaw_ilk']
-        d = {}
-        for i in range(len(lutvars)):
-            if lutvars[i] in lut.coords:
-                d[lutvars[i]] = renamevars[i]
+        d = {lutvars[i]:renamevars[i] for i in range(len(lutvars)) if lutvars[i] in lut.coords}
         return lut.rename(d)
 
     def get_CPCTstar_lut(self):
