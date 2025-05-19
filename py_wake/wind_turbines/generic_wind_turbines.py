@@ -192,4 +192,6 @@ class SimpleGenericWindTurbine(WindTurbine):
 
     def _ct(self, ws):
         # eq 6. The paper states 3/2 instead of 3.2 which is either a typo or an initial guess
-        return np.minimum(self.constant_ct, self.constant_ct * (self.Ur / np.asarray(ws))**(3.2))
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', r'divide by zero encountered in divide')
+            return np.minimum(self.constant_ct, self.constant_ct * (self.Ur / np.asarray(ws))**(3.2))
