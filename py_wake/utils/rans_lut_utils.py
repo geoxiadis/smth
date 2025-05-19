@@ -116,8 +116,10 @@ def merge_luts(LUTs, types=None, outfile='LUT_merged.nc'):
     # Interpolate other LUT files to LUT file of the smallest diameter
     xref = datas[imin].x
     yref = datas[imin].y
+    # To avoid Nan values we extrapolate bounds
+    kwargs = {"fill_value": "extrapolate"}
     for i in range(len(types)):
-        datas[i] = datas[i].interp(x=xref, y=yref, z=heightsall, ct=ctall, ti=datas[0].ti)
+        datas[i] = datas[i].interp(x=xref, y=yref, z=heightsall, ct=ctall, ti=datas[0].ti, kwargs=kwargs)
     # Find smallest turbine based on diameter
     imin = np.argmin(Drefs)
     ctall = np.sort(np.unique(np.round(np.asarray(cts) * 1e10) / 1e10))
@@ -126,7 +128,7 @@ def merge_luts(LUTs, types=None, outfile='LUT_merged.nc'):
     xref = datas[imin].x
     yref = datas[imin].y
     for i in range(len(types)):
-        datas[i] = datas[i].interp(x=xref, y=yref, z=heightsall, ct=ctall, ti=datas[0].ti)
+        datas[i] = datas[i].interp(x=xref, y=yref, z=heightsall, ct=ctall, ti=datas[0].ti, kwargs=kwargs)
     # Merge
     dataset = xr.concat(datas, dim="type_i").assign_coords(type_i=types)
     # Add meta data
