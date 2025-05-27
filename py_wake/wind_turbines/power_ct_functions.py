@@ -93,13 +93,14 @@ class AdditionalModel(WindTurbineFunction, ABC):
 
 
 class SimpleYawModel(AdditionalModel):
-    """Simple model that replace ws with cos(yaw)*ws and scales the CT output with cos(yaw)**2"""
+    """Simple model that replace ws with cos(yaw)*ws and scales the CT output with cos(yaw)**exp"""
 
-    def __init__(self):
+    def __init__(self, exp=2):
         AdditionalModel.__init__(
             self, input_keys=[
                 'ws', 'yaw', 'tilt'], optional_inputs=['yaw', 'tilt'],
             output_keys=['power', 'ct'])
+        self.exp = exp
 
     def __call__(self, f, ws, yaw=None, tilt=None, **kwargs):
         if yaw is not None and tilt is not None:
@@ -111,8 +112,8 @@ class SimpleYawModel(AdditionalModel):
             co = np.cos(gradients.deg2rad(fix_shape(tilt, ws, True)))
         power_ct_arr = f(ws * co, **kwargs)  # calculate for reduced ws (ws projection on rotor)
         if kwargs['run_only'] == 1:  # ct
-            # multiply ct by cos(yaw)**2 to compensate for reduced thrust
-            return power_ct_arr * co**2
+            # multiply ct by cos(yaw)**exp to compensate for reduced thrust
+            return power_ct_arr * co**self.exp
         return power_ct_arr
 
 
@@ -147,7 +148,7 @@ class DensityCompensation(AdditionalModel):
         return np.asarray(f(ws, **kwargs))
 
 
-default_additional_models = [SimpleYawModel(), DensityScale(1.225)]
+default_additional_models = [SimpleYawModel(exp=2), DensityScale(1.225)]
 
 
 class PowerCtFunction(PowerCtModelContainer, ABC):

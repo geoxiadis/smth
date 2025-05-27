@@ -5,7 +5,7 @@ from py_wake.superposition_models import SuperpositionModel, LinearSum, Weighted
 from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
 from py_wake.deflection_models.deflection_model import DeflectionModel
 from py_wake.utils.gradients import cabs
-from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, NodeRotorAvgModel
+from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, NodeRotorAvgModel, WSPowerRotorAvg
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel
 from py_wake.deficit_models.deficit_model import ConvectionDeficitModel, BlockageDeficitModel, WakeDeficitModel
 from tqdm import tqdm
@@ -68,7 +68,9 @@ class EngineeringWindFarmModel(WindFarmModel):
             assert isinstance(wake_deficitModel, ConvectionDeficitModel)
             wake_rotorAvgModel = rotorAvgModel or self.wake_deficitModel.rotorAvgModel
             assert wake_rotorAvgModel is None or isinstance(wake_rotorAvgModel, NodeRotorAvgModel), \
-                "WeightedSum and CumulativeWakeSum only works with NodeRotorAvgModel-based rotor average models"
+                "WeightedSum and CumulativeWakeSum only work with NodeRotorAvgModel-based rotor average models"
+            assert not isinstance(wake_rotorAvgModel, WSPowerRotorAvg), \
+                'WeightedSum and CumulativeWakeSum does not work WSPowerRotorAvg'
         # TI_eff requires a turbulence model
         assert 'TI_eff_ilk' not in wake_deficitModel.args4deficit or turbulenceModel
         self.wake_deficitModel = wake_deficitModel
@@ -505,7 +507,8 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
             assert self.blockage_deficitModel.upstream_only or not isinstance(
                 self.blockage_superpositionModel, SquaredSum), msg
 
-        for j in tqdm(range(I), disable=I <= 1 or not self.verbose, desc="Calculate flow interaction", unit="wt"):
+        for j in tqdm(range(I), disable=I <= 1 or not self.verbose,
+                      desc="Calculate flow interaction (PropagateUpDownIterative)", unit="wt"):
             # wake deficit
             self.direction = 'down'
             WS_eff_wake_ilk, TI_eff_ilk, ct_ilk, res_kwargs = self._propagate_deficit(
@@ -599,7 +602,8 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
         wt_kwargs = self.get_wt_kwargs(TI_eff_ilk, kwargs)
 
         # Iterate over turbines in down wind order
-        for j in tqdm(range(I), disable=I <= 1 or not self.verbose, desc="Calculate flow interaction", unit="wt"):
+        for j in tqdm(range(I), disable=I <= 1 or not self.verbose,
+                      desc=f"Calculate flow interaction (propagate_deficit {self.direction})", unit="wt"):
             i_wt_l = wt_order_indices_ld[:, j]
             # current wt (j'th most upstream wts for all wdirs)
             m = i_wt_l * L + i_wd_l
@@ -740,7 +744,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                     # only cw needs to be rotor averaged as remaining super position input is
                     # the same all over the rotor
                     if self.wake_deficitModel.rotorAvgModel:
-                        cw_nk[-1] = (self.wake_deficitModel.rotorAvgModel(lambda ** kwargs: kwargs['cw_ijlk'],
+                        cw_nk[-1] = (self.wake_deficitModel.rotorAvgModel(lambda **kwargs: kwargs['cw_ijlk'],
                                                                           **model_kwargs))[0]
                     if isinstance(self.superpositionModel, WeightedSum):
                         deficit, uc, sigma_sqr, _ = self._calc_deficit_convection(**model_kwargs)
@@ -897,6 +901,8 @@ class All2AllIterative(EngineeringWindFarmModel):
         WS_eff_ilk_last = WS_eff_ilk + 0  # fast autograd-friendly copy
         diff_lk = np.zeros((L, K))
         diff_lk_last = None
+        max_diff_last = None
+        a = 1
         dw_iilk, hcw_iilk, dh_iilk = self.site.distance(wd_l=wd, WD_ilk=WD_ilk)
         kwargs['WD_ilk'] = WD_ilk
 
@@ -945,8 +951,8 @@ class All2AllIterative(EngineeringWindFarmModel):
             blockage_superpositionModel = self.blockage_deficitModel.superpositionModel or alt_model
 
         # Iterate until convergence
-        for j in tqdm(range(I), disable=I <= 1 or not self.verbose,
-                      desc="Calculate flow interaction", unit="Iteration"):
+        for j in tqdm(range(max(I, 20)), disable=I <= 1 or not self.verbose,
+                      desc="Calculate flow interaction (All2AllIterative)", unit="Iteration"):
             ct_last_ilk = ct_ilk + 0.
             ct_ilk = self.windTurbines.ct(np.maximum(WS_eff_ilk, 0), **wt_kwargs)
 
@@ -1043,9 +1049,17 @@ class All2AllIterative(EngineeringWindFarmModel):
             diff_lk = diff_ilk.mean(0)
             max_diff = np.max(diff_ilk.max(0))
 
+            if max_diff_last and max_diff >= max_diff_last:
+                a = 0.5
+            else:
+                a = np.minimum(a + .1, 1)
+            # print(j, a, wd[:3], max_diff, self.convergence_tolerance)
+
             if (self.convergence_tolerance is None or
                     (self.convergence_tolerance and max_diff < self.convergence_tolerance)):
                 break
+
+            WS_eff_ilk = (WS_eff_ilk * a) + (1 - a) * WS_eff_ilk_last
             # i_, l_, k_ = list(zip(*np.where(diff_ilk == max_diff)))[0]
             # wsi, wsl, wsk = WS_ilk.shape
             # print("Iteration: %d, max diff_ilk: %.8f, WT: %d, WD: %d, WS: %f, WS_eff: %f" %
@@ -1060,6 +1074,9 @@ class All2AllIterative(EngineeringWindFarmModel):
 
             WS_eff_ilk_last = WS_eff_ilk + 0  # fast autograd-friendly copy
             diff_lk_last = diff_lk
+            max_diff_last = max_diff
+        else:
+            warnings.warn(f'All2AllIterative did not converge, max WS_eff difference from last iteration {max_diff}')
 
         # print("All2AllIterative converge after %d iterations" % (j + 1))
         self.iterations = j + 1

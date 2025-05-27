@@ -97,7 +97,7 @@ def test_GaussianOverlapAvgModel_blockage(blockageDeficitModel):
 
 
 def test_GaussianOverlapAvgModel_WeightedSum():
-    with pytest.raises(AssertionError, match=r"WeightedSum and CumulativeWakeSum only works with NodeRotorAvgModel-based rotor average models"):
+    with pytest.raises(AssertionError, match=r"WeightedSum and CumulativeWakeSum only work with NodeRotorAvgModel-based rotor average models"):
         wfm = PropagateDownwind(UniformSite(), V80(), BastankhahGaussianDeficit(rotorAvgModel=GaussianOverlapAvgModel()),
                                 WeightedSum())
     wfm = PropagateDownwind(UniformSite(), V80(), BastankhahGaussianDeficit(groundModel=Mirror()),

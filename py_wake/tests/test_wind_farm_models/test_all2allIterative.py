@@ -9,7 +9,7 @@ from py_wake.deficit_models.rathmann import Rathmann
 from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit
 from py_wake.deflection_models.jimenez import JimenezWakeDeflection
 from py_wake.examples.data import wtg_path
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
+from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80, wt16_x, wt16_y
 from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines
 from py_wake.flow_map import XYGrid
 from py_wake.rotor_avg_models.rotor_avg_model import CGIRotorAvg
@@ -33,9 +33,8 @@ class FugaDeficitCount(FugaDeficit):
         return FugaDeficit._calc_layout_terms(self, **kwargs)
 
 
-@pytest.mark.parametrize('deflection_model,count',
-                         [(None, 1),
-                          (JimenezWakeDeflection(), 4)])
+@pytest.mark.parametrize('deflection_model,count', [(None, 1),
+                                                    (JimenezWakeDeflection(), 5)])
 def test_All2AllIterativeDeflection(deflection_model, count):
 
     site = IEA37Site(16)
@@ -45,7 +44,7 @@ def test_All2AllIterativeDeflection(deflection_model, count):
                                 wake_deficitModel=deficit_model,
                                 superpositionModel=LinearSum(),
                                 blockage_deficitModel=SelfSimilarityDeficit(),
-                                deflectionModel=deflection_model, convergence_tolerance=0)
+                                deflectionModel=deflection_model)
     sim_res = wf_model([0, 500, 1000, 1500], [0, 0, 0, 0],
                        wd=270, ws=10, yaw=[30, -30, 30, -30], tilt=0)
     assert wf_model.wake_deficitModel.counter == count
@@ -100,6 +99,21 @@ def test_convergence_hornsrev():
 def test_when_ct_idle_fails():
     wt = IEA34_130_1WT_Surrogate()
     sim_res = All2AllIterative(Hornsrev1Site(), wt, NOJDeficit(), turbulenceModel=STF2017TurbulenceModel())([0], [0], )
+
+
+def test_not_converge():
+    class RandomRathmann(Rathmann):
+
+        def calc_deficit(self, WS_ilk, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **_):
+            deficit = Rathmann.calc_deficit(self, WS_ilk, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **_)
+            return deficit * np.random.random(deficit.shape)
+    site = Hornsrev1Site()
+    wfm = All2AllIterative(site, windTurbines=V80(),
+                           wake_deficitModel=NOJDeficit(),
+                           blockage_deficitModel=RandomRathmann())
+    with pytest.warns(match='All2AllIterative did not converge, max WS_eff difference from last iteration '):
+        wfm(wt16_x, wt16_y)
+
 
 # def test_convergence():
 #     """Unstable from beginning

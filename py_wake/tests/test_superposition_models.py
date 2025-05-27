@@ -10,7 +10,7 @@ from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.turbulence_models import TurbulenceModel
 from py_wake.flow_map import HorizontalGrid, Points
 from py_wake.tests.test_deficit_models.test_noj import NibeA0
-from py_wake.examples.data.hornsrev1 import V80, wt_x, wt9_x, wt9_y
+from py_wake.examples.data.hornsrev1 import V80, wt9_x, wt9_y
 from py_wake.deficit_models.deficit_model import BlockageDeficitModel, WakeDeficitModel
 from py_wake.deficit_models import NoWakeDeficit
 from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines

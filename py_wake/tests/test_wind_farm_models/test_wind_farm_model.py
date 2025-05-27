@@ -303,3 +303,42 @@ def test_time_dependent_wt_positions():
         for t, ax in zip(sim_res.time.values, plt.subplots(3, 1, figsize=(4, 10))[1]):
             sim_res.flow_map(time=t).plot_wake_map(ax=ax)
         plt.show()
+
+
+@pytest.mark.parametrize(["yaw", "tilt"], [[0, 0], [0, 5], [5, 0], [5, 5]])
+def test_aep_yaw_gradients_yaw_and_tilt_combinations(yaw, tilt):
+    wrt_arg = "yaw"
+
+    from py_wake.turbulence_models import CrespoHernandez
+    from py_wake.literature.gaussian_models import Blondel_Cathelain_2020
+
+    site = IEA37Site(16)
+    windTurbines = IEA37_WindTurbines()
+
+    wfm = Blondel_Cathelain_2020(
+        site,
+        windTurbines,
+        turbulenceModel=CrespoHernandez(),
+        deflectionModel=JimenezWakeDeflection(),
+    )
+
+    x, y = wfm.site.initial_position[np.array([0, 2, 5, 8, 14])].T
+    kwargs = {
+        "x": x,
+        "y": y,
+        "h": x * 0 + wfm.windTurbines.hub_height(),
+        "wd": [0],
+        "ws": 9.8,
+        "yaw": np.zeros(5) + yaw,
+        "tilt": np.zeros(5) + tilt,
+    }
+
+    dAEP_autograd = wfm.aep_gradients(gradient_method=autograd, wrt_arg=wrt_arg, **kwargs)
+    dAEP_cs = wfm.aep_gradients(gradient_method=cs, wrt_arg=wrt_arg, **kwargs)
+    dAEP_fd = wfm.aep_gradients(gradient_method=fd, wrt_arg=wrt_arg, **kwargs)
+
+    npt.assert_array_almost_equal(dAEP_fd, dAEP_cs, 5)
+    if yaw == tilt == 0:
+        npt.assert_array_equal(dAEP_autograd, 0)
+    else:
+        npt.assert_array_almost_equal(dAEP_autograd, dAEP_cs, 14)

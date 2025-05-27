@@ -262,6 +262,19 @@ def test_plot_gradients():
     plt.close('all')
 
 
+@pytest.mark.parametrize('x', [0., .4])
+def test_sqrt_sqare(x):
+    def f(x):
+        return np.sqrt(x**2)
+
+    dydx_lst = [grad(f)(x) for grad in [fd, cs, autograd]]
+
+    npt.assert_array_almost_equal(dydx_lst[0], dydx_lst[1])
+    if x != 0:
+        # autograd does not work for sqrt(0**2)
+        npt.assert_array_almost_equal(dydx_lst[1], dydx_lst[2])
+
+
 def test_hypot():
     # Test real.
     a = np.array([3, 9])
@@ -281,14 +294,55 @@ def test_cabs():
     npt.assert_array_equal(autograd(cabs, False)(a), [-1, 1])
 
 
-def test_arctan2():
-    for x in [-.5, 0, .5]:
-        for y in [-.4, 0, .4]:
+@pytest.mark.parametrize('num', [0, 1])
+@pytest.mark.parametrize('x', [-.5, 0, .5])
+@pytest.mark.parametrize('y', [-.4, 0, .4])
+def test_arctan2(x, y, num):
+    npt.assert_array_almost_equal(gradients.arctan2(y + 0j, x).real, gradients.arctan2(y, x), 15)
+    npt.assert_array_almost_equal(gradients.arctan2(y, x + 0j).real, gradients.arctan2(y, x), 15)
+    dydx_lst = [grad(gradients.arctan2, argnum=num)(y, x) for grad in [fd, cs, autograd]]
+    if not x == 0 and y == 0:
+        # fd different
+        npt.assert_array_almost_equal(dydx_lst[0], dydx_lst[1])
+    else:
+        print()
+    npt.assert_array_almost_equal(dydx_lst[1], dydx_lst[2])
+
+
+def test_arctan2_xy():
+    plot = 0
+
+    for axes, c in zip(plt.subplots(3, 2)[1], [-.4, 0, .4]):
+
+        v = np.round(np.arange(-.5, .51, .01), 2)  # round to ensure 0 is exactly 0
+
+        c = np.full_like(v, c)
+        for num, x, y in [(0, c, v), (1, v, c)]:
+            plt.sca(axes[num])
+            grad_lst = [fd, cs, autograd]
+            dydx_lst = [grad(gradients.arctan2, argnum=num, vector_interdependence=False)(y, x) for grad in grad_lst]
             npt.assert_array_almost_equal(gradients.arctan2(y + 0j, x).real, gradients.arctan2(y, x), 15)
-            dydx_lst = [grad(gradients.arctan2)(y, x) for grad in [fd, cs, autograd]]
-            if x != 0 and y != 0:
-                npt.assert_array_almost_equal(dydx_lst[0], dydx_lst[1])
-            npt.assert_array_almost_equal(dydx_lst[1], dydx_lst[2])
+            npt.assert_array_almost_equal(gradients.arctan2(y, x + 0j).real, gradients.arctan2(y, x), 15)
+            if x[0] == 0:
+                m = y != 0
+            else:
+                m = slice(None)
+            npt.assert_array_almost_equal(dydx_lst[0][m], dydx_lst[1][m], 5)
+            npt.assert_array_almost_equal(dydx_lst[1], dydx_lst[2], 10)
+
+            if plot:
+                lbl = [f'arctan2(y,{x[0]})', f'arctan2({y[0]}, x)'][num]
+                plt.plot(v, np.arctan2(y, x), label=lbl)
+
+                for grad, dydx in zip([fd, cs, autograd], dydx_lst):
+                    # dydx[dydx > 100] = np.nan
+                    plt.plot(v, dydx, label=f'{grad.__name__}, {lbl}')
+                plt.legend(loc=1)
+                plt.xlabel(['y', 'x'][num])
+                plt.ylim([-3.5, 3.5])
+    if plot:
+        plt.show()
+    plt.close('all')
 
 
 def test_gradients_interp():

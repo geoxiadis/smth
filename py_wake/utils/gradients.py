@@ -373,6 +373,9 @@ def arctan2(y, x):
         r[m] = np.arctan(np.atleast_1d(y)[m] / np.atleast_1d(x)[m])
         r[(x.real < 0) & (y.real >= 0)] += np.pi
         r[(x.real < 0) & (y.real < 0)] -= np.pi
+        m2 = (x.real == 0) & (y.real != 0)
+        if np.any(m2):
+            r[m2] -= np.asarray(x.imag)[m2] / np.asarray(y.real)[m2] * 1j
         return np.reshape(r, np.shape(y))
     elif isinstance(y, ArrayBox) or isinstance(x, ArrayBox):
         return anp.arctan2(y, x)  # @UndefinedVariable

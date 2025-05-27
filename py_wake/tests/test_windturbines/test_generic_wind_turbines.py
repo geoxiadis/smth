@@ -141,6 +141,7 @@ def test_SimpleGenericWindTurbine():
         plt.figure()
         for wt in wt_lst:
             plt.plot(ws, wt.ct(ws), label=wt.name())
+        plt.legend()
         plt.show()
 
     npt.assert_allclose(wt1.power(ws), wt2.power(ws), atol=85)

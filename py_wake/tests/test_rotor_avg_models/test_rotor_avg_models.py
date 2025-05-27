@@ -416,11 +416,17 @@ def test_with_all_ti_models(turbulenceModel):
 @pytest.mark.parametrize('model', get_models(RotorAvgModel, exclude_None=True))
 def test_with_weighted_sum(model):
     if issubclass(model, NodeRotorAvgModel):
-        wfm = All2AllIterative(UniformSite(), V80(), BastankhahGaussianDeficit(rotorAvgModel=model()),
-                               superpositionModel=WeightedSum())
-        wfm([0, 500], [0, 0])
+        if model is WSPowerRotorAvg:
+            with pytest.raises(AssertionError, match='WeightedSum and CumulativeWakeSum does not work WSPowerRotorAvg'):
+                wfm = All2AllIterative(UniformSite(), V80(), BastankhahGaussianDeficit(rotorAvgModel=model()),
+                                       superpositionModel=WeightedSum())
+        else:
+            wfm = All2AllIterative(UniformSite(), V80(), BastankhahGaussianDeficit(rotorAvgModel=model()),
+                                   superpositionModel=WeightedSum())
+            aep = wfm([0, 500], [0, 0]).aep()
+            print(aep.values.sum())
     else:
-        with pytest.raises(AssertionError, match='WeightedSum and CumulativeWakeSum only works with NodeRotorAvgModel-based rotor average models'):
+        with pytest.raises(AssertionError, match='WeightedSum and CumulativeWakeSum only work with NodeRotorAvgModel-based rotor average models'):
             wfm = All2AllIterative(UniformSite(), V80(), BastankhahGaussianDeficit(),
                                    superpositionModel=WeightedSum(), rotorAvgModel=model())
 

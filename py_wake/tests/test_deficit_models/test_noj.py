@@ -95,7 +95,7 @@ def test_NOJLocal_6_turbines_in_row():
 
 def test_NOJConvection():
     site = UniformSite([1], 0.1)
-    with pytest.raises(AssertionError, match='WeightedSum and CumulativeWakeSum only works with NodeRotorAvgModel-based rotor average models'):
+    with pytest.raises(AssertionError, match='WeightedSum and CumulativeWakeSum only work with NodeRotorAvgModel-based rotor average models'):
         wfm = NOJ(site, NibeA0(), superpositionModel=WeightedSum())
         wfm([0, 500], [0, 0])
 
