@@ -1,59 +1,25 @@
 import xarray as xr
 import numpy as np
 from numpy import newaxis as na
-from py_wake.tests.test_files import tfp
+from pathlib import Path
+from py_wake.tests import ptf
 
 
-def fugalut2ranslut(path_fuga_LUT=tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc', Dref=80.0, zRef=70.0, rename=True, nondim=False, cover_rotor_area=False):
+def convert_ranslut(path_LUT=Path(ptf('ranslut/V80_ranslut_demo.nc', 'bb368d8235ea3c300bc9d38a9fc3e3424217dae110800839ab7ffc79ffe48476')),
+                    Dref=80.0, zRef=70.0, rename=True, nondim=False, cover_rotor_area=False):
     """
-    Create a simple LUT file for testing from Fuga
-    """
-    lut = xr.load_dataset(path_fuga_LUT)
-    lut = lut.rename(UL='deficits')
-    cts = [0.1, 0.818]
-    TIs = [0.075, 10.0]
-    deficit = lut.deficits.transpose('x', 'y', 'z')
+    Convert RANS LUT for testing
+   """
+    lut = xr.load_dataset(path_LUT)
     if cover_rotor_area:
-        # Move levels to cover rotor area
-        deficit['z'] = np.array([zRef - 0.5 * Dref - 0.1, zRef + 0.5 * Dref + 0.1])
-    # To avoid huge upstream blockage and distances tests from failing
-    deficit[0, :, :] = 0.0
-    deficit[-1, :, :] = 0.0
-    deficit[:, -1, :] = 0.0
-    # To avoid test_PropagateUpDownIterative_wake_deficitModels test failure
-    deficit[:, 60:-1, :] = 0.0
-    # Reduce spatial points to reduce memory consumption
-    nreduce = 8
-    deficit = deficit[::nreduce, ::nreduce, :]
-    # Mirror deficit at y=0 since Fuga only stores one side of the wake
-    deficit2 = deficit.copy()
-    deficit['y'] = -deficit['y']
-    deficit = xr.merge([deficit, deficit2])
-    # Add ct and ti dimensions
-    subluts_ti = []
-    for TI in TIs:
-        subluts_ct = []
-        for ct in cts:
-            subluts_ct.append(-deficit * ct)
-        subluts_ti.append(xr.concat(subluts_ct, dim='ct').assign_coords(ct=cts))
-    da = xr.concat(subluts_ti, dim='ti').assign_coords(ti=TIs)
-    if nondim:
-        da['x'] = da['x'] / Dref
-        da['y'] = da['y'] / Dref
-        da['z'] = (da['z'] - zRef) / Dref
-    da = da.deficits
+        lut['z'] = [-0.5 - 0.1 / Dref, 0.5 + 0.1 / Dref]
+    if not nondim:
+        lut['x'] = lut['x'] * Dref
+        lut['y'] = lut['y'] * Dref
+        lut['z'] = lut['z'] * Dref + zRef
     if rename:
-        da = rename_lut(da)
-    # Create a dummy added_ti lut. To be replaced with a RANS wake added TI
-    da_ti = -da.copy() * 0.1
-    # Set uptream wake added TI to zero to avoid huge upstream blockage turb test from failing
-    da_ti[:, :, 0:65, :, :] = 0.0
-    ds = xr.Dataset(data_vars={'deficits': da, 'added_ti': da_ti})
-    # Add meta data
-    ds.attrs['name'] = 'V80'
-    ds.attrs['diameter'] = Dref
-    ds.attrs['hub_height'] = zRef
-    return ds
+        lut = rename_lut(lut)
+    return lut
 
 
 def rename_lut(lut):

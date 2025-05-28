@@ -13,7 +13,7 @@ from py_wake.wind_farm_models.engineering_models import All2AllIterative
 import pytest
 from py_wake.utils.profiling import timeit
 import xarray as xr
-from py_wake.utils.rans_lut_utils import fugalut2ranslut, merge_luts
+from py_wake.utils.rans_lut_utils import convert_ranslut, merge_luts
 
 
 def test_rans_lut_deficit():
@@ -21,7 +21,7 @@ def test_rans_lut_deficit():
     wt_x = [-250, 600, -500, 0, 500, -250, 250]
     wt_y = [433, 300, 0, 0, 0, -433, -433]
     wts = HornsrevV80()
-    site = UniformSite([1, 0, 0, 0], ti=0.075)
+    site = UniformSite([1, 0, 0, 0], ti=0.075 * 0.8)
     deficit = RANSLUTDeficit()
     wfm = All2AllIterative(site,
                            wts,
@@ -31,10 +31,10 @@ def test_rans_lut_deficit():
 
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
-    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.981586, 9.95158309, 8.44755236, 9.981586, 9.27466725,
-                                                                8.44755236, 7.96661743])
-    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.7932578, 0.79367784, 0.80644755, 0.7932578, 0.80315466,
-                                                            0.80644755, 0.80596662])
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.97278258, 9.93703762, 7.66620186, 9.9943525, 9.49814004,
+                                                                7.67200834, 6.95684497])
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79338104, 0.79388147, 0.8056662, 0.79307906, 0.80002604,
+                                                            0.80567201, 0.80495685])
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
     flow_map70 = simres.flow_map(HorizontalGrid(x_j, y_j, h=70))
@@ -62,20 +62,20 @@ def test_rans_lut():
     wt_x = [-250, 600, -500, 0, 500, -250, 250]
     wt_y = [433, 300, 0, 0, 0, -433, -433]
     wts = HornsrevV80()
-    site = UniformSite([1, 0, 0, 0], ti=0.075)
+    site = UniformSite([1, 0, 0, 0], ti=0.075 * 0.8)
     zRef = wts.hub_height()
     Dref = wts.diameter()
-    dataset = fugalut2ranslut(Dref=Dref, zRef=zRef, rename=False, nondim=True)
+    dataset = convert_ranslut(Dref=Dref, zRef=zRef, rename=False, nondim=True)
     lutname = 'rans_lut.nc'
     dataset.to_netcdf(lutname)
     wfm = RANSLUT(lutname, site, wts, zRef, Dref, power_as_RANS=False)
 
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
-    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.981586, 9.95158309, 8.44755236, 9.981586, 9.27466725,
-                                                                8.44755236, 7.96661743])
-    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.7932578, 0.79367784, 0.80644755, 0.7932578, 0.80315466,
-                                                            0.80644755, 0.80596662])
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.97278258, 9.93703762, 7.66620186, 9.9943525, 9.49814004,
+                                                                7.67200834, 6.95684497])
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79338104, 0.79388147, 0.8056662, 0.79307906, 0.80002604,
+                                                            0.80567201, 0.80495685])
 
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
@@ -99,7 +99,7 @@ def test_rans_lut():
         plt.show()
 
     # Test Power as RANS post step
-    dataset = fugalut2ranslut(Dref=Dref, zRef=zRef, rename=False, nondim=True, cover_rotor_area=True)
+    dataset = convert_ranslut(Dref=Dref, zRef=zRef, rename=False, nondim=True, cover_rotor_area=True)
     dataset.to_netcdf(lutname)
     wfm = RANSLUT(lutname, site, wts, zRef, Dref, power_as_RANS=True, ADcontrolfiles_write=True, ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6])
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
@@ -109,17 +109,17 @@ def test_rans_lut():
     # print(simres.ct_ilk.flatten())
     # print(simres.power_ilk.flatten() * 1e-6)
     # print(simres.TI_eff_ilk.flatten())
-    UAD_expected = [8.6147057, 8.58803939, 7.48488612, 8.6147057, 7.95821451, 7.48488612, 7.05710211]
-    CTstar_expected = [1.0724514, 1.07502269, 1.09969144, 1.0724514, 1.09301838, 1.09969144, 1.09878787]
-    power_expected = [1.3495615, 1.34067865, 0.91059015, 1.3495615, 1.08778468, 0.91059015, 0.76105881]
-    TI_eff_expected = [0.075, 0.075, 0.05963934, 0.075, 0.06793616, 0.05963934, 0.05373742]
+    UAD_expected = [7.67779686, 7.648784, 6.01979316, 7.69558068, 6.84114756, 6.02452841, 5.47620317]
+    CTstar_expected = [1.34750391, 1.35007474, 1.38495081, 1.34480971, 1.38797481, 1.38496821, 1.38295341]
+    power_expected = [1.34492562, 1.33278619, 0.66709526, 1.3510846, 0.98660253, 0.66873156, 0.49696202]
+    TI_eff_expected = [0.06002419, 0.06004405, 0.14076398, 0.06000223, 0.08990774, 0.14064143, 0.1891118]
     npt.assert_array_almost_equal(simres.power_ilk.flatten() * 1e-6, power_expected, 6)
     npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), UAD_expected, 6)
     npt.assert_array_almost_equal(simres.ct_ilk.flatten(), CTstar_expected, 6)
     npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), TI_eff_expected, 6)
 
     # Test with provided control file
-    ADcontrolfile = 'lutcal_WT80_Ti0.075_0.dat'
+    ADcontrolfile = 'lutcal_WT80_Ti0.06_0.dat'
     wfm = RANSLUT(lutname, site, wts, zRef, Dref, power_as_RANS=True, ADcontrolfiles=[ADcontrolfile], ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6], flowmap_maxpoints=100)
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])

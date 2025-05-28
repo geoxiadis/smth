@@ -8,7 +8,7 @@ from scipy.interpolate import interp1d
 from py_wake.superposition_models import LinearSum
 from py_wake.wind_farm_models.engineering_models import All2AllIterative
 from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
-from py_wake.utils.rans_lut_utils import fugalut2ranslut, cxzy_to_cxyzg
+from py_wake.utils.rans_lut_utils import convert_ranslut, cxzy_to_cxyzg
 from py_wake.rotor_avg_models import EllipSysPolygonRotorAvg
 from py_wake.wind_farm_models.wind_farm_model import SimulationResult
 
@@ -17,7 +17,7 @@ class RANSLUT(All2AllIterative):
     def __init__(self, path_LUT, site, windTurbines, zRef, Dref, rotorAvgModel=None,
                  power_as_RANS=True, rotorAvgModelPost=EllipSysPolygonRotorAvg(n_r=9, n_theta=32),
                  flowmap_maxpoints=10000,
-                 ADcontrolfiles=None, ADcontrolfiles_write=False, cal_TI=0.075,
+                 ADcontrolfiles=None, ADcontrolfiles_write=False, cal_TI=0.06,
                  ws_cutin=[4.0], ws_cutout=[25.0], dws=1.0, Prated=[2e6]):
         """
         Parameters
@@ -316,8 +316,9 @@ class RANSLUTDeficit(XRLUTDeficitModel):
     def __init__(self, lut=None, rotorAvgModel=None, groundModel=None,
                  use_effective_ws=True, use_effective_ti=False):
         if lut is None:
-            ds = fugalut2ranslut()
-            lut = ds.deficits.sel(TI_eff_ilk=0.075)
+            # Load default RANS LUT file based on a demo V80 LUT
+            ds = convert_ranslut()
+            lut = ds.deficits.sel(TI_eff_ilk=0.06)
         lut = (1 - lut)
         XRLUTDeficitModel.__init__(self, lut, bounds='limit', rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                    use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)

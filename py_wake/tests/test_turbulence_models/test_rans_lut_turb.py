@@ -20,8 +20,7 @@ def test_rans_lut_turb():
     wt_x = [-250, 600, -500, 0, 500, -250, 250]
     wt_y = [433, 300, 0, 0, 0, -433, -433]
     wts = HornsrevV80()
-    ti_upstream = 0.075
-    wake_added_ti = 0.05
+    ti_upstream = 0.075 * 0.8
     site = UniformSite([1, 0, 0, 0], ti=ti_upstream)
     deficit = RANSLUTDeficit()
     turb = RANSLUTTurbulence()
@@ -34,13 +33,12 @@ def test_rans_lut_turb():
 
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
-    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.981586, 9.95158309, 8.44755236, 9.981586, 9.27466725,
-                                                                8.44755236, 7.96661743])
-    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.7932578, 0.79367784, 0.80644755, 0.7932578, 0.80315466,
-                                                            0.80644755, 0.80596662])
-    npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), [0.075, 0.075, 0.05944688, 0.075, 0.06788578,
-                                                                0.05944688, 0.05349611], 6)
-
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.97278258, 9.93703762, 7.66620186, 9.9943525, 9.49814004,
+                                                                7.67200834, 6.95684497])
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79338104, 0.79388147, 0.8056662, 0.79307906, 0.80002604,
+                                                            0.80567201, 0.80495685])
+    npt.assert_array_almost_equal(simres.TI_eff_ilk.flatten(), [0.06002472, 0.06004424, 0.14148227, 0.06000527, 0.09036842,
+                                                                0.14136438, 0.19010693], 6)
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
     flow_map70 = simres.flow_map(HorizontalGrid(x_j, y_j, h=70))
