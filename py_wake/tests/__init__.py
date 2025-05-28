@@ -20,6 +20,6 @@ def ptf(filename, known_hash=None):
     for k, v in pct_encoding.items():
         filename = filename.replace(k, v)
     ret = pooch.retrieve(url=f"https://gitlab.windenergy.dtu.dk/api/v4/projects/3385/repository/files/{filename}/raw",
-                         path=Path(tempfile.gettempdir()) / 'PyWakeTestFiles',
+                         path=Path.home() / 'PyWakeTestFiles',
                          known_hash=known_hash)
     return ret
