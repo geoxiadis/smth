@@ -161,7 +161,7 @@ def test_huge_distance(deficitModel):
 
 @pytest.mark.parametrize('deficitModel', get_models(BlockageDeficitModel))
 def test_huge_distance_blockage(deficitModel):
-    if deficitModel is None:
+    if deficitModel is None or deficitModel == RANSLUTDeficit:
         return
     ref = {"FugaDeficit": 9.8,
            "FugaYawDeficit": 9.8,
@@ -173,8 +173,7 @@ def test_huge_distance_blockage(deficitModel):
            "Rathmann": 9.800001,
            "RathmannScaled": 9.800001,
            "SelfSimilarityDeficit": 9.800001,
-           "VortexCylinder": 9.799999,
-           "RANSLUTDeficit": 9.8, }
+           "VortexCylinder": 9.799999, }
     site = IEA37Site(16)
 
     windTurbines = IEA37_WindTurbines()

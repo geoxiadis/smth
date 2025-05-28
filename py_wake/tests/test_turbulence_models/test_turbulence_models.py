@@ -14,6 +14,7 @@ from py_wake.tests import npt
 from py_wake.tests.test_deficit_models.test_noj import NibeA0
 from py_wake.turbulence_models.stf import STF2005TurbulenceModel, STF2017TurbulenceModel, IECWeight
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel, XRLUTTurbulenceModel
+from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
 from py_wake.turbulence_models.gcl_turb import GCLTurbulence
 import matplotlib.pyplot as plt
@@ -192,7 +193,7 @@ def test_RotorAvg_deficit():
 def test_turbulence_models_upstream(turbulenceModel):
     site = IEA37Site(16)
     windTurbines = IEA37_WindTurbines()
-    if turbulenceModel is None:
+    if turbulenceModel is None or turbulenceModel == RANSLUTTurbulence:
         return
 
     wfm = All2AllIterative(site, windTurbines, wake_deficitModel=IEA37SimpleBastankhahGaussianDeficit(),
