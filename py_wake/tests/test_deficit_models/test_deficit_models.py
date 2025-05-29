@@ -173,7 +173,8 @@ def test_huge_distance_blockage(deficitModel):
            "Rathmann": 9.800001,
            "RathmannScaled": 9.800001,
            "SelfSimilarityDeficit": 9.800001,
-           "VortexCylinder": 9.799999, }
+           "VortexCylinder": 9.799999,
+           "RANSLUTDeficit": 9.8, }
     site = IEA37Site(16)
 
     windTurbines = IEA37_WindTurbines()

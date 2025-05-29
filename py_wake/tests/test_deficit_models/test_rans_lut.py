@@ -76,7 +76,6 @@ def test_rans_lut():
                                                                 7.67200834, 6.95684497])
     npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79338104, 0.79388147, 0.8056662, 0.79307906, 0.80002604,
                                                             0.80567201, 0.80495685])
-
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
     flow_map70 = simres.flow_map(HorizontalGrid(x_j, y_j, h=70))
