@@ -203,7 +203,7 @@ class RANSLUT(All2AllIterative):
             endtime = time.time()
             print('cal time', endtime - starttime, 'sec')
 
-    def get_wt_output(self, WS_eff_ilk_in, TI_eff_ilk, ct_ilk_in, **kwargs):
+    def get_wt_output(self, WS_eff_ilk, TI_eff_ilk, ct_ilk, **kwargs):
         """
         Recalculate wt power and thrust by the integrating rotor averaged wind speed
         including induction and interpolation with a CPstar, CTstar = f(U_AD) relation,
@@ -212,10 +212,10 @@ class RANSLUT(All2AllIterative):
         combination with a large wind farm. The variable flowmap_maxpoints can be used to reduce
         the number of points per flow_map call for the cost of computational speed.
         """
-        power_ilk_org = self.windTurbines.power(ws=WS_eff_ilk_in, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
+        power_ilk_org = self.windTurbines.power(ws=WS_eff_ilk, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
 
         if not self.power_as_RANS:
-            return WS_eff_ilk_in, TI_eff_ilk, power_ilk_org, ct_ilk_in
+            return WS_eff_ilk, TI_eff_ilk, power_ilk_org, ct_ilk, None
 
         starttime = time.time()
         # type_i = np.asarray(kwargs['type_i_ilk'][:, 0, 0], dtype=int)
@@ -229,7 +229,7 @@ class RANSLUT(All2AllIterative):
         weights = self.rotorAvgModelPost.nodes_weight[na, :, na]
         nr = self.rotorAvgModelPost.n_rnodes
         ntheta = self.rotorAvgModelPost.n_theta
-        shape = WS_eff_ilk_in.shape
+        shape = WS_eff_ilk.shape
         I, L, K = shape
         pos = np.zeros((I, 3))
         pos[:, 0] = kwargs['x_ilk'][:, 0, 0]
@@ -247,8 +247,8 @@ class RANSLUT(All2AllIterative):
         cxyz_i[:, :, :, 1] = 0.5 * self.rotorAvgModelPost.nodes_y.reshape((nr - 1, ntheta))[na, :, :]
         cxyz_i[:, :, :, 0:2] = cxyz_i[:, :, :, 0:2] * kwargs['D_i'][:, na, na, na]
         power_ilk = np.zeros(shape)
-        ct_ilk = np.zeros(shape)
-        WS_eff_ilk = np.zeros(shape)
+        ct_star_ilk = np.zeros(shape)
+        WS_eff_star_ilk = np.zeros(shape)
         Cnsts = 0.5 * 1.225 * np.asarray(kwargs['D_i']) ** 2 * 0.25 * np.pi
         if self.flowmap_maxpoints is not None:
             flowmap_points = (nr - 1) * ntheta * I
@@ -268,8 +268,8 @@ class RANSLUT(All2AllIterative):
             kwargs2['L'] = 1
             kwargs2['WD_ilk'] = np.array([[kwargs['wd'][l]]])
             simres = SimulationResult(self, localWind=localWind,
-                                      WS_eff_ilk=WS_eff_ilk_in[:, l, :][:, na, :], TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
-                                      power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk_in[:, l, :][:, na, :], **kwargs2)
+                                      WS_eff_ilk=WS_eff_ilk[:, l, :][:, na, :], TI_eff_ilk=TI_eff_ilk[:, l, :][:, na, :],
+                                      power_ilk=power_ilk[:, l, :][:, na, :], ct_ilk=ct_ilk[:, l, :][:, na, :], **kwargs2)
             cxyzg_i = cxzy_to_cxyzg(cxyz_i, o3[:, l, :], o2, pos)
             x_j = cxyzg_i[:, :, :, 0].flatten()
             y_j = cxyzg_i[:, :, :, 1].flatten()
@@ -286,15 +286,15 @@ class RANSLUT(All2AllIterative):
                     x_j[i1last:], y_j[i1last:], h_j[i1last:], simres)
 
             # Integrate U over AD
-            WS_eff_ilk[:, l, :] = np.sum(np.reshape(WS_eff_jlk, (I, ntheta * (nr - 1), K)) * weights, axis=1)
+            WS_eff_star_ilk[:, l, :] = np.sum(np.reshape(WS_eff_jlk, (I, ntheta * (nr - 1), K)) * weights, axis=1)
 
         # Interpolate CP and CT and calculate power
-        lut_cpstar = np.zeros(WS_eff_ilk[:, :, :].shape)
+        lut_cpstar = np.zeros(WS_eff_star_ilk[:, :, :].shape)
         for i in range(len(uniquetypes)):
-            lut_cpstar[types[i], :, :] = self.fint_CPstar[i](WS_eff_ilk[types[i], :, :])
-            ct_ilk[types[i], :, :] = self.fint_CTstar[i](WS_eff_ilk[types[i], :, :])
+            lut_cpstar[types[i], :, :] = self.fint_CPstar[i](WS_eff_star_ilk[types[i], :, :])
+            ct_star_ilk[types[i], :, :] = self.fint_CTstar[i](WS_eff_star_ilk[types[i], :, :])
             power_ilk[types[i], :, :] = lut_cpstar[types[i], :, :] * \
-                Cnsts[types[i]][0] * WS_eff_ilk[types[i], :, :] ** 3
+                Cnsts[types[i]][0] * WS_eff_star_ilk[types[i], :, :] ** 3
             # Make sure to stay rated (due to CP interpolation errors)
             power_ilk_i = power_ilk[types[i], :, :]
             power_ilk_i[power_ilk_i > self.Prated[i]] = self.Prated[i]
@@ -302,12 +302,13 @@ class RANSLUT(All2AllIterative):
 
         # Set power and ct to zero for wts that were originally shut down
         wt_shutdown = np.where(power_ilk_org == 0.0)
-        ct_ilk[wt_shutdown] = 0.0
+        ct_star_ilk[wt_shutdown] = 0.0
         power_ilk[wt_shutdown] = 0.0
-        # print('power_ilk', power_ilk, 'WS_eff_ilk', WS_eff_ilk)
+        # print('power_ilk', power_ilk, 'WS_eff_star_ilk', WS_eff_star_ilk)
         endtime = time.time()
         print('post time', endtime - starttime, 'sec')
-        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk
+        wtres_kwargs = {'WS_eff_star_ilk': WS_eff_star_ilk, 'ct_star_ilk': ct_star_ilk}
+        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, wtres_kwargs
 
 
 class RANSLUTDeficit(XRLUTDeficitModel):

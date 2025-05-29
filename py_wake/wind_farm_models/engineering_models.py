@@ -254,7 +254,9 @@ class EngineeringWindFarmModel(WindFarmModel):
 
         kwargs.pop('WS_eff_ilk')
         kwargs.pop('TI_eff_ilk')
-        WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk = self.get_wt_output(WS_eff_ilk, TI_eff_ilk, ct_ilk, **kwargs)
+        WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, wtres_kwargs = self.get_wt_output(WS_eff_ilk, TI_eff_ilk, ct_ilk, **kwargs)
+        if wtres_kwargs is not None:
+            res_kwargs.update(wtres_kwargs)
 
         res_kwargs.update({'time': time, 'type_i': type_i})
         return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, lw, res_kwargs
@@ -262,7 +264,7 @@ class EngineeringWindFarmModel(WindFarmModel):
     def get_wt_output(self, WS_eff_ilk, TI_eff_ilk, ct_ilk, **kwargs):
         """Calculate wind turbine power from power curve and hook for other models to change turbine output"""
         power_ilk = self.windTurbines.power(ws=WS_eff_ilk, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
-        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk
+        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, None
 
     @abstractmethod
     def _calc_wt_interaction(self, **kwargs):
