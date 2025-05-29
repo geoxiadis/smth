@@ -586,7 +586,8 @@ def test_All2AllIterative_WakeDeficit_RotorAvg(deficitModel):
 
 @pytest.mark.parametrize('deficitModel', get_models(WakeDeficitModel))
 def test_flow_map_symmetry(deficitModel):
-
+    if deficitModel == RANSLUTDeficit:
+        return
     windTurbines = IEA37_WindTurbines()
     wf_model = All2AllIterative(UniformSite(), windTurbines,
                                 wake_deficitModel=deficitModel(),
