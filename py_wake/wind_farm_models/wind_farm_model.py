@@ -445,9 +445,9 @@ class SimulationResult(xr.Dataset):
         opt_descriptions = ['Effective local wind speed including turbine induction [m/s]',
                             'Thrust coefficient including turbine induction']
         for opt_var, opt_varname, opt_description in zip(opt_vars, opt_varnames, opt_descriptions):
-            if opt_varname in kwargs:
+            if opt_var in kwargs:
                 data_vars.update({k: (ilk_dims, (v, v[:, :, 0])['time' in lw], {'Description': d})
-                                  for k, v, d in [(opt_varname, kwargs[opt_var], opt_desciption)]})
+                                  for k, v, d in [(opt_varname, kwargs[opt_var], opt_description)]})
 
         description = dict([('x', 'Wind turbine x coordinate [m]'),
                             ('y', 'Wind turbine y coordinate [m]'),
