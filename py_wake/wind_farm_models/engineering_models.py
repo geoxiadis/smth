@@ -250,18 +250,29 @@ class EngineeringWindFarmModel(WindFarmModel):
         self.site.distance.setup(
             np.asarray(kwargs['x_ilk']), np.asarray(kwargs['y_ilk']), np.asarray(kwargs['h_ilk']), np.asarray(z_ilk))
 
-        WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs = self._calc_wt_interaction(**kwargs)
+        WS_eff_ilk, TI_eff_ilk, ct_ilk, res_kwargs = self._calc_wt_interaction(**kwargs)
 
+        kwargs.pop('WS_eff_ilk')
+        kwargs.pop('TI_eff_ilk')
+        WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, wtres_kwargs = self.get_wt_output(WS_eff_ilk, TI_eff_ilk, ct_ilk, **kwargs)
+        if wtres_kwargs is not None:
+            res_kwargs.update(wtres_kwargs)
+
+        res_kwargs.update({'time': time, 'type_i': type_i})
+        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, lw, res_kwargs
+
+    def get_wt_output(self, WS_eff_ilk, TI_eff_ilk, ct_ilk, **kwargs):
+        """Calculate wind turbine power from power curve and hook for other models to change turbine output"""
         power_ilk = self.windTurbines.power(ws=WS_eff_ilk, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
-        kwargs.update({'time': time, 'type_i': type_i})
-        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, lw, kwargs
+        return WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, None
 
     @abstractmethod
     def _calc_wt_interaction(self, **kwargs):
         """calculate WT interaction"""
 
     def get_map_args(self, x_j, y_j, h_j, sim_res_data, D_dst=0):
-        wt_d_i = self.windTurbines.diameter(sim_res_data.type)
+        type_i = sim_res_data.type.values
+        wt_d_i = self.windTurbines.diameter(type_i)
         wd, ws = [np.atleast_1d(sim_res_data[k].values) for k in ['wd', 'ws']]
         if 'time' in sim_res_data:
             time = np.atleast_1d(sim_res_data['time'].values)
@@ -285,6 +296,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         map_arg_funcs = {k.replace('CT', 'ct') + '_ilk': get_ilk(k)
                          for k in sim_res_data if k not in ['wd_bin_size', 'ws_l', 'ws_u']}
         map_arg_funcs.update({
+            'type_i': lambda l: type_i,
             'D_src_il': lambda l: wt_d_i[:, na],
             'D_dst_ijl': lambda l: np.zeros((1, 1, 1)) + D_dst,
             'IJLK': lambda l=slice(None), I=I, J=J, L=L, K=K: (I, J, len(np.arange(L)[l]), K)})
@@ -688,7 +700,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                              'IJLK': lambda: (1, i_dw.shape[1], L, K),
                              'WD_ilk': lambda: WD_mk[m][na],
                              **{k + '_ilk': lambda k=k: ilk2mk(kwargs[k + '_ilk'])[m][na] for k in 'xyh'},
-                             'type_il': lambda: kwargs['type_i'][i_wt_l][na]
+                             'type_i': lambda: kwargs['type_i'][i_wt_l]
 
                              }
                 model_kwargs = {k: arg_funcs[k]() for k in self.args4all if k in arg_funcs}
@@ -925,7 +937,6 @@ class All2AllIterative(EngineeringWindFarmModel):
                         'dh_ijlk': dh_iilk,
                         'z_ijlk': kwargs['h_ilk'][:, na] + dh_iilk,
                         'IJLK': (I, I, L, K),
-                        'type_il': kwargs['type_i'][:, na],
                         ** kwargs,
                         }
         if 'wake_radius_ijl' in self.args4all:

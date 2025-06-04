@@ -197,3 +197,51 @@ def gauss_quadrature(n_x, n_y):
 def polar_gauss_quadrature(n_r, n_theta):
     x, y, w = gauss_quadrature(n_r, n_theta)
     return (x + 1) / 2, (y + 1) * np.pi, w
+
+
+def EllipSys_polar_grid(n_rnodes, n_theta, D):
+    """
+    Calculate polar grid cell centers and area using polygons as done in EllipSys3D
+    for the Actuator Shape model. Number of cells center is (n_rnodes - 1) * n_theta.
+    """
+    # Polar grid
+    dr = 0.5 * D / (float(n_rnodes) - 1.0)
+    dtheta = 2.0 * np.pi / n_theta
+    # theta is defined from positive y-axis, clockwise
+    theta, r = np.meshgrid(np.arange(np.pi / 2.0, 2.5 * np.pi, dtheta),
+                           dr * np.arange(0, n_rnodes))
+    # xy coords of the polar grid, should be the same as adgrid in PyWakeEllipSys
+    xygrid = np.zeros((n_rnodes, n_theta, 2))
+    xygrid[:, :, 0] = -r * np.sin(theta)
+    xygrid[:, :, 1] = r * np.cos(theta)
+
+    # Store polygon coordinates (4 corners)
+    xygrid4 = np.zeros((4, n_rnodes, n_theta, 2))
+    xygrid4[0, :, :, :] = xygrid[:, :, :]
+    xygrid4[1, :-1, :, :] = xygrid[1:, :, :]
+    xygrid4[2, :-1, :-1, :] = xygrid[1:, 1:, :]
+    xygrid4[2, :-1, -1, :] = xygrid[1:, 0, :]
+    xygrid4[3, :, :-1, :] = xygrid[:, 1:, :]
+    xygrid4[3, :, -1, :] = xygrid[:, 0, :]
+
+    # Calculate poly area for integration weights and center coords for integration nodes
+    Rsum = xygrid4[0, :, :, :] + xygrid4[2, :, :, :]
+    R1 = Rsum + xygrid4[1, :, :, :]
+    R2 = Rsum + xygrid4[3, :, :, :]
+    xygrid4 = xygrid4[:, :, :, :] - xygrid4[0, :, :, :]
+    A1 = xygrid4[1, :, :, 0] * xygrid4[2, :, :, 1] - xygrid4[1, :, :, 1] * xygrid4[2, :, :, 0]
+    A2 = xygrid4[2, :, :, 0] * xygrid4[3, :, :, 1] - xygrid4[2, :, :, 1] * xygrid4[3, :, :, 0]
+    area = 0.5 * (A1[:-1, :] + A2[:-1, :])
+    totalarea = sum(sum(area))
+    cxy = (A1[:-1, :, na] * R1[:-1, :, :] + A2[:-1, :, na] * R2[:-1, :, :]) / (6.0 * area[:, :, na])
+    return cxy, area, totalarea
+
+
+class EllipSysPolygonRotorAvg(GridRotorAvg):
+    """EllipSys3D Polygon polar grid grid rotor average model"""
+
+    def __init__(self, n_r=4, n_theta=16):
+        self.n_rnodes = n_r + 1
+        self.n_theta = n_theta
+        cxy, area, totalarea = EllipSys_polar_grid(self.n_rnodes, self.n_theta, 2.0)
+        GridRotorAvg.__init__(self, nodes_x=cxy[:, :, 0].flatten(), nodes_y=cxy[:, :, 1].flatten(), nodes_weight=area[:, :].flatten() / totalarea)

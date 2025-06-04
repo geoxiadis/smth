@@ -439,6 +439,16 @@ class SimulationResult(xr.Dataset):
                                      ('Power', power_ilk, 'Power [W]'),
                                      ('CT', ct_ilk, 'Thrust coefficient'),
                                      ]}
+
+        opt_vars = ['WS_eff_star_ilk', 'ct_star_ilk']
+        opt_varnames = ['WS_eff_star', 'ct_star']
+        opt_descriptions = ['Effective local wind speed including turbine induction [m/s]',
+                            'Thrust coefficient including turbine induction']
+        for opt_var, opt_varname, opt_description in zip(opt_vars, opt_varnames, opt_descriptions):
+            if opt_var in kwargs:
+                data_vars.update({k: (ilk_dims, (v, v[:, :, 0])['time' in lw], {'Description': d})
+                                  for k, v, d in [(opt_varname, kwargs[opt_var], opt_description)]})
+
         description = dict([('x', 'Wind turbine x coordinate [m]'),
                             ('y', 'Wind turbine y coordinate [m]'),
                             ('h', 'Wind turbine hub height [m]'),
@@ -477,7 +487,8 @@ class SimulationResult(xr.Dataset):
                             coords=coords)
 
         # for backward compatibility
-        for k in ['WD', 'WS', 'TI', 'P', 'WS_eff', 'TI_eff']:
+        varslist = ['WD', 'WS', 'TI', 'P', 'WS_eff', 'TI_eff'] + [opt_varname for optvar, opt_varname in zip(opt_vars, opt_varnames) if opt_var in kwargs]
+        for k in varslist:
             setattr(self.__class__, "%s_ilk" % k, property(lambda self, k=k: self[k].ilk()))
         setattr(self.__class__, "ct_ilk", property(lambda self: self.CT.ilk()))
         setattr(self.__class__, "power_ilk", property(lambda self: self.Power.ilk()))
