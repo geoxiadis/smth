@@ -646,23 +646,130 @@ class SimulationResult(xr.Dataset):
     def noise_model(self, noiseModel=ISONoiseModel):
         WS_eff_ilk = self.WS_eff_ilk
         freqs, sound_power_level = self.windFarmModel.windTurbines.sound_power_level(WS_eff_ilk, **self.wt_kwargs)
+        wt = self.windFarmModel.windTurbines
+        
+        delta_swl_correction = self._create_directional_correction(wt)
+        
         return noiseModel(src_x=self.x.values, src_y=self.y.values, src_h=np.array(self.h.values),
                           freqs=freqs, sound_power_level=sound_power_level,
-                          elevation_function=self.windFarmModel.site.elevation)
+                          elevation_function=self.windFarmModel.site.elevation,
+                          delta_swl_correction=delta_swl_correction)
+
+    def _create_directional_correction(self, wt):
+        WS_eff_ilk = self.WS_eff_ilk
+
+        def delta_swl_correction(rec_x, rec_y, rec_h, freqs, **_):
+            rec_x = np.atleast_1d(rec_x)
+            rec_y = np.atleast_1d(rec_y)
+            rec_h = np.atleast_1d(rec_h) if not np.isscalar(rec_h) else np.full_like(rec_x, rec_h)
+            x_s, y_s = self.x.values, self.y.values
+            h_s = np.atleast_1d(self.h.values)
+            n_src, n_rec, n_freq = len(x_s), len(rec_x), len(freqs)
+
+            if 'WD' in self:
+                wd_val = self.WD.values
+                wd_deg = np.full(n_src, wd_val) if wd_val.ndim == 0 else self.WD.ilk()[:, 0, 0]
+            else:
+                wd_deg = np.zeros(n_src)
+
+            if 'yaw' in self:
+                yaw_val = self.yaw.values
+                yaw_deg = np.full(n_src, yaw_val) if yaw_val.ndim == 0 else self.yaw.ilk()[:, 0, 0]
+            else:
+                yaw_deg = np.zeros(n_src)
+
+            rotor_azimuth = np.radians(90 + (wd_deg + yaw_deg)) # TODO: check if this is correct
+
+            dx = rec_x[np.newaxis, :] - x_s[:, np.newaxis]
+            dy = rec_y[np.newaxis, :] - y_s[:, np.newaxis]
+            dz = rec_h[np.newaxis, :] - h_s[:, np.newaxis]
+
+            cos_az = np.cos(rotor_azimuth)[:, np.newaxis]
+            sin_az = np.sin(rotor_azimuth)[:, np.newaxis]
+            dx_rot = dx * cos_az - dy * sin_az
+            dy_rot = dx * sin_az + dy * cos_az
+
+            norm = np.sqrt(dx_rot**2 + dy_rot**2 + dz**2)
+            lat_deg = np.degrees(np.arcsin(dz / norm))
+            lon_deg = np.degrees(np.arctan2(dy_rot, dx_rot))
+
+            ws_vals = WS_eff_ilk[:, 0, 0]
+            yaw_vals = yaw_deg
+
+            if 'mode' in self:
+                mode_val = self.mode.values
+                if mode_val.ndim == 0:
+                    mode_vals = np.full(n_src, mode_val)
+                else:
+                    mode_vals = self.mode.ilk()[:, 0, 0] if mode_val.ndim > 1 else mode_val
+            else:
+                mode_vals = np.zeros(n_src)
+
+            lat_flat = lat_deg.ravel()
+            lon_flat = lon_deg.ravel()
+            mode_expanded = np.repeat(mode_vals, n_rec)
+            ws_expanded = np.repeat(ws_vals, n_rec)
+            yaw_expanded = np.repeat(yaw_vals, n_rec)
+
+            delta_swl_result = wt.spherical_interpolate_delta_swl(
+                mode_expanded, freqs, ws_expanded, yaw_expanded, lat_flat, lon_flat
+            )
+
+            n_total = n_src * n_rec
+            idx = np.arange(n_total)
+            delta_swl_diagonal = delta_swl_result[idx, idx, 0, 0, :]
+            result_src_rec_freq = delta_swl_diagonal.reshape(n_src, n_rec, n_freq)
+
+            return result_src_rec_freq[:, :, np.newaxis, np.newaxis, :]
+
+        return delta_swl_correction
 
     def noise_map(self, noiseModel=ISONoiseModel, grid=None, ground_type=0,
                   atmopheric_pressure=101325.0, temperature=20, relative_humidity=80):
         if grid is None:
             grid = HorizontalGrid(h=2)
+        
         nm = self.noise_model(noiseModel)
+        
         X, Y, x_j, y_j, h_j, _ = self._get_grid(grid)
-        spl_jlk, spl_jlkf = nm(x_j, y_j, h_j, atmopheric_pressure, temperature,
-                               relative_humidity, ground_type=ground_type)
-        return xr.Dataset({'Total sound pressure level': (('y', 'x', 'wd', 'ws'),
-                                                          spl_jlk.reshape(X.shape + (spl_jlk.shape[1:]))),
-                           'Sound pressure level': (('y', 'x', 'wd', 'ws', 'freq'),
-                                                    spl_jlkf.reshape(X.shape + (spl_jlkf.shape[1:])))},
-                          coords={'x': X[0], 'y': Y[:, 0], 'wd': self.wd, 'ws': self.ws, 'freq': nm.freqs})
+        spl_jlk, spl_jlkf = nm(x_j, y_j, h_j, atmopheric_pressure, temperature, relative_humidity, ground_type=ground_type)
+        
+        wd_is_scalar = self.wd.values.ndim == 0 or len(np.atleast_1d(self.wd.values)) == 1
+        ws_is_scalar = self.ws.values.ndim == 0 or len(np.atleast_1d(self.ws.values)) == 1
+        
+        dims_spl = ['y', 'x']
+        dims_spl_freq = ['y', 'x']
+        coords = {'x': X[0], 'y': Y[:, 0]}
+        
+        if not wd_is_scalar:
+            dims_spl.append('wd')
+            dims_spl_freq.append('wd')
+            coords['wd'] = self.wd
+            
+        if not ws_is_scalar:
+            dims_spl.append('ws')
+            dims_spl_freq.append('ws')
+            coords['ws'] = self.ws
+            
+        dims_spl_freq.append('freq')
+        coords['freq'] = nm.freqs
+        
+        spl_jlk_reshaped = spl_jlk.reshape(X.shape + spl_jlk.shape[1:])
+        spl_jlkf_reshaped = spl_jlkf.reshape(X.shape + spl_jlkf.shape[1:])
+        
+        if wd_is_scalar:
+            spl_jlk_reshaped = spl_jlk_reshaped.squeeze(axis=2)
+            spl_jlkf_reshaped = spl_jlkf_reshaped.squeeze(axis=2)
+            
+        if ws_is_scalar:
+            axis_to_squeeze = 3 if not wd_is_scalar else 2
+            spl_jlk_reshaped = spl_jlk_reshaped.squeeze(axis=axis_to_squeeze)
+            spl_jlkf_reshaped = spl_jlkf_reshaped.squeeze(axis=axis_to_squeeze)
+        
+        return xr.Dataset({
+            'Total sound pressure level': (dims_spl, spl_jlk_reshaped),
+            'Sound pressure level': (dims_spl_freq, spl_jlkf_reshaped)
+        }, coords=coords)
 
     def flow_box(self, x, y, h, wd=None, ws=None, time=None):
         if wd is None:
