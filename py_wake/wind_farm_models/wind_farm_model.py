@@ -663,7 +663,7 @@ class SimulationResult(xr.Dataset):
     def _create_directional_correction(self, wt):
         if not hasattr(wt, 'spherical_interpolate_delta_swl'):
             return None
-            
+
         def delta_swl_correction(rec_x, rec_y, rec_h, freqs, **_):
             rec_x, rec_y = np.atleast_1d(rec_x), np.atleast_1d(rec_y)
             rec_h = np.atleast_1d(rec_h) if not np.isscalar(rec_h) else np.full_like(rec_x, rec_h)
