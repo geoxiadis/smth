@@ -767,9 +767,9 @@ class SimulationResult(xr.Dataset):
                             (softmax_base ** (loads_siilk / f[:, na, na, na, na])).sum(
                                 1
                             )
-                        )
-                        / np.log(softmax_base)
-                        * f[:, na, na, na]
+                        ) /
+                        np.log(softmax_base) *
+                        f[:, na, na, na]
                     )
 
             if "time" in self.dims:
@@ -820,8 +820,8 @@ class SimulationResult(xr.Dataset):
                 ds["P"] = self.P
                 t_flowcase = ds.P * 3600 * 24 * 365 * lifetime_years
                 ds["LDEL"] = (
-                    (t_flowcase * (ds.DEL / f) ** ds.m).sum(("wd", "ws"))
-                    / n_eq_lifetime
+                    (t_flowcase * (ds.DEL / f) ** ds.m).sum(("wd", "ws")) /
+                    n_eq_lifetime
                 ) ** (1 / ds.m) * f
             ds.LDEL.attrs["description"] = (
                 "Lifetime (%d years) equivalent loads, n_eq_L=%d"
