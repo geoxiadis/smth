@@ -611,7 +611,7 @@ class SimulationResult(xr.Dataset):
                     # factor used to reduce numerical errors in power
                     f = loads_siilk.mean((1, 2, 3, 4)) / 10
                     loads_silk = (np.log((softmax_base**(loads_siilk / f[:, na, na, na, na])).sum(1)) /
-                                  np.log(softmax_base) * f[:, na, na, na])
+                                  np.log(softmax_base) * f[:, na, na, na, na])
 
             if 'time' in self.dims:
                 ds = xr.DataArray(
@@ -645,7 +645,12 @@ class SimulationResult(xr.Dataset):
 
     def noise_model(self, noiseModel=ISONoiseModel):
         WS_eff_ilk = self.WS_eff_ilk
-        freqs, sound_power_level = self.windFarmModel.windTurbines.sound_power_level(WS_eff_ilk, **self.wt_kwargs)
+        ws_eff_i = WS_eff_ilk[:, 0, 0] if WS_eff_ilk.ndim > 1 else WS_eff_ilk
+        
+        wt_kwargs = {k: (v[:, 0, 0] if hasattr(v, 'ndim') and v.ndim > 1 else v) 
+                     for k, v in self.wt_kwargs.items() if v is not None}
+        
+        freqs, sound_power_level = self.windFarmModel.windTurbines.sound_power_level(ws_eff_i, **wt_kwargs)
         wt = self.windFarmModel.windTurbines
         
         delta_swl_correction = self._create_directional_correction(wt)
@@ -656,71 +661,47 @@ class SimulationResult(xr.Dataset):
                           delta_swl_correction=delta_swl_correction)
 
     def _create_directional_correction(self, wt):
-        WS_eff_ilk = self.WS_eff_ilk
-
         def delta_swl_correction(rec_x, rec_y, rec_h, freqs, **_):
-            rec_x = np.atleast_1d(rec_x)
-            rec_y = np.atleast_1d(rec_y)
+            rec_x, rec_y = np.atleast_1d(rec_x), np.atleast_1d(rec_y)
             rec_h = np.atleast_1d(rec_h) if not np.isscalar(rec_h) else np.full_like(rec_x, rec_h)
-            x_s, y_s = self.x.values, self.y.values
-            h_s = np.atleast_1d(self.h.values)
-            n_src, n_rec, n_freq = len(x_s), len(rec_x), len(freqs)
+            
+            n_src, n_rec = len(self.x.values), len(rec_x)
+            
+            # Extract scalar values, use first value if array
+            wd_deg = np.full(n_src, float(np.atleast_1d(self.get('WD', 0).values)[0]))
+            yaw_deg = np.full(n_src, float(np.atleast_1d(self.get('yaw', 0).values)[0]))
+            mode_vals = np.full(n_src, float(np.atleast_1d(self.get('mode', 0).values)[0]))
 
-            if 'WD' in self:
-                wd_val = self.WD.values
-                wd_deg = np.full(n_src, wd_val) if wd_val.ndim == 0 else self.WD.ilk()[:, 0, 0]
-            else:
-                wd_deg = np.zeros(n_src)
+            # Compute directional vectors and coordinates
+            rotor_azimuth = np.radians(90 + (wd_deg + yaw_deg))
+            cos_az, sin_az = np.cos(rotor_azimuth)[:, None], np.sin(rotor_azimuth)[:, None]
 
-            if 'yaw' in self:
-                yaw_val = self.yaw.values
-                yaw_deg = np.full(n_src, yaw_val) if yaw_val.ndim == 0 else self.yaw.ilk()[:, 0, 0]
-            else:
-                yaw_deg = np.zeros(n_src)
+            dx = rec_x[None, :] - self.x.values[:, None]
+            dy = rec_y[None, :] - self.y.values[:, None]
+            dz = rec_h[None, :] - np.atleast_1d(self.h.values)[:, None]
 
-            rotor_azimuth = np.radians(90 + (wd_deg + yaw_deg)) # TODO: check if this is correct
-
-            dx = rec_x[np.newaxis, :] - x_s[:, np.newaxis]
-            dy = rec_y[np.newaxis, :] - y_s[:, np.newaxis]
-            dz = rec_h[np.newaxis, :] - h_s[:, np.newaxis]
-
-            cos_az = np.cos(rotor_azimuth)[:, np.newaxis]
-            sin_az = np.sin(rotor_azimuth)[:, np.newaxis]
-            dx_rot = dx * cos_az - dy * sin_az
-            dy_rot = dx * sin_az + dy * cos_az
-
+            dx_rot, dy_rot = dx * cos_az - dy * sin_az, dx * sin_az + dy * cos_az
             norm = np.sqrt(dx_rot**2 + dy_rot**2 + dz**2)
+
             lat_deg = np.degrees(np.arcsin(dz / norm))
             lon_deg = np.degrees(np.arctan2(dy_rot, dx_rot))
 
-            ws_vals = WS_eff_ilk[:, 0, 0]
-            yaw_vals = yaw_deg
-
-            if 'mode' in self:
-                mode_val = self.mode.values
-                if mode_val.ndim == 0:
-                    mode_vals = np.full(n_src, mode_val)
-                else:
-                    mode_vals = self.mode.ilk()[:, 0, 0] if mode_val.ndim > 1 else mode_val
-            else:
-                mode_vals = np.zeros(n_src)
-
-            lat_flat = lat_deg.ravel()
-            lon_flat = lon_deg.ravel()
-            mode_expanded = np.repeat(mode_vals, n_rec)
-            ws_expanded = np.repeat(ws_vals, n_rec)
-            yaw_expanded = np.repeat(yaw_vals, n_rec)
-
-            delta_swl_result = wt.spherical_interpolate_delta_swl(
-                mode_expanded, freqs, ws_expanded, yaw_expanded, lat_flat, lon_flat
-            )
-
-            n_total = n_src * n_rec
-            idx = np.arange(n_total)
-            delta_swl_diagonal = delta_swl_result[idx, idx, 0, 0, :]
-            result_src_rec_freq = delta_swl_diagonal.reshape(n_src, n_rec, n_freq)
-
-            return result_src_rec_freq[:, :, np.newaxis, np.newaxis, :]
+            # Get interpolation parameters
+            ws_vals = self.WS_eff_ilk[:, 0, 0]
+            
+            # Initialize result array
+            result = np.zeros((n_src, n_rec, 1, 1, len(freqs)))
+            
+            # Process each turbine separately to avoid memory explosion
+            for i in range(n_src):
+                delta_swl_result = wt.spherical_interpolate_delta_swl(
+                    [mode_vals[i]], freqs, [ws_vals[i]], [yaw_deg[i]], 
+                    lat_deg[i], lon_deg[i]
+                )
+                # delta_swl_result shape: (1, n_rec, 1, 1, n_freq)
+                result[i] = delta_swl_result[0]
+            
+            return result
 
         return delta_swl_correction
 
@@ -730,45 +711,26 @@ class SimulationResult(xr.Dataset):
             grid = HorizontalGrid(h=2)
         
         nm = self.noise_model(noiseModel)
-        
         X, Y, x_j, y_j, h_j, _ = self._get_grid(grid)
         spl_jlk, spl_jlkf = nm(x_j, y_j, h_j, atmopheric_pressure, temperature, relative_humidity, ground_type=ground_type)
         
-        wd_is_scalar = self.wd.values.ndim == 0 or len(np.atleast_1d(self.wd.values)) == 1
-        ws_is_scalar = self.ws.values.ndim == 0 or len(np.atleast_1d(self.ws.values)) == 1
+        # Ensure consistent dimensions: reshape to (y, x, wd, ws) and (y, x, wd, ws, freq)
+        grid_shape = X.shape
+        wd_size = max(1, len(np.atleast_1d(self.wd.values)))
+        ws_size = max(1, len(np.atleast_1d(self.ws.values)))
         
-        dims_spl = ['y', 'x']
-        dims_spl_freq = ['y', 'x']
-        coords = {'x': X[0], 'y': Y[:, 0]}
+        spl_total = spl_jlk.reshape(grid_shape + (wd_size, ws_size))
+        spl_freq = spl_jlkf.reshape(grid_shape + (wd_size, ws_size, len(nm.freqs)))
         
-        if not wd_is_scalar:
-            dims_spl.append('wd')
-            dims_spl_freq.append('wd')
-            coords['wd'] = self.wd
-            
-        if not ws_is_scalar:
-            dims_spl.append('ws')
-            dims_spl_freq.append('ws')
-            coords['ws'] = self.ws
-            
-        dims_spl_freq.append('freq')
-        coords['freq'] = nm.freqs
-        
-        spl_jlk_reshaped = spl_jlk.reshape(X.shape + spl_jlk.shape[1:])
-        spl_jlkf_reshaped = spl_jlkf.reshape(X.shape + spl_jlkf.shape[1:])
-        
-        if wd_is_scalar:
-            spl_jlk_reshaped = spl_jlk_reshaped.squeeze(axis=2)
-            spl_jlkf_reshaped = spl_jlkf_reshaped.squeeze(axis=2)
-            
-        if ws_is_scalar:
-            axis_to_squeeze = 3 if not wd_is_scalar else 2
-            spl_jlk_reshaped = spl_jlk_reshaped.squeeze(axis=axis_to_squeeze)
-            spl_jlkf_reshaped = spl_jlkf_reshaped.squeeze(axis=axis_to_squeeze)
+        coords = {
+            'x': X[0], 'y': Y[:, 0],
+            'wd': np.atleast_1d(self.wd.values), 'ws': np.atleast_1d(self.ws.values),
+            'freq': nm.freqs
+        }
         
         return xr.Dataset({
-            'Total sound pressure level': (dims_spl, spl_jlk_reshaped),
-            'Sound pressure level': (dims_spl_freq, spl_jlkf_reshaped)
+            'Total sound pressure level': (['y', 'x', 'wd', 'ws'], spl_total),
+            'Sound pressure level': (['y', 'x', 'wd', 'ws', 'freq'], spl_freq)
         }, coords=coords)
 
     def flow_box(self, x, y, h, wd=None, ws=None, time=None):

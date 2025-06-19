@@ -5,7 +5,6 @@ from py_wake.wind_turbines.power_ct_functions import PowerCtXr
 from py_wake.wind_turbines._wind_turbines import WindTurbine
 from py_wake.utils.grid_interpolator import GridInterpolator
 from py_wake.utils.plotting import setup_plot
-from scipy.interpolate import RegularGridInterpolator
 
 # --- Spherical helpers ---
 def sph2cart(lat_rad, lon_rad):
@@ -44,8 +43,8 @@ class TurbineNoise(WindTurbine):
 
         WindTurbine.__init__(self,
             name='TurbineNoise',
-            diameter=142,  # Placeholder, update if known
-            hub_height=109,  # Placeholder, update if known
+            diameter=142,  
+            hub_height=109,  
             powerCtFunction=power_ct,
             sound_power_level=sound_power_level
         )
@@ -61,24 +60,9 @@ class TurbineNoise(WindTurbine):
         max_dist=np.pi/2,
         power=3.0,
     ):
-        """
-        Inverse-distance-weighted ΔSWL interpolation on the sphere
-        plus multilinear interpolation in (mode, freq, obs, ws, yaw).
 
-        Parameters
-        ----------
-        mode, freq, ws, yaw : arrays or scalars
-            Case parameters (can be broadcasted together)
-        lat_deg, lon_deg : arrays
-            Receiver positions (n_obs,)
-
-        Returns
-        -------
-        ΔSWL : ndarray (n_sources, n_receivers, 1, 1, n_freq)
-            Directional corrections in PyWake's ijlkf format
-        """
         ds = self.ds
-        # Ensure 1-D
+
         freq = np.atleast_1d(freq)
         ws = np.atleast_1d(ws)
         yaw = np.atleast_1d(yaw)
@@ -86,17 +70,12 @@ class TurbineNoise(WindTurbine):
         lat_deg = np.atleast_1d(lat_deg)
         lon_deg = np.atleast_1d(lon_deg)
 
-        # Broadcast case parameters
-        try:
-            ws, yaw, mode = np.broadcast_arrays(ws, yaw, mode)
-        except ValueError:
-            raise ValueError("ws, yaw and mode cannot be broadcast together")
+        ws, yaw, mode = np.broadcast_arrays(ws, yaw, mode)
         n_cases = ws.size
         n_obs = lat_deg.size
         n_freq = freq.size
         n_data_obs = ds.sizes["obs"]
 
-        # Spherical weights
         obs_xyz_data = sph2cart(np.radians(ds["lat"].values), np.radians(ds["lon"].values))  # (D,3)
         obs_xyz_target = sph2cart(np.radians(lat_deg), np.radians(lon_deg))                  # (O,3)
         dist = np.arccos(np.clip(obs_xyz_target @ obs_xyz_data.T, -1.0, 1.0))                # (O,D)
@@ -104,41 +83,49 @@ class TurbineNoise(WindTurbine):
         w_sum = w.sum(axis=1, keepdims=True)
         w = np.divide(w, w_sum, out=np.zeros_like(w), where=w_sum != 0)                      # (O,D)
 
-        # Regular-grid interpolator over (mode, freq, obs, ws, yaw)
-        from scipy.interpolate import RegularGridInterpolator
-        rgi = RegularGridInterpolator(
-            (
-                ds["mode"].values,
-                ds["freq"].values,
-                np.arange(n_data_obs),
-                ds["ws"].values,
-                ds["yaw"].values,
-            ),
-            ds["delta_swl"].values.astype(np.float64),
-            bounds_error=False,
-            fill_value=0.0,
+        delta_swl_interpolator = GridInterpolator([
+            ds["mode"].values,
+            ds["freq"].values,
+            np.arange(n_data_obs),
+            ds["ws"].values,
+            ds["yaw"].values,
+        ], ds["delta_swl"].values, method='linear')
+
+        # Filter observation points by distance first
+        relevant_obs_mask = (dist < max_dist).any(axis=0)  # Shape: (n_data_obs,)
+        relevant_obs_indices = np.where(relevant_obs_mask)[0]
+        n_relevant = len(relevant_obs_indices)
+        
+        if n_relevant == 0:
+            return np.zeros((n_cases, n_obs, 1, 1, n_freq))
+        
+        w_relevant = w[:, relevant_obs_indices]  # Shape: (n_obs, n_relevant)
+        
+        # Efficient vectorized approach using broadcasting
+        # Create parameter grids for all combinations
+        case_grid, freq_grid, obs_grid = np.meshgrid(
+            np.arange(n_cases), freq, relevant_obs_indices, indexing='ij'
         )
-
-        # Build query points
-        modes  = np.repeat(mode,  n_freq * n_data_obs)
-        freqs  = np.tile(np.repeat(freq, n_data_obs),   n_cases)
-        obs_ix = np.tile(np.arange(n_data_obs),         n_cases * n_freq)
-        ws_val = np.repeat(ws, n_freq * n_data_obs)
-        yaw_val= np.repeat(yaw,  n_freq * n_data_obs)
-
-        pts = np.column_stack([modes, freqs, obs_ix, ws_val, yaw_val])  # (n_cases*n_f*n_D, 5)
-        interp_vals = rgi(pts)                                          # (n_cases*n_f*n_D,)
-        interp_vals = interp_vals.reshape(n_cases, n_freq, n_data_obs)  # (cases, freq, obs)
-
-        # Spatial weighting: tensordot over data_obs, then transpose to (cases, obs, freq)
-        result = np.tensordot(interp_vals, w, axes=([2], [1]))  # (n_cases, n_freq, n_obs)
-        result = np.transpose(result, (0, 2, 1))  # (n_cases, n_obs, n_freq)
         
-        # Reshape to PyWake's ijlkf format: (sources, receivers, 1, 1, frequencies)
-        # Insert singleton dimensions for l and k (wind direction and wind speed)
-        result = result[:, :, np.newaxis, np.newaxis, :]  # (n_sources, n_receivers, 1, 1, n_freq)
+        # Create interpolation points
+        pts = np.column_stack([
+            mode[case_grid.ravel()],
+            freq_grid.ravel(),
+            obs_grid.ravel(),
+            ws[case_grid.ravel()],
+            yaw[case_grid.ravel()]
+        ])
         
-        return result
+        # Single interpolation call
+        interp_result = delta_swl_interpolator(pts)
+        interp_vals = interp_result.reshape(n_cases, n_freq, n_relevant)
+        
+        # Apply weights: (cases, freq, relevant) @ (obs, relevant).T -> (cases, freq, obs)
+        result = np.einsum('cfr,or->cfo', interp_vals, w_relevant)
+        
+        # Reshape to final format: (n_cases, n_obs, 1, 1, n_freq)
+        # result shape is (n_cases, n_freq, n_obs), we need (n_cases, n_obs, 1, 1, n_freq)
+        return result.transpose(0, 2, 1)[:, :, None, None, :]
 
 def main():
     if __name__ == '__main__':

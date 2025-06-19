@@ -202,12 +202,9 @@ class ISONoiseModel:
         """
 
         Delta_SPL_ijlkf = self.transmission_loss(rec_x, rec_y, rec_h, ground_type, patm, Temp, RHum)
-        
-        n_receivers = len(rec_x)
-        
-        sound_power_ijlkf = self.sound_power_level[:, na, na, na, :]
-        sound_power_ijlkf = np.broadcast_to(sound_power_ijlkf, 
-                                          (len(self.src_x), n_receivers, 1, 1, len(self.freqs)))
+                
+        sound_power_ijlkf = np.expand_dims(self.sound_power_level,
+                                           tuple(range(1, 6 - len(np.shape(self.sound_power_level)))))
 
         if self.delta_swl_correction is not None:
             correction = self.delta_swl_correction(rec_x, rec_y, rec_h, self.freqs, **kwargs)
@@ -247,7 +244,7 @@ def main():
         noise_map = sim_res.sel(wd=270, ws=8).noise_map(
             noiseModel=ISONoiseModel,
             grid=XYGrid(x=np.linspace(x.min()-500, x.max()+1500, 50),
-                       y=np.linspace(y.min()-500, y.max()+1500, 40),
+                       y=np.linspace(y.min()-500, y.max()+1500, 55),
                        h=2),
             ground_type=0.0,
             atmopheric_pressure=101325,
