@@ -667,7 +667,6 @@ class SimulationResult(xr.Dataset):
             
             n_src, n_rec = len(self.x.values), len(rec_x)
             
-            # Extract scalar values, use first value if array
             wd_deg = np.full(n_src, float(np.atleast_1d(self.get('WD', 0).values)[0]))
             yaw_deg = np.full(n_src, float(np.atleast_1d(self.get('yaw', 0).values)[0]))
             mode_vals = np.full(n_src, float(np.atleast_1d(self.get('mode', 0).values)[0]))
@@ -686,20 +685,19 @@ class SimulationResult(xr.Dataset):
             lat_deg = np.degrees(np.arcsin(dz / norm))
             lon_deg = np.degrees(np.arctan2(dy_rot, dx_rot))
 
-            # Get interpolation parameters
             ws_vals = self.WS_eff_ilk[:, 0, 0]
             
-            # Initialize result array
-            result = np.zeros((n_src, n_rec, 1, 1, len(freqs)))
+            lat_flat = lat_deg.ravel()  # Shape: (n_src * n_rec,)
+            lon_flat = lon_deg.ravel()  # Shape: (n_src * n_rec,)
             
-            # Process each turbine separately to avoid memory explosion
-            for i in range(n_src):
-                delta_swl_result = wt.spherical_interpolate_delta_swl(
-                    [mode_vals[i]], freqs, [ws_vals[i]], [yaw_deg[i]], 
-                    lat_deg[i], lon_deg[i]
-                )
-                # delta_swl_result shape: (1, n_rec, 1, 1, n_freq)
-                result[i] = delta_swl_result[0]
+            delta_swl_result = wt.spherical_interpolate_delta_swl(
+                mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
+            )
+
+            src_indices = np.arange(n_src)[:, None]  # Shape: (n_src, 1)
+            obs_indices = np.arange(n_rec)[None, :] + src_indices * n_rec  # Shape: (n_src, n_rec)
+            
+            result = delta_swl_result[src_indices, obs_indices]  # Shape: (n_src, n_rec, 1, 1, n_freq)
             
             return result
 

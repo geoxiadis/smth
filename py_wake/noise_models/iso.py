@@ -208,7 +208,7 @@ class ISONoiseModel:
 
         if self.delta_swl_correction is not None:
             correction = self.delta_swl_correction(rec_x, rec_y, rec_h, self.freqs, **kwargs)
-            sound_power_ijlkf = sound_power_ijlkf + correction * 100
+            sound_power_ijlkf = sound_power_ijlkf + correction
 
         spl_jlkf = 10.0 * np.log10(np.sum(10.0**((sound_power_ijlkf + Delta_SPL_ijlkf) / 10.0), axis=0))
         total_spl_jlk = 10.0 * np.log10(np.sum(10.0**(spl_jlkf / 10.0), axis=-1))
@@ -234,7 +234,6 @@ def main():
 
         x, y = rectangle(4, 4, 5 * wt.diameter())
     
-        
         sim_res = wfm(x, y, wd=[270, 271], ws=[8, 10], mode=[1], yaw=[0, 10])
 
         rec_x = np.array([x[0], x[-1]])
@@ -243,8 +242,8 @@ def main():
         
         noise_map = sim_res.sel(wd=270, ws=8).noise_map(
             noiseModel=ISONoiseModel,
-            grid=XYGrid(x=np.linspace(x.min()-500, x.max()+1500, 50),
-                       y=np.linspace(y.min()-500, y.max()+1500, 55),
+            grid=XYGrid(x=np.linspace(-500, 3500, 50),
+                       y=np.linspace(-500, 1500, 50),
                        h=2),
             ground_type=0.0,
             atmopheric_pressure=101325,
@@ -257,7 +256,6 @@ def main():
                                                       patm=101325, Temp=20, RHum=80, ground_type=0.0)
         
 
-        
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
         
         sim_res.flow_map(wd=270, ws=8).plot_wake_map(ax=ax1)
@@ -286,6 +284,5 @@ def main():
         
         plt.tight_layout()
         plt.show()
-
 
 main()

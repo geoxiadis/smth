@@ -30,15 +30,9 @@ class TurbineNoise(WindTurbine):
             ws = np.atleast_1d(ws)
             mode = np.zeros_like(ws) + mode
             freqs = ds.freq.values if freq is None else np.atleast_1d(freq)
-            # Create meshgrid for all combinations
             mode_grid, freq_grid, ws_grid = np.meshgrid(mode, freqs, ws, indexing='ij')
             points = np.stack([mode_grid.ravel(), freq_grid.ravel(), ws_grid.ravel()], axis=-1)
-            swl = ip(points).reshape(mode_grid.shape)
-            # Normalize to (n_sources, n_freq) format for consistent noise model usage
-            if swl.shape[0] == 1:  # Single turbine case: (1, n_freq, conditions) → (1, n_freq)
-                swl = swl[0, :, 0:1].T  # Take first condition and transpose
-            else:  # Multi-turbine case: (n_sources, n_freq, conditions) → (n_sources, n_freq)
-                swl = swl[..., 0]  # Take first condition
+            swl = ip(points).reshape(len(mode), len(freqs), len(ws))[:, :, 0]  # Take first ws condition
             return freqs, swl
 
         WindTurbine.__init__(self,
@@ -91,7 +85,6 @@ class TurbineNoise(WindTurbine):
             ds["yaw"].values,
         ], ds["delta_swl"].values, method='linear')
 
-        # Filter observation points by distance first
         relevant_obs_mask = (dist < max_dist).any(axis=0)  # Shape: (n_data_obs,)
         relevant_obs_indices = np.where(relevant_obs_mask)[0]
         n_relevant = len(relevant_obs_indices)
@@ -101,13 +94,10 @@ class TurbineNoise(WindTurbine):
         
         w_relevant = w[:, relevant_obs_indices]  # Shape: (n_obs, n_relevant)
         
-        # Efficient vectorized approach using broadcasting
-        # Create parameter grids for all combinations
         case_grid, freq_grid, obs_grid = np.meshgrid(
             np.arange(n_cases), freq, relevant_obs_indices, indexing='ij'
         )
         
-        # Create interpolation points
         pts = np.column_stack([
             mode[case_grid.ravel()],
             freq_grid.ravel(),
@@ -116,16 +106,12 @@ class TurbineNoise(WindTurbine):
             yaw[case_grid.ravel()]
         ])
         
-        # Single interpolation call
         interp_result = delta_swl_interpolator(pts)
         interp_vals = interp_result.reshape(n_cases, n_freq, n_relevant)
         
-        # Apply weights: (cases, freq, relevant) @ (obs, relevant).T -> (cases, freq, obs)
-        result = np.einsum('cfr,or->cfo', interp_vals, w_relevant)
+        result = np.einsum('cfr,or->cof', interp_vals, w_relevant) # Apply weights: (cases, freq, relevant) @ (obs, relevant).T -> (cases, obs, freq)
         
-        # Reshape to final format: (n_cases, n_obs, 1, 1, n_freq)
-        # result shape is (n_cases, n_freq, n_obs), we need (n_cases, n_obs, 1, 1, n_freq)
-        return result.transpose(0, 2, 1)[:, :, None, None, :]
+        return result[:, :, None, None, :] # (n_cases, n_obs, 1, 1, n_freq)
 
 def main():
     if __name__ == '__main__':
