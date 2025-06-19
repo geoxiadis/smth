@@ -7,12 +7,16 @@ from py_wake.utils.grid_interpolator import GridInterpolator
 from py_wake.utils.plotting import setup_plot
 
 # --- Spherical helpers ---
+
+
 def sph2cart(lat_rad, lon_rad):
     c = np.cos(lat_rad)
     return np.stack((c * np.cos(lon_rad), c * np.sin(lon_rad), np.sin(lat_rad)), -1)
 
+
 class TurbineNoise(WindTurbine):
     """Wind turbine model using data from turbine_noise.nc, including sound power levels and spherical delta_swl interpolation."""
+
     def __init__(self):
         # Load dataset
         ds = xr.load_dataset(os.path.join(os.path.dirname(__file__), 'turbine_noise.nc'))
@@ -36,12 +40,12 @@ class TurbineNoise(WindTurbine):
             return freqs, swl
 
         WindTurbine.__init__(self,
-            name='TurbineNoise',
-            diameter=142,  
-            hub_height=109,  
-            powerCtFunction=power_ct,
-            sound_power_level=sound_power_level
-        )
+                             name='TurbineNoise',
+                             diameter=142,
+                             hub_height=109,
+                             powerCtFunction=power_ct,
+                             sound_power_level=sound_power_level
+                             )
 
     def spherical_interpolate_delta_swl(
         self,
@@ -51,7 +55,7 @@ class TurbineNoise(WindTurbine):
         yaw,
         lat_deg,
         lon_deg,
-        max_dist=np.pi/2,
+        max_dist=np.pi / 2,
         power=3.0,
     ):
 
@@ -88,16 +92,16 @@ class TurbineNoise(WindTurbine):
         relevant_obs_mask = (dist < max_dist).any(axis=0)  # Shape: (n_data_obs,)
         relevant_obs_indices = np.where(relevant_obs_mask)[0]
         n_relevant = len(relevant_obs_indices)
-        
+
         if n_relevant == 0:
             return np.zeros((n_cases, n_obs, 1, 1, n_freq))
-        
+
         w_relevant = w[:, relevant_obs_indices]  # Shape: (n_obs, n_relevant)
-        
+
         case_grid, freq_grid, obs_grid = np.meshgrid(
             np.arange(n_cases), freq, relevant_obs_indices, indexing='ij'
         )
-        
+
         pts = np.column_stack([
             mode[case_grid.ravel()],
             freq_grid.ravel(),
@@ -105,13 +109,14 @@ class TurbineNoise(WindTurbine):
             ws[case_grid.ravel()],
             yaw[case_grid.ravel()]
         ])
-        
+
         interp_result = delta_swl_interpolator(pts)
         interp_vals = interp_result.reshape(n_cases, n_freq, n_relevant)
-        
-        result = np.einsum('cfr,or->cof', interp_vals, w_relevant) # Apply weights: (cases, freq, relevant) @ (obs, relevant).T -> (cases, obs, freq)
-        
-        return result[:, :, None, None, :] # (n_cases, n_obs, 1, 1, n_freq)
+
+        result = np.einsum('cfr,or->cof', interp_vals, w_relevant)  # Apply weights: (cases, freq, relevant) @ (obs, relevant).T -> (cases, obs, freq)
+
+        return result[:, :, None, None, :]  # (n_cases, n_obs, 1, 1, n_freq)
+
 
 def main():
     if __name__ == '__main__':
@@ -141,14 +146,14 @@ def main():
 
         # Multi-dimensional interpolation demo
         cases = np.array([
-            [6.0,  -20.0, 0],   # wind, yaw, mode
-            [10.0,   0.0, 1],
-            [16.0,  20.0, 2],
-            [22.0,  10.0, 3],
+            [6.0, -20.0, 0],   # wind, yaw, mode
+            [10.0, 0.0, 1],
+            [16.0, 20.0, 2],
+            [22.0, 10.0, 3],
         ])
-        obs_lats = np.array([45.0, -15.0, 60.0,  0.0, -60.0])
+        obs_lats = np.array([45.0, -15.0, 60.0, 0.0, -60.0])
         obs_lons = np.array([-30.0, 120.0, 45.0, 0.0, -120.0])
-        freqs    = np.array([63.0, 125.0, 500.0, 2000.0, 4000.0, 8000.0])
+        freqs = np.array([63.0, 125.0, 500.0, 2000.0, 4000.0, 8000.0])
 
         result = wt.spherical_interpolate_delta_swl(
             cases[:, 2],  # mode
@@ -159,5 +164,6 @@ def main():
             obs_lons
         )
         print(f"Multi-dimensional interpolation result shape: {result.shape}")
+
 
 main()

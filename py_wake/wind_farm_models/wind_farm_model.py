@@ -646,33 +646,36 @@ class SimulationResult(xr.Dataset):
     def noise_model(self, noiseModel=ISONoiseModel):
         WS_eff_ilk = self.WS_eff_ilk
         ws_eff_i = WS_eff_ilk[:, 0, 0] if WS_eff_ilk.ndim > 1 else WS_eff_ilk
-        
-        wt_kwargs = {k: (v[:, 0, 0] if hasattr(v, 'ndim') and v.ndim > 1 else v) 
+
+        wt_kwargs = {k: (v[:, 0, 0] if hasattr(v, 'ndim') and v.ndim > 1 else v)
                      for k, v in self.wt_kwargs.items() if v is not None}
-        
+
         freqs, sound_power_level = self.windFarmModel.windTurbines.sound_power_level(ws_eff_i, **wt_kwargs)
         wt = self.windFarmModel.windTurbines
-        
+
         delta_swl_correction = self._create_directional_correction(wt)
-        
+
         return noiseModel(src_x=self.x.values, src_y=self.y.values, src_h=np.array(self.h.values),
                           freqs=freqs, sound_power_level=sound_power_level,
                           elevation_function=self.windFarmModel.site.elevation,
                           delta_swl_correction=delta_swl_correction)
 
     def _create_directional_correction(self, wt):
+        if not hasattr(wt, 'spherical_interpolate_delta_swl'):
+            return None
+            
         def delta_swl_correction(rec_x, rec_y, rec_h, freqs, **_):
             rec_x, rec_y = np.atleast_1d(rec_x), np.atleast_1d(rec_y)
             rec_h = np.atleast_1d(rec_h) if not np.isscalar(rec_h) else np.full_like(rec_x, rec_h)
-            
+
             n_src, n_rec = len(self.x.values), len(rec_x)
-            
+
             wd_deg = np.full(n_src, float(np.atleast_1d(self.get('WD', 0).values)[0]))
             yaw_deg = np.full(n_src, float(np.atleast_1d(self.get('yaw', 0).values)[0]))
             mode_vals = np.full(n_src, float(np.atleast_1d(self.get('mode', 0).values)[0]))
 
             # Compute directional vectors and coordinates
-            rotor_azimuth = np.radians(90 + (wd_deg + yaw_deg))
+            rotor_azimuth = np.radians(90 + (wd_deg + yaw_deg))  # TODO: check if this is correct
             cos_az, sin_az = np.cos(rotor_azimuth)[:, None], np.sin(rotor_azimuth)[:, None]
 
             dx = rec_x[None, :] - self.x.values[:, None]
@@ -686,19 +689,19 @@ class SimulationResult(xr.Dataset):
             lon_deg = np.degrees(np.arctan2(dy_rot, dx_rot))
 
             ws_vals = self.WS_eff_ilk[:, 0, 0]
-            
+
             lat_flat = lat_deg.ravel()  # Shape: (n_src * n_rec,)
             lon_flat = lon_deg.ravel()  # Shape: (n_src * n_rec,)
-            
+
             delta_swl_result = wt.spherical_interpolate_delta_swl(
                 mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
             )
 
             src_indices = np.arange(n_src)[:, None]  # Shape: (n_src, 1)
             obs_indices = np.arange(n_rec)[None, :] + src_indices * n_rec  # Shape: (n_src, n_rec)
-            
+
             result = delta_swl_result[src_indices, obs_indices]  # Shape: (n_src, n_rec, 1, 1, n_freq)
-            
+
             return result
 
         return delta_swl_correction
@@ -707,25 +710,24 @@ class SimulationResult(xr.Dataset):
                   atmopheric_pressure=101325.0, temperature=20, relative_humidity=80):
         if grid is None:
             grid = HorizontalGrid(h=2)
-        
+
         nm = self.noise_model(noiseModel)
         X, Y, x_j, y_j, h_j, _ = self._get_grid(grid)
         spl_jlk, spl_jlkf = nm(x_j, y_j, h_j, atmopheric_pressure, temperature, relative_humidity, ground_type=ground_type)
-        
-        # Ensure consistent dimensions: reshape to (y, x, wd, ws) and (y, x, wd, ws, freq)
+
         grid_shape = X.shape
         wd_size = max(1, len(np.atleast_1d(self.wd.values)))
         ws_size = max(1, len(np.atleast_1d(self.ws.values)))
-        
+
         spl_total = spl_jlk.reshape(grid_shape + (wd_size, ws_size))
         spl_freq = spl_jlkf.reshape(grid_shape + (wd_size, ws_size, len(nm.freqs)))
-        
+
         coords = {
             'x': X[0], 'y': Y[:, 0],
             'wd': np.atleast_1d(self.wd.values), 'ws': np.atleast_1d(self.ws.values),
             'freq': nm.freqs
         }
-        
+
         return xr.Dataset({
             'Total sound pressure level': (['y', 'x', 'wd', 'ws'], spl_total),
             'Sound pressure level': (['y', 'x', 'wd', 'ws', 'freq'], spl_freq)

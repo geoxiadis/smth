@@ -11,8 +11,8 @@ class ISONoiseModel:
                  elevation_function=lambda x, y: np.zeros(np.shape(x)),
                  delta_swl_correction=None):
         """ISO 9613-2 noise model for outdoor sound propagation with atmospheric absorption (ISO 9613-1).
-        
-        Calculates sound pressure levels including spherical spreading, ground effects, 
+
+        Calculates sound pressure levels including spherical spreading, ground effects,
         and atmospheric absorption. Supports directional sound power level corrections.
 
         Parameters
@@ -202,7 +202,7 @@ class ISONoiseModel:
         """
 
         Delta_SPL_ijlkf = self.transmission_loss(rec_x, rec_y, rec_h, ground_type, patm, Temp, RHum)
-                
+
         sound_power_ijlkf = np.expand_dims(self.sound_power_level,
                                            tuple(range(1, 6 - len(np.shape(self.sound_power_level)))))
 
@@ -233,44 +233,43 @@ def main():
         wfm = ZongGaussian(site, wt, turbulenceModel=CrespoHernandez())
 
         x, y = rectangle(4, 4, 5 * wt.diameter())
-    
+
         sim_res = wfm(x, y, wd=[270, 271], ws=[8, 10], mode=[1], yaw=[0, 10])
 
         rec_x = np.array([x[0], x[-1]])
         rec_y = np.array([1000, 1000])
         rec_h = 2
-        
+
         noise_map = sim_res.sel(wd=270, ws=8).noise_map(
             noiseModel=ISONoiseModel,
             grid=XYGrid(x=np.linspace(-500, 3500, 50),
-                       y=np.linspace(-500, 1500, 50),
-                       h=2),
+                        y=np.linspace(-500, 1500, 50),
+                        h=2),
             ground_type=0.0,
             atmopheric_pressure=101325,
             temperature=20,
             relative_humidity=80
         )
-        
+
         nm = sim_res.sel(wd=270, ws=8).noise_model(noiseModel=ISONoiseModel)
-        total_sp_jlk, spl_jlkf = nm(rec_x=rec_x, rec_y=rec_y, rec_h=rec_h, 
-                                                      patm=101325, Temp=20, RHum=80, ground_type=0.0)
-        
+        total_sp_jlk, spl_jlkf = nm(rec_x=rec_x, rec_y=rec_y, rec_h=rec_h,
+                                    patm=101325, Temp=20, RHum=80, ground_type=0.0)
 
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
-        
+
         sim_res.flow_map(wd=270, ws=8).plot_wake_map(ax=ax1)
         ax1.plot(rec_x, rec_y, 'ro', markersize=8, label='Receivers')
         ax1.legend()
-        
+
         ax2.plot(nm.freqs, spl_jlkf[0, 0, 0], 'b-', label='Receiver 1')
         ax2.plot(nm.freqs, spl_jlkf[1, 0, 0], 'r-', label='Receiver 2')
         setup_plot(xlabel='Frequency [Hz]', ylabel='Sound pressure level [dB]', ax=ax2)
         ax2.legend()
-        
+
         total_spl_map = noise_map['Total sound pressure level']
         if len(total_spl_map.shape) > 2:
             total_spl_map = total_spl_map.squeeze()
-        
+
         im = ax3.contourf(noise_map.x, noise_map.y, total_spl_map, levels=20, cmap='viridis')
         ax3.plot(x, y, 'wo', markersize=8, label='Turbines')
         ax3.plot(rec_x, rec_y, 'ro', markersize=8, label='Receivers')
@@ -278,11 +277,12 @@ def main():
         ax3.set_ylabel('y [m]')
         ax3.legend()
         ax3.set_aspect('equal')
-        
+
         cbar = plt.colorbar(im, ax=ax3)
         cbar.set_label('Total SPL [dB]')
-        
+
         plt.tight_layout()
         plt.show()
+
 
 main()
