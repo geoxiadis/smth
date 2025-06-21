@@ -1,12 +1,22 @@
 import inspect
 import os
 import pkgutil
+
+import pandas as pd
+import xarray as xr
+
 from py_wake import np
 from numpy import newaxis as na
 from py_wake.site._site import Site
 import warnings
+
+from py_wake.utils.fuga_utils import interp_lut_coordinate
 from py_wake.utils.grid_interpolator import GridInterpolator
 import py_wake
+try:
+    from xarray.core.merge import merge_attrs
+except ModuleNotFoundError:  # pragma: no cover
+    from xarray.structure.merge import merge_attrs  # Moved to xarray.structure in v2025.03.0
 
 
 class Model():
@@ -18,11 +28,11 @@ class Model():
 class XRLUTModel(Model):
     """Model based on xarray.dataarray look-up table with linear interpolation"""
 
-    def __init__(self, da, get_input=None, get_output=None, method='linear', bounds='limit'):
+    def __init__(self, da_lst, get_input=None, get_output=None, method='linear', bounds='limit'):
         """
         Parameters
         ----------
-        da : xarray.dataarray
+        da_lst : xarray.dataarray
             dataarray containing lookup table.
         get_input : function or None, optional
             if None (default): The get_input method of XRDeficitModel is used. This option requires that the
@@ -44,7 +54,7 @@ class XRLUTModel(Model):
         bounds : {'limit', 'check', 'ignore'}
             how to handle out-of-bounds coordinate interpolation, see GridInterpolator
         """
-        self.da = da
+        self.da = da_lst
         self._args4model = getattr(self, '_args4model', set())
         if get_input:
             self.get_input = get_input
@@ -55,7 +65,7 @@ class XRLUTModel(Model):
         self._args4model |= (set(inspect.getfullargspec(self.get_input).args) |
                              set(inspect.getfullargspec(self.get_output).args)) - {'self', 'output_ijlk'}
 
-        self.interp = GridInterpolator([da[k].values for k in da.dims], da.values, method=method, bounds=bounds)
+        self.interp = MultiLUTInterpolator(da_lst, method)
 
     @property
     def args4model(self):
@@ -132,6 +142,154 @@ class RotorAvgAndGroundModelContainer():
         if self.groundModel:
             f = self.groundModel.wrap(f, wrapper_name)
         return f
+
+
+class MultiLUTInterpolator:
+    methods_map: pd.DataFrame
+    interpolator_map: pd.DataFrame
+    extents: list
+
+    def __init__(self, luts: list[xr.DataArray], methods: list[str]):
+
+        self.set_methods_map(luts[0].dims, methods)
+
+        luts = self.squeeze_luts(luts)
+        nearest_dims = [rule["dim"] for _, rule in self.methods_map.iterrows() if rule["method"] == "nearest"]
+        lut_map = pd.DataFrame(
+            index=range(len(luts)),
+            columns=nearest_dims,
+        )
+        for dimension in nearest_dims:
+            lut_map[dimension] = [float(lut[dimension].values) for lut in luts]
+
+        # collapse
+        if len(nearest_dims) > 0:
+            nearest_inputs_mapping = lut_map.groupby(nearest_dims).apply(lambda df: list(df.index))
+        else:
+            nearest_inputs_mapping = [[0]]
+        self.interpolator_map = pd.DataFrame(
+            index=range(len(nearest_inputs_mapping)),
+            columns=nearest_dims + ["interpolator"],
+        )
+
+        continuous_methods = [rule["method"] for _, rule in self.methods_map.iterrows() if rule["method"] != "nearest"]
+        self.extents = list()
+        new_index = 0
+        for indexes in nearest_inputs_mapping:
+            if len(nearest_dims) > 0:
+                self.interpolator_map.loc[new_index, nearest_dims] = lut_map[nearest_dims].iloc[indexes[0]].values
+            if len(indexes) == 1:
+                lut = luts[indexes[0]].squeeze()
+            else:
+                lut = self.merge_luts([luts[index] for index in indexes])
+            self.interpolator_map.loc[new_index, "interpolator"] = GridInterpolator(
+                [lut[dim].values for dim in lut.dims],
+                lut.values,
+                method=continuous_methods,
+                bounds="limit"
+            )
+            self.extents.append(
+                dict(
+                    x_min=lut.x.values.min(),
+                    x_max=lut.x.values.max(),
+                    y_min=lut.y.values.min(),
+                    y_max=lut.y.values.max(),
+                )
+            )
+            new_index += 1
+
+    def set_methods_map(self, dimensions: tuple, methods: list[str]):
+        self.methods_map = pd.DataFrame(
+            index=range(len(dimensions)),
+            data=dict(
+                dim=dimensions,
+                method=methods,
+            ),
+            columns=["dim", "method"],
+        )
+        self.methods_map.index.rename("input_index")
+
+    def squeeze_luts(self, luts: list[xr.DataArray]) -> list[xr.DataArray]:
+        """gets rid of the dimensions with 1 coordinate"""
+        squeeze_indexes, squeeze_dims = self.find_squeezable_dims(luts)
+        self.methods_map.drop(index=squeeze_indexes, inplace=True)
+        self.methods_map.reset_index(drop=True, inplace=True)
+        luts = [lut.squeeze(squeeze_dims) for lut in luts]
+        return luts
+
+    @staticmethod
+    def find_squeezable_dims(luts: list[xr.DataArray]) -> (list[int], list[str]):
+        squeeze_indexes = []
+        squeeze_dims = []
+        for i, dimension in enumerate(luts[0].dims):
+            if dimension in ["x", "y", "z"]:
+                continue
+            values = np.array([lut[dimension].values for lut in luts])
+            if np.unique(values).size == 1:
+                squeeze_dims.append(dimension)
+                squeeze_indexes.append(i)
+        return squeeze_indexes, squeeze_dims
+
+    @staticmethod
+    def merge_luts(luts: list[xr.DataArray]) -> xr.DataArray:
+        merge = False
+        for dim in luts[0].dims:
+            coords = [lut[dim] for lut in luts]
+            if not all(index.equals(coords[0]) for index in coords[1:]):
+                merge = True
+                break
+        if merge:
+            z_lst = np.sort(np.unique([z for da in luts for z in da.z.values]))
+
+            x_lst = np.sort(np.unique([da.x for da in luts]))
+            x_lst = x_lst[(x_lst >= np.max([da.x[0] for da in luts])) & (x_lst <= np.min([da.x[-1] for da in luts]))]
+
+            y_lst = np.sort(np.unique([da.y for da in luts]))
+            y_lst = y_lst[(y_lst >= np.max([da.y[0] for da in luts])) & (y_lst <= np.min([da.y[-1] for da in luts]))]
+
+            luts = [interp_lut_coordinate(da, x=x_lst, y=y_lst, z=z_lst) for da in luts]
+
+            # combine_by_coords does not always merge attributes correctly
+            attrs = xr.merge_attrs([da.attrs for da in luts], combine_attrs="drop_conflicts")
+            merged_lut = xr.combine_by_coords(luts, combine_attrs="drop").squeeze()
+            merged_lut.attrs = attrs
+        else:
+            merged_lut = luts[0].squeeze()
+        return merged_lut
+
+    def __call__(self, xp: np.ndarray) -> np.ndarray:
+        result = np.zeros(xp.shape[0])
+
+        nearest_dim_indexes = [index for index, rule in self.methods_map.iterrows() if rule["method"] == "nearest"]
+        continuous_dim_indexes = [index for index, rule in self.methods_map.iterrows() if rule["method"] != "nearest"]
+        x_index = self.methods_map[self.methods_map["dim"] == "x"].index
+        y_index = self.methods_map[self.methods_map["dim"] == "y"].index
+
+        nearest_dims = [rule["dim"] for _, rule in self.methods_map.iterrows() if rule["method"] == "nearest"]
+        nearest_dim_data = xp[:, nearest_dim_indexes]
+
+        diff = nearest_dim_data[:, np.newaxis, :] - self.interpolator_map[nearest_dims].values[np.newaxis, :, :]
+        dist_squared = np.sum(diff ** 2, axis=2)
+        xp_lut_indexes = np.argmin(dist_squared, axis=1)
+
+        for lut_index, interpolator_data in self.interpolator_map.iterrows():
+            lut_filter = xp_lut_indexes == lut_index
+            if np.all(~lut_filter):
+                continue
+
+            xp_y = xp[:, y_index]
+            xp_x = xp[:, x_index]
+            extent = self.extents[lut_index]
+
+            in_domain = (
+                (xp_y <= extent["y_max"])
+                & (extent["y_min"] <= xp_y)
+                & (xp_x <= extent["x_max"])
+                & (extent["x_min"] <= xp_x)
+            ).squeeze()
+            xp_in_domain = xp[lut_filter & in_domain, :][:, continuous_dim_indexes]
+            result[lut_filter & in_domain] = interpolator_data["interpolator"](xp_in_domain)
+        return result
 
 
 def get_exclude_dict():
