@@ -27,19 +27,21 @@ I'm benchmarking the `All2AllIterative` model to see how much Anders' Accelerati
 **Methodology**  
 I tested the algorithm with different parameters:
 1. **Farm Size**:  
-   - Small: 10 turbines  
+   - Small: 10 turbines
+   - Moderate: 50 turbines
    - Medium: 100 turbines  
    - Large: 250 turbines
 
 2. **Turbine Layout & Spacing**:  
-   - Minimum distances: 1, 2, 3, and 5 rotor diameters  
+   - Minimum distances between turbines: 1, 2, 3, and 5 rotor diameters for sampling random positions of a layout. 
    - 10 layouts per setup (random seeds to ensure robustness)
 
 3. **`use_aa` Flag**:  
    - `use_aa=True` vs `use_aa=False`
 
-4. **Parallelization (`n_cpu`)**:  
+4. **Parallelization (`n_cpu`) - simply to speed up larger simulations**:  
    - 10 turbines: `n_cpu=1`  
+   - 50 turbines: `n_cpu=2`
    - 100 turbines: `n_cpu=4`  
    - 250 turbines: `n_cpu=8`
 
