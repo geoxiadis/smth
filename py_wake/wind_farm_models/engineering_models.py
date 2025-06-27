@@ -891,8 +891,6 @@ class All2AllIterative(EngineeringWindFarmModel):
             WS_eff_ilk = WS_ILK + 0.
         else:
             WS_eff_ilk = np.zeros((I, L, K)) + WS_eff_ilk
-        # gives better convergence
-        # WS_eff_ilk = WS_ILK + 0.
 
         WS_eff_ilk = WS_eff_ilk.astype(dtype)
         WS_eff_ilk_last = WS_eff_ilk + 0  # fast autograd-friendly copy
@@ -945,7 +943,7 @@ class All2AllIterative(EngineeringWindFarmModel):
         G = []
         m = 7
         # Iterate until convergence
-        for j in tqdm(range(1, max(I, 20) + 1), disable=I <= 1 or not self.verbose,
+        for j in tqdm(range(max(I, 20)), disable=I <= 1 or not self.verbose,
                       desc="Calculate flow interaction (All2AllIterative)", unit="Iteration"):
             ct_last_ilk = ct_ilk + 0.
             ct_ilk = self.windTurbines.ct(np.maximum(WS_eff_ilk, 0), **wt_kwargs)
@@ -1038,30 +1036,6 @@ class All2AllIterative(EngineeringWindFarmModel):
                 add_turb_ijlk *= i2i_zero
                 TI_eff_ilk = self.turbulenceModel.calc_effective_TI(TI_ilk, add_turb_ijlk)
 
-            if self.use_aa:
-                F.append((WS_eff_ilk + 0.0).flatten())
-                G.append((WS_eff_ilk - WS_eff_ilk_last).flatten())
-                if len(F) > m:
-                    F.pop(0)
-                    G.pop(0)
-                mk = min(m, j)
-                while mk > 0:
-                    Gk = np.column_stack(G[-mk:])  # shape: (n, mk)
-                    GTG = Gk.T @ Gk  # shape: (mk, mk)
-                    ones = np.ones((mk, 1))  # shape: (mk, 1)
-                    lhs = np.block([[GTG, ones], [ones.T, np.zeros((1, 1))]])
-                    rhs = np.zeros((mk + 1, 1))
-                    rhs[-1] = 1
-                    try:
-                        sol, _, _, s = np.linalg.lstsq(lhs, rhs, rcond=None)
-                        condition_number = s[0] / s[-1] if s[-1] > 1e-12 else np.inf
-                    except np.linalg.LinAlgError:
-                        condition_number = np.inf
-                    alpha = sol[:-1].flatten()
-                    fk_window = np.column_stack(F[-mk:])  # shape: (n, mk)
-                    if condition_number < 5:
-                        break  # Found a stable solution
-                    mk -= 1
 
             # Check if converged
             diff_ilk = cabs(WS_eff_ilk_last - WS_eff_ilk)
@@ -1082,6 +1056,30 @@ class All2AllIterative(EngineeringWindFarmModel):
             if not self.use_aa:
                 WS_eff_ilk = (WS_eff_ilk * a) + (1 - a) * WS_eff_ilk_last
             else:
+                F.append((WS_eff_ilk + 0.0).flatten())
+                G.append((WS_eff_ilk - WS_eff_ilk_last).flatten())
+                if len(F) > m:
+                    F.pop(0)
+                    G.pop(0)
+                mk = min(m, j + 1)
+                while mk > 0:
+                    Gk = np.column_stack(G[-mk:])  # shape: (n, mk)
+                    GTG = Gk.T @ Gk  # shape: (mk, mk)
+                    ones = np.ones((mk, 1))  # shape: (mk, 1)
+                    lhs = np.block([[GTG, ones], [ones.T, np.zeros((1, 1))]])
+                    rhs = np.zeros((mk + 1, 1))
+                    rhs[-1] = 1
+                    try:
+                        sol, _, _, s = np.linalg.lstsq(lhs, rhs, rcond=None)
+                        condition_number = s[0] / s[-1] if s[-1] > 1e-12 else np.inf
+                    except np.linalg.LinAlgError:
+                        condition_number = np.inf
+                    alpha = sol[:-1].flatten()
+                    fk_window = np.column_stack(F[-mk:])  # shape: (n, mk)
+                    if condition_number < 5:
+                        break  # Found a stable solution
+                    mk -= 1
+
                 WS_eff_ilk = (fk_window @ alpha).reshape((I, L, K))  # shape: (I, L, K)
 
             # i_, l_, k_ = list(zip(*np.where(diff_ilk == max_diff)))[0]
@@ -1093,10 +1091,8 @@ class All2AllIterative(EngineeringWindFarmModel):
             # print(j, diff_ilk.mean(0), WS_eff_ilk.squeeze())
 
             # assume flow case to be unstable if mean difference of two iterations increases
-            if j > 2:
+            if j > 1:
                 unstable_lk |= diff_lk_last < diff_lk
-
-            # print(unstable_lk.sum(), np.prod(unstable_lk.shape), np.sum(ioff), np.prod(ioff.shape),)
 
             WS_eff_ilk_last = WS_eff_ilk + 0  # fast autograd-friendly copy
             diff_lk_last = diff_lk
