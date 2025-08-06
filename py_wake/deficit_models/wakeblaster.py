@@ -534,11 +534,11 @@ class WakeBlaster(PropagateDownwind):
             if key in inputs:
                 with open(inputs[key], 'r') as fp:
                     val = json.load(fp)
-                if key == 'associated_WS'
+                if key == 'associated_WS':
                     associated_WS = val
-                elif key == 'regional_roughness'
+                elif key == 'regional_roughness':
                     regional_roughness = val
-                else
+                else:
                     wind_resource_grid = val
 
         self.depends.load_turbine_design(design_id, wtg_filename)
@@ -625,7 +625,7 @@ class WakeBlaster(PropagateDownwind):
 
     def parse_results(
         self,
-        turbine_res: Dict[str, Any],
+        turbine_res: Dict[str, pd.DataFrame],
         x: Sequence[float],
         y: Sequence[float]
     ) -> SimulationResult:
@@ -658,14 +658,10 @@ class WakeBlaster(PropagateDownwind):
         
         pwr = turbine_res['power'].copy()
 
-        pwr['ws'] = self.flow_cases['WindSpeed_avg'].where(pwr['flow_case_id'] == self.flow_cases['flow_case_id'])
-        pwr['wd'] = self.flow_cases['WindDirection'].where(pwr['flow_case_id'] == self.flow_cases['flow_case_id'])
-        pwr['P'] = self.flow_cases['weighting'].where(pwr['flow_case_id'] == self.flow_cases['flow_case_id'])
-        df.drop(['index', 'flow_case_id'], inplace=True)
         P_ilk = self.flow_cases['weighting'].values.reshape(self.num_wd, self.num_ws)
         P_ilk = np.tile(P_ilk[np.newaxis, :, :], (num_wt, 1, 1))
         
-        pwr = pwr.drop(columns=['ws', 'wd', 'P'])
+        pwr.drop(columns=['index', 'flow_case_id'], inplace=True)
         try:
             pwr.columns = pwr.columns.astype(int)
         except Exception as e:
