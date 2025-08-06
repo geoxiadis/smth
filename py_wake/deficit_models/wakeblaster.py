@@ -296,7 +296,7 @@ class WakeBlasterConfig:
 class WakeBlasterDeficit(WakeDeficitModel):
     """
     Deficit model for WakeBlaster: returns zero deficit as
-    farm-level wake effects are handled externally by WakeBlaster.
+    wake superposition is handled intrinsically by WakeBlaster.
     """
     def calc_deficit(
         self,
@@ -534,9 +534,12 @@ class WakeBlaster(PropagateDownwind):
             if key in inputs:
                 with open(inputs[key], 'r') as fp:
                     val = json.load(fp)
-                if key == 'associated_WS': associated_WS = val
-                elif key == 'regional_roughness': regional_roughness = val
-                else: wind_resource_grid = val
+                if key == 'associated_WS'
+                    associated_WS = val
+                elif key == 'regional_roughness'
+                    regional_roughness = val
+                else
+                    wind_resource_grid = val
 
         self.depends.load_turbine_design(design_id, wtg_filename)
         self.depends.set_farm(
@@ -571,6 +574,7 @@ class WakeBlaster(PropagateDownwind):
         """
         Generate flow cases DataFrame from site wind statistics.
         """
+        HOURS_PER_YEAR = 8766
         records = []
         ds = self.site.ds
         for i, (wd,freq) in enumerate(zip(ds.coords["wd"].values[:-1],
@@ -590,7 +594,7 @@ class WakeBlaster(PropagateDownwind):
                     )
 
             for cnt, ws in enumerate(WS_POI):
-                records.append([ws, wd, freq * g[cnt] * 8766])
+                records.append([ws, wd, freq * g[cnt] * HOURS_PER_YEAR])
         flow_cases = pd.DataFrame(records, columns=["WindSpeed_avg", "WindDirection", "weighting"])
         flow_cases['WindSpeed_std'] = ds['TI'].values * flow_cases['WindSpeed_avg']
         flow_cases.reset_index(drop=True, inplace=True)
@@ -657,9 +661,7 @@ class WakeBlaster(PropagateDownwind):
         pwr['ws'] = self.flow_cases['WindSpeed_avg'].where(pwr['flow_case_id'] == self.flow_cases['flow_case_id'])
         pwr['wd'] = self.flow_cases['WindDirection'].where(pwr['flow_case_id'] == self.flow_cases['flow_case_id'])
         pwr['P'] = self.flow_cases['weighting'].where(pwr['flow_case_id'] == self.flow_cases['flow_case_id'])
-        for df in [pwr]:
-            del df['index']
-            del df['flow_case_id']
+        df.drop(['index', 'flow_case_id'], inplace=True)
         P_ilk = self.flow_cases['weighting'].values.reshape(self.num_wd, self.num_ws)
         P_ilk = np.tile(P_ilk[np.newaxis, :, :], (num_wt, 1, 1))
         
