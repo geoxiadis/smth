@@ -20,9 +20,6 @@ def main():
         plt.title('AEP: %.1fGWh' % aep.sum())
         plt.show()
         
-        # plot wake map
-        #fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(11, 4.5), tight_layout=True)
-        # levels = np.arange(0, 10.5, 0.5)
         print("Calculate Flow Map")
         flow_map = sim_res.flow_map(wd=120, ws=9.8)
         flow_map.plot_wake_map(plot_colorbar=False)
