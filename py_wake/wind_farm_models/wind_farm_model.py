@@ -731,7 +731,7 @@ class SimulationResult(xr.Dataset):
                     # factor used to reduce numerical errors in power
                     f = loads_siilk.mean((1, 2, 3, 4)) / 10
                     loads_silk = (
-                        np.log((softmax_base ** (loads_siilk / f[:, na, na, na, na])).sum(1)) / 
+                        np.log((softmax_base ** (loads_siilk / f[:, na, na, na, na])).sum(1)) /
                         np.log(softmax_base) *
                         f[:, na, na, na]
                     )
