@@ -871,11 +871,15 @@ class SimulationResult(xr.Dataset):
 
             n_src, n_rec = len(self.x.values), len(rec_x)
 
-            wd_deg = np.full(n_src, float(np.atleast_1d(self.get("WD", 0).values)[0]))
-            yaw_deg = np.full(n_src, float(np.atleast_1d(self.get("yaw", 0).values)[0]))
-            mode_vals = np.full(
-                n_src, float(np.atleast_1d(self.get("mode", 0).values)[0])
-            )
+            get_array = lambda k, d=0: np.atleast_1d(getattr(self.get(k, d), 'values', self.get(k, d)))
+
+            def get_param_array(key):
+                arr = get_array(key)
+                return np.full(n_src, arr[0]) if len(arr) == 1 else arr[:n_src]
+
+            wd_deg = get_param_array("WD")
+            yaw_deg = get_param_array("yaw")
+            mode_vals = get_param_array("mode")
 
             # Compute directional vectors and coordinates
             rotor_azimuth = np.radians(
