@@ -824,7 +824,8 @@ class SimulationResult(xr.Dataset):
 
             n_src, n_rec = len(self.x.values), len(rec_x)
 
-            get_array = lambda k, d=0: np.atleast_1d(getattr(self.get(k, d), "values", self.get(k, d)))
+            def get_array(k, d=0):
+                return np.atleast_1d(getattr(self.get(k, d), "values", self.get(k, d)))
 
             def get_param_array(key):
                 arr = get_array(key)
