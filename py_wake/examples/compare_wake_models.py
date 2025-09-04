@@ -19,7 +19,6 @@ def main():
         wakeblasterconfig = WakeBlasterConfig()
         wakeblasterconfig.from_file("settings.json")
 
-
         wt_x, wt_y = IEA37Site(16).initial_position.T
 
         windTurbines = HornsrevV80()
@@ -27,9 +26,7 @@ def main():
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', 'The .* model is not representative of the setup used in the literature')
             wake_models = [NOJ(site, windTurbines), BastankhahGaussian(
-                site, windTurbines), WakeBlaster(site, windTurbines, wakeblasterconfig=wakeblasterconfig)]
-            #wake_models = [NOJ(site, windTurbines), BastankhahGaussian(
-            #    site, windTurbines), Fuga(LUT_path, site, windTurbines), WakeBlaster(site, windTurbines, wakeblasterconfig=wakeblasterconfig)]
+                site, windTurbines), Fuga(LUT_path, site, windTurbines), WakeBlaster(site, windTurbines, wakeblasterconfig=wakeblasterconfig)]
 
         for wake_model in wake_models:
 

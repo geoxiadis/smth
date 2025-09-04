@@ -34,21 +34,24 @@ from py_wake.site import Site
 logger = logging.getLogger("__main__")
 logger.setLevel('INFO')
 
+# Keep a reference to the original implementation once
+if not hasattr(FlowMap, "_orig_plot_wake_map"):
+    FlowMap._orig_plot_wake_map = FlowMap.plot_wake_map
 
-def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, **kwargs):
+
+def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=None, **kwargs):
     """
     Custom plot_wake_map method that loads the Surfer grid file stored in self.attrs['_grid_file']
     and plots it as an image.
     """
+    # Only use the WakeBlaster image path if we actually have a grid file
+    grid_file = self.attrs.get('_grid_file', None)
+    if not grid_file:
+        # Fallback: use the original PyWake plotting for NOJ/Bastankhah/etc.
+        return FlowMap._orig_plot_wake_map(self, ax=ax, cmap=cmap, **kwargs)
+
     if ax is None:
         ax = plt.gca()
-
-    # Retrieve the grid file path from attributes
-    grid_file = self.attrs.get('_grid_file', None)
-    if grid_file is None:
-        ax.text(0.5, 0.5, "No grid file available", transform=ax.transAxes,
-                ha='center', va='center')
-        return ax
 
     ds = gdal.Open(grid_file)
     if ds is None:
@@ -75,7 +78,13 @@ def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, **kwargs)
                     origin='upper', cmap=cmap, vmin=data.min(), vmax=1)
     if colorbar:
         plt.colorbar(img, ax=ax)
-    ax.set_title("Flow Plane")
+
+    # Respect caller’s title; only set if `title` is provided or none exists
+    if title is not None:
+        ax.set_title(title)
+    elif not ax.get_title():
+        ax.set_title("Flow Plane")
+
     ax.set_xlabel("X coordinate")
     ax.set_ylabel("Y coordinate")
     return ax
@@ -397,6 +406,11 @@ class WakeBlasterResult(SimulationResult):
         FlowMap
             Object containing grid and wake-loss data for plotting.
         """
+
+        # normalize list/array inputs to scalars
+        wd = float(np.atleast_1d(wd)[0])
+        ws = float(np.atleast_1d(ws)[0])
+
         # 1) Run simulation if no grid file provided
         if grid_file is None:
             grid_file = self.windFarmModel.calculate_flow_plane(ws, wd, height)
@@ -733,6 +747,7 @@ class WakeBlaster(PropagateDownwind):
         str
             Path to the downloaded Surfer grid file containing the flow plane output.
         """
+
         # Prepare single-case DataFrame
         flow_case = pd.DataFrame({
             "WindSpeed_avg": [wind_speed],
