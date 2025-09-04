@@ -31,9 +31,9 @@ from typing import Any, Dict, Optional, Sequence
 from py_wake.wind_turbines import WindTurbines
 from py_wake.site import Site
 
-
 logger = logging.getLogger("__main__")
 logger.setLevel('INFO')
+
 
 def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, **kwargs):
     """
@@ -42,7 +42,7 @@ def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, **kwargs)
     """
     if ax is None:
         ax = plt.gca()
-    
+
     # Retrieve the grid file path from attributes
     grid_file = self.attrs.get('_grid_file', None)
     if grid_file is None:
@@ -80,6 +80,7 @@ def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, **kwargs)
     ax.set_ylabel("Y coordinate")
     return ax
 
+
 # Override the default plot_wake_map method in FlowMap
 FlowMap.plot_wake_map = custom_plot_wake_map
 
@@ -98,7 +99,7 @@ def load_surfer_grid(filename: str) -> dict:
     ----------
     filename : str
         Path to the Surfer grid file.
-    
+
     Returns
     -------
     dict
@@ -125,8 +126,6 @@ def load_surfer_grid(filename: str) -> dict:
     x = [gt[0] + i * gt[1] for i in range(nx)]
     y = [gt[3] + j * gt[5] for j in range(ny)]
     return {"x": x, "y": y, "wake_loss": wake_loss}
-
-
 
 
 def export_wtg_file(
@@ -211,7 +210,6 @@ def export_wtg_file(
 
     tree.write(filename, encoding="UTF-8", xml_declaration=True)
     logging.info("WTG file exported to %s", filename)
-
 
 
 class WakeBlasterConfig:
@@ -517,7 +515,8 @@ class WakeBlaster(PropagateDownwind):
             "DesignID": design_id
         })
         turbines = [
-            {   "id": str(row.ID),
+            {
+                "id": str(row.ID),
                 "easting": float(row.Easting),
                 "northing": float(row.Northing),
                 "design_id": row.DesignID,
@@ -558,7 +557,7 @@ class WakeBlaster(PropagateDownwind):
             self.flow_cases,
             self.wakeblasterconfig.simulation_config
         )
-        logger.info(f"Simulation started (ID: {sim.id})" )
+        logger.info(f"Simulation started (ID: {sim.id})")
         self.wait_for_results(sim.id)
         _, turbine_res = sim.get_results(
             [],
@@ -569,7 +568,6 @@ class WakeBlaster(PropagateDownwind):
             return self.parse_results(turbine_res, x, y)
         return None
 
-
     def create_flowcases(self) -> pd.DataFrame:
         """
         Generate flow cases DataFrame from site wind statistics.
@@ -577,15 +575,15 @@ class WakeBlaster(PropagateDownwind):
         HOURS_PER_YEAR = 8766
         records = []
         ds = self.site.ds
-        for i, (wd,freq) in enumerate(zip(ds.coords["wd"].values[:-1],
-                              ds["Sector_frequency"].values[:-1])):
+        for i, (wd, freq) in enumerate(zip(ds.coords["wd"].values[:-1],
+                                           ds["Sector_frequency"].values[:-1])):
             WS_POI = ds["ws"].values
             g = []
             for si, _ in enumerate(WS_POI):
                 if si > 0:
                     g.append(
                         weibull.cdf(WS_POI[si], ds["Weibull_A"][i].values, ds["Weibull_k"][i].values) -
-                        weibull.cdf(WS_POI[si-1], ds["Weibull_A"][i].values, ds["Weibull_k"][i].values)
+                        weibull.cdf(WS_POI[si - 1], ds["Weibull_A"][i].values, ds["Weibull_k"][i].values)
                     )
                 else:
                     g.append(
@@ -601,27 +599,24 @@ class WakeBlaster(PropagateDownwind):
         logger.debug("Flow cases shape: %s", flow_cases.shape)
         return flow_cases
 
-
     def wait_for_results(self, sim_id: str) -> None:
         """
         Poll simulation until completion or timeout (12h).
         """
         elapsed = 0
         interval = 30
-        while elapsed < 12*3600:
+        while elapsed < 12 * 3600:
             info = get_simulation_info(sim_id)
             state = info.get('state')
             if state == 'complete':
                 logger.info("Simulation %s complete", sim_id)
                 return
-            if state in ('error','complete-with-errors'):
+            if state in ('error', 'complete-with-errors'):
                 logger.error("Simulation %s error state: %s", sim_id, state)
                 raise RuntimeError(f"Simulation {sim_id} failed with state {state}")
             time.sleep(interval)
             elapsed += interval
         raise RuntimeError(f"Simulation {sim_id} did not complete in time.")
-
-
 
     def parse_results(
         self,
@@ -647,27 +642,26 @@ class WakeBlaster(PropagateDownwind):
             Parsed results including WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, and P_ilk.
         """
         num_wt = len(x)
-        num_wd = len(self.site.ds.wd)-1
+        num_wd = len(self.site.ds.wd) - 1
         num_ws = len(self.site.ds.ws)
 
         flow_cases = self.flow_cases.copy()
         flow_cases = flow_cases.rename(columns={
-            'WindSpeed_avg':'ws','WindDirection':'wd','weighting':'P'
+            'WindSpeed_avg': 'ws', 'WindDirection': 'wd', 'weighting': 'P'
         })
-        
-        
+
         pwr = turbine_res['power'].copy()
 
         P_ilk = self.flow_cases['weighting'].values.reshape(self.num_wd, self.num_ws)
         P_ilk = np.tile(P_ilk[np.newaxis, :, :], (num_wt, 1, 1))
-        
+
         pwr.drop(columns=['index', 'flow_case_id'], inplace=True)
         try:
             pwr.columns = pwr.columns.astype(int)
         except Exception as e:
             logger.error("An error occurred during conversion of the columns to int:", e)
         pwr = pwr.reindex(sorted(pwr.columns), axis=1)
-        power_ilk  = np.array(pwr).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
+        power_ilk = np.array(pwr).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
 
         hub_wind_speed = turbine_res['hub_wind_speed']
         for col in ['index', 'flow_case_id']:
@@ -676,10 +670,10 @@ class WakeBlaster(PropagateDownwind):
         try:
             hub_wind_speed.columns = hub_wind_speed.columns.astype(int)
         except Exception as e:
-             logger.error("An error occurred during conversion of the columns of hub_wind_speed:", e)
+            logger.error("An error occurred during conversion of the columns of hub_wind_speed:", e)
         hub_wind_speed = hub_wind_speed.reindex(sorted(hub_wind_speed.columns), axis=1)
         WS_eff_ilk = np.array(hub_wind_speed).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
-        
+
         # Modify turbulence_intensity (TI)
         ti = turbine_res['turbulence_intensity']
         for col in ['index', 'flow_case_id']:
@@ -692,8 +686,6 @@ class WakeBlaster(PropagateDownwind):
         ti = ti.reindex(sorted(ti.columns), axis=1)
         TI_eff_ilk = np.array(ti).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
 
-        
-        
         ct_ilk = np.zeros((num_wt, num_wd, num_ws))
         ds = self.site.ds
         wd_array = ds.coords["wd"].values[:-1]
@@ -701,7 +693,7 @@ class WakeBlaster(PropagateDownwind):
 
         local_wind = self.site.local_wind(
             x=x, y=y,
-            h=[self.windTurbines.hub_height()]*num_wt,
+            h=[self.windTurbines.hub_height()] * num_wt,
             wd=self.site.ds.coords['wd'].values[:-1],
             ws=self.site.ds.coords['ws'].values
         )
@@ -717,7 +709,6 @@ class WakeBlaster(PropagateDownwind):
             P_ilk=P_ilk
         )
 
-
     def calculate_flow_plane(
         self,
         wind_speed: float,
@@ -727,7 +718,7 @@ class WakeBlaster(PropagateDownwind):
         """
         Trigger a single flow case simulation to generate a flow plane log for the specified
         wind speed, wind direction, and height.
-    
+
         Parameters
         ----------
         wind_speed : float
@@ -736,7 +727,7 @@ class WakeBlaster(PropagateDownwind):
             Wind direction for the simulation.
         height : float
             Height at which to log the flow plane.
-    
+
         Returns
         -------
         str
@@ -748,7 +739,7 @@ class WakeBlaster(PropagateDownwind):
             "WindDirection": [wind_direction],
             "weighting": [8766.0],  # Full-year equivalent hours
         })
-    
+
         # Configure flow plane logging
         config: Any = self.wakeblasterconfig.simulation_config.copy()
         config["flow_plane_logger"] = {
@@ -756,13 +747,13 @@ class WakeBlaster(PropagateDownwind):
             "grid_height": height,
             "single_height": True,
         }
-    
+
         logging.debug(
             "Flow plane simulation config: %s\nFlow case:\n%s",
             config,
             flow_case.to_dict(orient="records")
         )
-    
+
         # Start simulation
         simulation = et.WakeBlasterNewSimulation(
             "PyWake_farm",
@@ -776,10 +767,10 @@ class WakeBlaster(PropagateDownwind):
             wind_speed,
             wind_direction
         )
-    
+
         # Await results
         self.wait_for_results(simulation.id)
-    
+
         # Download and return grid file path
         return self.download_flow_plane(simulation.id, height=height)
 
@@ -790,19 +781,19 @@ class WakeBlaster(PropagateDownwind):
     ) -> str:
         """
         Download the Surfer grid file for a completed flow plane simulation.
-    
+
         Parameters
         ----------
         sim_id : str
             Identifier of the completed simulation.
         height : float
             Height at which the flow plane was calculated.
-    
+
         Returns
         -------
         str
             Local file path to the downloaded Surfer grid file.
-    
+
         Raises
         ------
         RuntimeError
@@ -810,7 +801,7 @@ class WakeBlaster(PropagateDownwind):
         """
         file_path = f"flow_plane_{sim_id}_h{height}.grd"
         logging.info("Downloading flow plane grid file: %s", file_path)
-    
+
         try:
             # Use the WakeBlaster SDK client to fetch the file
             wb.download_surfer_grid(sim_id, height, file_path)  # type: ignore[attr-defined]
@@ -823,6 +814,5 @@ class WakeBlaster(PropagateDownwind):
             raise RuntimeError(
                 f"Download failed for simulation '{sim_id}' at height {height}"
             ) from exc
-    
-        return file_path
 
+        return file_path
