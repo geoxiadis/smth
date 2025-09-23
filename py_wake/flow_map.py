@@ -198,16 +198,18 @@ class FlowMap(FlowBox):
 
         if plot_windturbines:
             self.plot_windturbines(normalize_with=normalize_with, ax=ax)
+            for ewf in self.windFarmModel.externalWindFarms:
+                ewf.plot()
         ax.axis('equal')
         return c
 
     def plot_windturbines(self, normalize_with=1, ax=None):
         fm = self.windFarmModel
-
+        n_ewf = len(fm.externalWindFarms)
         # mean over wd and ws if present
-        x_i = self.simulationResult.x.mean(set(self.simulationResult.x.dims) - {'wt'}).values
-        y_i = self.simulationResult.y.mean(set(self.simulationResult.x.dims) - {'wt'}).values
-        type_i = self.simulationResult.type.data
+        x_i = self.simulationResult.x.mean(set(self.simulationResult.x.dims) - {'wt'}).values[:-n_ewf]
+        y_i = self.simulationResult.y.mean(set(self.simulationResult.x.dims) - {'wt'}).values[:-n_ewf]
+        type_i = self.simulationResult.type.values[:-n_ewf]
         if self.plane[0] in ['XZ', "YZ"]:
             h_i = self.simulationResult.h.values
             x_ilk, y_ilk = self.simulationResult.x.ilk(), self.simulationResult.y.ilk()

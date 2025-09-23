@@ -4,7 +4,7 @@ from py_wake import np
 from py_wake.superposition_models import SuperpositionModel, LinearSum, WeightedSum, CumulativeWakeSum, SquaredSum
 from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
 from py_wake.deflection_models.deflection_model import DeflectionModel
-from py_wake.utils.gradients import cabs
+from py_wake.utils.gradients import cabs, item_assign
 from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, NodeRotorAvgModel, WSPowerRotorAvg
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel
 from py_wake.deficit_models.deficit_model import ConvectionDeficitModel, BlockageDeficitModel, WakeDeficitModel
@@ -17,6 +17,7 @@ from py_wake.input_modifier_models.input_modifier_model import InputModifierMode
 from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.utils.parallelization import get_map_func, get_starmap_func
 import multiprocessing
+from py_wake.wind_farm_models.external_wind_farm_models import ExternalWindFarm
 
 
 class EngineeringWindFarmModel(WindFarmModel):
@@ -49,7 +50,8 @@ class EngineeringWindFarmModel(WindFarmModel):
     default_grid_resolution = 500
 
     def __init__(self, site, windTurbines: WindTurbines, wake_deficitModel, superpositionModel, rotorAvgModel=None,
-                 blockage_deficitModel=None, deflectionModel=None, turbulenceModel=None, inputModifierModels=[]):
+                 blockage_deficitModel=None, deflectionModel=None, turbulenceModel=None, inputModifierModels=[],
+                 externalWindFarms=[]):
 
         WindFarmModel.__init__(self, site, windTurbines)
         if not isinstance(inputModifierModels, (list, tuple)):
@@ -59,12 +61,14 @@ class EngineeringWindFarmModel(WindFarmModel):
                                   (blockage_deficitModel, BlockageDeficitModel, 'blockage_deficitModel'),
                                   (deflectionModel, DeflectionModel, 'deflectionModel'),
                                   (turbulenceModel, TurbulenceModel, 'turbulenceModel')] +
-                                 [(imm, InputModifierModel, 'inputModificierModels') for imm in inputModifierModels]):
+                                 [(imm, InputModifierModel, 'inputModificierModels') for imm in inputModifierModels] +
+                                 [(ewf, ExternalWindFarm, 'externalWindFarms') for ewf in externalWindFarms]):
             check_model(model, cls, name)
             if model is not None:
                 setattr(model, 'windFarmModel', self)
             setattr(self, name, model)
         self.inputModifierModels = inputModifierModels
+        self.externalWindFarms = externalWindFarms
 
         if isinstance(superpositionModel, (WeightedSum, CumulativeWakeSum)):
             assert isinstance(wake_deficitModel, ConvectionDeficitModel)
@@ -73,6 +77,8 @@ class EngineeringWindFarmModel(WindFarmModel):
                 "WeightedSum and CumulativeWakeSum only work with NodeRotorAvgModel-based rotor average models"
             assert not isinstance(wake_rotorAvgModel, WSPowerRotorAvg), \
                 'WeightedSum and CumulativeWakeSum does not work WSPowerRotorAvg'
+            assert len(externalWindFarms) == 0, \
+                'WeightedSum and CumulativeWakeSum does not work with ExternalWindFarms'
         # TI_eff requires a turbulence model
         assert 'TI_eff_ilk' not in wake_deficitModel.args4deficit or turbulenceModel
         self.wake_deficitModel = wake_deficitModel
@@ -114,6 +120,8 @@ class EngineeringWindFarmModel(WindFarmModel):
             self.args4all |= set(self.deflectionModel.args4deflection)
         for input_modifier in self.inputModifierModels:
             self.args4all |= set(input_modifier.args4model)
+        for ext_wf in self.externalWindFarms:
+            self.args4all |= set(ext_wf.args4model)
 
     def __str__(self):
         def name(o):
@@ -255,10 +263,10 @@ class EngineeringWindFarmModel(WindFarmModel):
 
         # Calculate down-wind and cross-wind distances
         z_ilk = self.site.elevation(kwargs['x_ilk'], kwargs['y_ilk'])
-        self.site.distance.setup(
+        distance = self.site.distance.setup(
             np.asarray(kwargs['x_ilk']), np.asarray(kwargs['y_ilk']), np.asarray(kwargs['h_ilk']), np.asarray(z_ilk))
 
-        WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs = self._calc_wt_interaction(**kwargs)
+        WS_eff_ilk, TI_eff_ilk, ct_ilk, kwargs = self._calc_wt_interaction(distance=distance, **kwargs)
 
         power_ilk = self.windTurbines.power(ws=WS_eff_ilk, **self.get_wt_kwargs(TI_eff_ilk, kwargs))
         kwargs.update({'time': time, 'type_i': type_i})
@@ -268,10 +276,9 @@ class EngineeringWindFarmModel(WindFarmModel):
     def _calc_wt_interaction(self, **kwargs):
         """calculate WT interaction"""
 
-    def get_map_args(self, x_j, y_j, h_j, sim_res_data, D_dst=0):
+    def get_map_args(self, x_j, y_j, h_j, lw, wd, ws, sim_res_data, D_dst=0):
         type_i = sim_res_data.type.values
         wt_d_i = self.windTurbines.diameter(type_i)
-        wd, ws = [np.atleast_1d(sim_res_data[k].values) for k in ['wd', 'ws']]
         if 'time' in sim_res_data:
             time = np.atleast_1d(sim_res_data['time'].values)
         else:
@@ -287,32 +294,32 @@ class EngineeringWindFarmModel(WindFarmModel):
         def get_ilk(k):
             v = sim_res_data[k].ilk()
 
-            def wrap(l):
+            def wrap(l, j):
                 l_ = [l, slice(0, 1)][v.shape[1] == 1]
                 return v[:, l_]
             return wrap
         map_arg_funcs = {k.replace('CT', 'ct') + '_ilk': get_ilk(k)
                          for k in sim_res_data if k not in ['wd_bin_size', 'ws_l', 'ws_u']}
         map_arg_funcs.update({
-            'type_il': lambda l: type_i[:, na],
-            'D_src_il': lambda l: wt_d_i[:, na],
-            'D_dst_ijl': lambda l: np.zeros((1, 1, 1)) + D_dst,
-            'IJLK': lambda l=slice(None), I=I, J=J, L=L, K=K: (I, J, len(np.arange(L)[l]), K)})
+            'type_il': lambda l, j: type_i[:, na],
+            'D_src_il': lambda l, j: wt_d_i[:, na],
+            'D_dst_ijl': lambda l, j: np.zeros((1, 1, 1)) + D_dst,
+            'IJLK': lambda l=slice(None), j=slice(None), I=I, J=J, L=L, K=K: (I, len(np.arange(J)[j]), len(np.arange(L)[l]), K)})
         for k in ['WS', 'WD', 'TI']:
             if k in sim_res_data:
-                if k + '_ilk' in sim_res_data.localWind.overwritten:
+                if k + '_ilk' in lw.overwritten:
                     if 'wt' not in sim_res_data[k].dims and 'i' not in sim_res_data[k].dims:
                         lw_j.add_ilk(k + "_ilk", sim_res_data[k])
                     else:
                         warnings.warn(
                             f"The WT dependent {k} that was provided for the simulation is not available at the flow map points and therefore ignored")
-        return map_arg_funcs, lw_j, wd, WD_il
+        return map_arg_funcs, lw_j, WD_il
 
     def _get_flow_l(self, model_kwargs, wt_x_ilk, wt_y_ilk, wt_h_ilk, x_j, y_j, h_j, wd, WD_ilk, WS_jlk, TI_jlk):
         wt_z_ilk = self.site.elevation(wt_x_ilk, wt_y_ilk)
         z_j = self.site.elevation(x_j, y_j)
-        self.site.distance.setup(wt_x_ilk, wt_y_ilk, wt_h_ilk, wt_z_ilk, (x_j, y_j, h_j, z_j))
-        dw_ijlk, hcw_ijlk, dh_ijlk = self.site.distance(wd_l=wd, WD_ilk=WD_ilk)
+        distance = self.site.distance.setup(wt_x_ilk, wt_y_ilk, wt_h_ilk, wt_z_ilk, (x_j, y_j, h_j, z_j))
+        dw_ijlk, hcw_ijlk, dh_ijlk = distance(wd_l=wd, WD_ilk=WD_ilk)
 
         if self.wec != 1:
             hcw_ijlk = hcw_ijlk / self.wec
@@ -346,6 +353,11 @@ class EngineeringWindFarmModel(WindFarmModel):
         else:
             deficit_ijlk, blockage_ijlk = self._calc_deficit(**model_kwargs)
 
+        # ===============================================================================================================
+        # Replace deficit from external farms
+        # ===============================================================================================================
+        for i, ewf in enumerate(self.externalWindFarms, len(wt_x_ilk) - len(self.externalWindFarms)):
+            deficit_ijlk[i] = ewf(i=i, l=np.ones(len(wd), dtype=np.bool), deficit_jlk=None, **model_kwargs)
         # ===============================================================================================================
         # Calculate added Turbulence
         # ===============================================================================================================
@@ -392,9 +404,10 @@ class EngineeringWindFarmModel(WindFarmModel):
         aep_j = (power_jlk * lw_j.P_ilk).sum((1, 2))
         return aep_j * 365 * 24 * 1e-9
 
-    def _flow_map(self, x_j, y_j, h_j, sim_res_data, D_dst=0, memory_GB=1, n_cpu=1):
+    def _flow_map(self, x_j, y_j, h_j, lw, wd, ws, sim_res_data, D_dst=0, memory_GB=1, n_cpu=1):
         """call this function via SimulationResult.flow_map"""
-        arg_funcs, lw_j, wd, WD_il = self.get_map_args(x_j, y_j, h_j, sim_res_data, D_dst=D_dst)
+        wd, ws = np.atleast_1d(wd), np.atleast_1d(ws)
+        arg_funcs, lw_j, WD_il = self.get_map_args(x_j, y_j, h_j, lw, wd, ws, sim_res_data, D_dst=D_dst)
         I, J, L, K = arg_funcs['IJLK']()
 
         if I == 0:
@@ -412,17 +425,13 @@ class EngineeringWindFarmModel(WindFarmModel):
                                     unit='wd', leave=0)
         wt_x_ilk, wt_y_ilk, wt_h_ilk = [sim_res_data[k].ilk() for k in ['x', 'y', 'h']]
 
-        xyh_j_lst = list(zip(*[np.array_split(x_j, j_chunks),
-                               np.array_split(y_j, j_chunks),
-                               np.array_split(h_j, j_chunks)]))
-
-        l_iter = [({k: arg_funcs[k](l) for k in arg_funcs},
+        l_iter = [({k: arg_funcs[k](l, j) for k in arg_funcs},
                    *[(v, v[:, slice(l[0], l[-1] + 1)])[np.shape(v)[1] == L] for v in [wt_x_ilk, wt_y_ilk, wt_h_ilk]],
-                   x_j_, y_j_, h_j_, wd[l], WD_il[:, l],
+                   x_j[j], y_j[j], h_j[j], wd[l], WD_il[:, l],
                    lw_j.WS_ilk[:, (l, [0])[lw_j.WS_ilk.shape[1] == 1]],
                    lw_j.TI_ilk[:, (l, [0])[lw_j.TI_ilk.shape[1] == 1]])
                   for l in np.array_split(np.arange(L).astype(int), wd_chunks)
-                  for x_j_, y_j_, h_j_ in xyh_j_lst]
+                  for j in np.array_split(np.arange(J).astype(int), j_chunks)]
         WS_eff_jlk, TI_eff_jlk = zip(*map_func(self._get_flow_l, l_iter))
         WS_eff_jlk = np.concatenate([np.concatenate(WS_eff_jlk[i * j_chunks:(i + 1) * j_chunks], 0)
                                      for i in range(wd_chunks)], 1)
@@ -569,6 +578,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                            wt_order_indices_ld,
                            WS_ilk,
                            TI_eff_ilk,
+                           distance,
                            D_i,
                            I, L, K, **kwargs):
         """
@@ -712,8 +722,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                 custom_args = (set([k for k in self.args4all if k.endswith('_ilk')]) - set(model_kwargs)) & set(kwargs)
                 model_kwargs.update({k: ilk2mk(kwargs[k])[m][na] for k in custom_args})
 
-                dw_ijlk, hcw_ijlk, dh_ijlk = self.site.distance(
-                    wd_l=wd, WD_ilk=WD_mk[m][na], src_idx=i_wt_l, dst_idx=i_dw.T)
+                dw_ijlk, hcw_ijlk, dh_ijlk = distance(wd_l=wd, WD_ilk=WD_mk[m][na], src_idx=i_wt_l, dst_idx=i_dw.T)
 
                 for inputModidifierModel in self.inputModifierModels:
                     modified_input_dict = inputModidifierModel(**model_kwargs)
@@ -766,6 +775,11 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                         deficit = np.zeros_like(sigma_sqr)
                 else:
                     deficit, blockage = self._calc_deficit(**model_kwargs)
+
+                    for i, ewf in enumerate(self.externalWindFarms, I - len(self.externalWindFarms)):
+
+                        deficit = ewf(i=0, l=i_wt_l == i, deficit_jlk=deficit[0], **model_kwargs)[na]
+
                     if self.blockage_deficitModel:
                         blockage_nk.append(blockage[0])
                 deficit_nk.append(deficit[0])
@@ -800,7 +814,8 @@ class PropagateDownwind(PropagateUpDownIterative):
     def __init__(self, site, windTurbines, wake_deficitModel,
                  superpositionModel=LinearSum(),
                  deflectionModel=None, turbulenceModel=None, rotorAvgModel=None,
-                 inputModifierModels=[]):
+                 inputModifierModels=[],
+                 externalWindFarms=[]):
         """Initialize flow model
 
         Parameters
@@ -824,17 +839,18 @@ class PropagateDownwind(PropagateUpDownIterative):
         """
         EngineeringWindFarmModel.__init__(self, site, windTurbines, wake_deficitModel, superpositionModel, rotorAvgModel,
                                           blockage_deficitModel=None, deflectionModel=deflectionModel,
-                                          turbulenceModel=turbulenceModel, inputModifierModels=inputModifierModels)
+                                          turbulenceModel=turbulenceModel, inputModifierModels=inputModifierModels,
+                                          externalWindFarms=externalWindFarms)
         self.direction = 'down'
 
     def _calc_deficit(self, dw_ijlk, **kwargs):
         return EngineeringWindFarmModel._calc_deficit(self, dw_ijlk, **kwargs)
 
-    def _calc_wt_interaction(self, wd, WS_eff_ilk, **kwargs):
+    def _calc_wt_interaction(self, wd, WS_eff_ilk, distance, **kwargs):
         WS_ilk = kwargs.pop('WS_ilk')
 
-        dw_order_indices_ld = self.site.distance.dw_order_indices(wd)[:, 0]
-        return self._propagate_deficit(wd, dw_order_indices_ld, WS_ilk, **kwargs)
+        dw_order_indices_ld = distance.dw_order_indices(wd)[:, 0]
+        return self._propagate_deficit(wd, dw_order_indices_ld, WS_ilk, distance=distance, **kwargs)
 
 
 class All2AllIterative(EngineeringWindFarmModel):
@@ -844,7 +860,7 @@ class All2AllIterative(EngineeringWindFarmModel):
     def __init__(self, site, windTurbines, wake_deficitModel,
                  superpositionModel=LinearSum(),
                  blockage_deficitModel=None, deflectionModel=None, turbulenceModel=None,
-                 convergence_tolerance=1e-6, rotorAvgModel=None, inputModifierModels=[]):
+                 convergence_tolerance=1e-6, rotorAvgModel=None, inputModifierModels=[], externalWindFarms=[]):
         """Initialize flow model
 
         Parameters
@@ -875,11 +891,12 @@ class All2AllIterative(EngineeringWindFarmModel):
         """
         EngineeringWindFarmModel.__init__(self, site, windTurbines, wake_deficitModel, superpositionModel, rotorAvgModel,
                                           blockage_deficitModel=blockage_deficitModel, deflectionModel=deflectionModel,
-                                          turbulenceModel=turbulenceModel, inputModifierModels=inputModifierModels)
+                                          turbulenceModel=turbulenceModel, inputModifierModels=inputModifierModels,
+                                          externalWindFarms=externalWindFarms)
         self.convergence_tolerance = convergence_tolerance
 
     def _calc_wt_interaction(self, ws, wd, WD_ilk, WS_ilk, TI_ilk,
-                             WS_eff_ilk, TI_eff_ilk,
+                             WS_eff_ilk, TI_eff_ilk, distance,
                              D_i, time,
                              I, L, K, **kwargs):
         if any([np.iscomplexobj(v) for v in ([kwargs.get(k, 0)
@@ -894,10 +911,11 @@ class All2AllIterative(EngineeringWindFarmModel):
             # Initialize with PropagateDownwind
             blockage_deficitModel = self.blockage_deficitModel
             self.blockage_deficitModel = None
-            dw_order_indices_ld = self.site.distance.dw_order_indices(wd)[:, 0]
+            dw_order_indices_ld = distance.dw_order_indices(wd)[:, 0]
             self.direction = 'down'
             WS_eff_ilk = PropagateUpDownIterative._propagate_deficit(
-                self, wd, dw_order_indices_ld, WD_ilk=WD_ilk, WS_ilk=WS_ilk, TI_ilk=TI_ilk,
+                self, wd, dw_order_indices_ld, distance=distance,
+                WD_ilk=WD_ilk, WS_ilk=WS_ilk, TI_ilk=TI_ilk,
                 WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk, D_i=D_i, I=I, L=L, K=K, **kwargs)[0]
             self.blockage_deficitModel = blockage_deficitModel
         elif np.all(WS_eff_ilk == 0):
@@ -911,7 +929,7 @@ class All2AllIterative(EngineeringWindFarmModel):
         diff_lk_last = None
         max_diff_last = None
         a = 1
-        dw_iilk, hcw_iilk, dh_iilk = self.site.distance(wd_l=wd, WD_ilk=WD_ilk)
+        dw_iilk, hcw_iilk, dh_iilk = distance(wd_l=wd, WD_ilk=WD_ilk)
         kwargs['WD_ilk'] = WD_ilk
 
         wt_kwargs = self.get_wt_kwargs(TI_eff_ilk, kwargs)
@@ -988,9 +1006,10 @@ class All2AllIterative(EngineeringWindFarmModel):
                 model_kwargs.update(modified_input_dict)
                 if any([k in modified_input_dict for k in ['x_ilk', 'y_ilk']]):
                     z_ilk = self.site.elevation(model_kwargs['x_ilk'], model_kwargs['y_ilk'])
-                    self.site.distance.setup(model_kwargs['x_ilk'], model_kwargs['y_ilk'], model_kwargs['h_ilk'], z_ilk)
+                    distance = self.site.distance.setup(
+                        model_kwargs['x_ilk'], model_kwargs['y_ilk'], model_kwargs['h_ilk'], z_ilk)
                     model_kwargs.update({k: v for k, v in zip(['dw_ijlk', 'hcw_ijlk', 'dh_ijlk'],
-                                                              self.site.distance(wd_l=wd, WD_ilk=WD_ilk))})
+                                                              distance(wd_l=wd, WD_ilk=WD_ilk))})
                     model_kwargs['cw_ijlk'] = gradients.hypot(model_kwargs['dh_ijlk'], model_kwargs['hcw_ijlk'])
                     if not self.deflectionModel:
                         self._init_deficit(**model_kwargs)
@@ -1015,6 +1034,15 @@ class All2AllIterative(EngineeringWindFarmModel):
                 deficit_iilk, blockage_iilk = self._calc_deficit(**model_kwargs)
             else:
                 deficit_iilk, blockage_iilk = self._calc_deficit(**model_kwargs)
+
+            for i, ewf in enumerate(self.externalWindFarms, I - len(self.externalWindFarms)):
+                if j == 0:
+                    deficit_jlk = None
+                else:
+                    deficit_jlk = ewf.last_deficit_jlk
+                deficit_jlk = ewf(i=i, l=np.ones(L, dtype=np.bool), deficit_jlk=deficit_jlk, **model_kwargs)
+                ewf.last_deficit_jlk = deficit_jlk
+                deficit_iilk = item_assign(deficit_iilk, idx=i, values=deficit_jlk)
 
             # set own deficit to 0
             deficit_iilk *= i2i_zero

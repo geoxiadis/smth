@@ -16,7 +16,7 @@ from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit
 from py_wake.deficit_models.utils import ct2a_mom1d
 from py_wake.deflection_models.jimenez import JimenezWakeDeflection
-from py_wake.examples.data.hornsrev1 import HornsrevV80, Hornsrev1Site, wt_x, wt_y, V80
+from py_wake.examples.data.hornsrev1 import HornsrevV80, Hornsrev1Site, wt_x, wt_y, V80, wt9_x, wt9_y
 from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
 from py_wake.flow_map import HorizontalGrid, XYGrid
 from py_wake.literature.iea37_case_study1 import IEA37CaseStudy1
@@ -28,7 +28,7 @@ from py_wake.tests import npt
 from py_wake.turbulence_models.stf import STF2005TurbulenceModel, STF2017TurbulenceModel
 from py_wake.utils.gradients import autograd, cs, fd, plot_gradients
 from py_wake.utils.model_utils import get_models
-from py_wake.utils.profiling import profileit
+from py_wake.utils.profiling import profileit, timeit
 from py_wake.wind_farm_models.engineering_models import All2AllIterative, PropagateDownwind, EngineeringWindFarmModel, PropagateUpDownIterative
 from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
 from py_wake.wind_turbines import WindTurbines
@@ -42,6 +42,7 @@ from py_wake.deficit_models.rankinehalfbody import RankineHalfBody
 from py_wake.deficit_models.rathmann import Rathmann, RathmannScaled
 from py_wake.deficit_models.vortexcylinder import VortexCylinder
 from py_wake.deficit_models.rans_lut import RANSLUTDemoDeficit
+from py_wake.wind_farm_models.external_wind_farm_models import JITExternalWindFarm
 
 
 WindFarmModel.verbose = False
@@ -645,3 +646,57 @@ def test_PropagateUpDownIterative_SquaredSum():
                                    superpositionModel=SquaredSum())
     with pytest.raises(AssertionError, match='PropagateDownwind does not work with SquaredSum when the blockage model has both up and downstream effects'):
         wfm([0, 200, 400], [0, 0, 0], wd=270)
+
+
+@pytest.mark.parametrize('wfm_cls', [All2AllIterative, PropagateDownwind])
+def test_ExternalWindFarm(wfm_cls):
+    site = Hornsrev1Site()
+    windTurbines = V80()
+    D = windTurbines.diameter()
+
+    wfm = wfm_cls(site, windTurbines,
+                  wake_deficitModel=BastankhahGaussianDeficit(use_effective_ws=True),
+                  superpositionModel=LinearSum())
+
+    xy = wt9_x, wt9_y
+    xy_ext1 = wt9_x - 2000, wt9_y + 4000
+    xy_ext2 = wt9_x + 2000, wt9_y + 4000
+    xy_all = np.concatenate([xy, xy_ext1, xy_ext2], 1)
+
+    ext1_wd = (np.round(90 - np.rad2deg(np.atan2(4000, -2000))) + np.arange(-35, 40)) % 360
+    ext2_wd = (np.round(90 - np.rad2deg(np.atan2(4000, 2000))) + np.arange(-35, 40)) % 360
+
+    wf_lst = [JITExternalWindFarm(name='ext2', simulationResult=wfm(*xy_ext1, wd=ext1_wd)),
+              JITExternalWindFarm(name='ext2', simulationResult=wfm(*xy_ext2, wd=ext2_wd))]
+
+    if 0:
+        windTurbines.plot(wt9_x, wt9_y, 0, wd=270)
+        for wf in wf_lst:
+            wf.plot()
+        plt.legend()
+        plt.show()
+
+    wfm_ref = wfm_cls(site, windTurbines,
+                      wake_deficitModel=BastankhahGaussianDeficit(use_effective_ws=True),
+                      superpositionModel=LinearSum())
+    wfm = wfm_cls(site, windTurbines,
+                  wake_deficitModel=BastankhahGaussianDeficit(use_effective_ws=True),
+                  superpositionModel=LinearSum(),
+                  externalWindFarms=wf_lst)
+
+    sim_res_ref = timeit(wfm_ref.__call__, verbose=1)(*xy_all)[0]
+    sim_res = timeit(wfm.__call__, verbose=1)(*xy, verbose=1)[0]
+    if 1:
+        (sim_res_ref.Power[:9] - sim_res.Power[:9]).sum('wt').plot()
+        plt.figure()
+        wd = np.abs((sim_res_ref.Power[:9] - sim_res.Power[:9]).sum(['wt', 'ws'])).idxmax().item()
+        wfm_ref(*xy_all, wd=wd, ws=10).flow_map().plot_wake_map()
+        plt.figure()
+        wfm(*xy, wd=wd, ws=10).flow_map().plot_wake_map()
+        plt.show()
+
+    npt.assert_array_almost_equal(sim_res_ref.WS_eff[:9], sim_res.WS_eff[:9])
+    npt.assert_array_almost_equal(sim_res_ref.Power[:9], sim_res.Power[:9])
+    # sim_res.flow_map(wd=sim_res.wd).plot_wake_map(levels=np.linspace(8, 10))
+    # plt.show()
+    # print(sim_res)

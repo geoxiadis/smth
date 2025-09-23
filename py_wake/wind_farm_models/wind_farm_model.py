@@ -9,7 +9,7 @@ from numpy import newaxis as na
 from numpy import atleast_1d
 from py_wake.utils.model_utils import check_model, fix_shape
 import multiprocessing
-from py_wake.utils.parallelization import get_pool_map, get_pool_starmap, get_map_func
+from py_wake.utils.parallelization import get_pool_map, get_pool_starmap
 from py_wake.utils.functions import arg2ilk
 from py_wake.utils.gradients import autograd
 from py_wake.noise_models.iso import ISONoiseModel
@@ -61,6 +61,9 @@ class WindFarmModel(ABC):
         assert len(x) == len(y)
         self.verbose = verbose
         h, _ = self.windTurbines.get_defaults(len(x), type, h)
+        x = np.r_[x, [wf.wf_x for wf in self.externalWindFarms]]
+        y = np.r_[y, [wf.wf_y for wf in self.externalWindFarms]]
+        h = np.r_[h, [np.mean(wf.windTurbines.hub_height(wf.windTurbines.types())) for wf in self.externalWindFarms]]
         wd, ws = self.site.get_defaults(wd, ws)
         I, L, K, = len(x), len(np.atleast_1d(wd)), (1, len(np.atleast_1d(ws)))[time is False]
         if len([k for k in kwargs if 'yaw' in k.lower() and k != 'yaw' and not k.startswith('yawc_')]):
@@ -69,10 +72,11 @@ class WindFarmModel(ABC):
         kwargs.update(dict(x=x, y=y, h=h))
         kwargs_ilk = {k + '_ilk': arg2ilk(k, v, I, L, K) for k, v in kwargs.items()}
 
-        return self.calc_wt_interaction(h_i=h, type_i=type,
-                                        wd=wd, ws=ws, time=time,
-                                        n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
-                                        **kwargs_ilk)
+        res = self.calc_wt_interaction(h_i=h, type_i=type,
+                                       wd=wd, ws=ws, time=time,
+                                       n_cpu=n_cpu, wd_chunks=wd_chunks, ws_chunks=ws_chunks,
+                                       **kwargs_ilk)
+        return res
 
     def __call__(self, x, y, h=None, type=0, wd=None, ws=None, time=False, verbose=False,  # @ReservedAssignment
                  n_cpu=1, wd_chunks=None, ws_chunks=1, return_simulationResult=True, **kwargs):
@@ -288,6 +292,13 @@ class WindFarmModel(ABC):
 
         wd_i = np.linspace(0, len(wd) + 1, wd_chunks + 1).astype(int)
         ws_i = np.linspace(0, len(ws) + 1, ws_chunks + 1).astype(int)
+        if n_cpu > 1:
+            map_func = get_pool_map(n_cpu)
+        else:
+            from tqdm import tqdm
+
+            def map_func(f, iter):
+                return tqdm(map(f, iter), total=len(iter), disable=not self.verbose)
 
         if time is False:
             # (wd x ws) matrix
@@ -326,7 +337,7 @@ class WindFarmModel(ABC):
         arg_lst = [{'wd': wd[wd_slice], 'ws': ws[ws_slice], 'time': get_subtask_arg('time', time, wd_slice, ws_slice),
                     ** {k: get_subtask_arg(k, v, wd_slice, ws_slice) for k, v in kwargs.items()}} for wd_slice, ws_slice in slice_lst]
 
-        return get_map_func(n_cpu, self.verbose), arg_lst, wd_chunks, ws_chunks
+        return map_func, arg_lst, wd_chunks, ws_chunks
 
     def _aep_chunk_wrapper(self, aep_function,
                            x, y, h=None, type=0, wd=None, ws=None,   # @ReservedAssignment
@@ -708,13 +719,31 @@ class SimulationResult(xr.Dataset):
                         raise KeyError(f"Argument, {k}, required to calculate power and ct not found")
         return wt_kwargs
 
-    def aep_map(self, grid=None, wd=None, ws=None, type=0, normalize_probabilities=False, memory_GB=1, n_cpu=1):  # @ReservedAssignment
+    def aep_map(self, grid=None, wd=None, ws=None, type=0, normalize_probabilities=False, n_cpu=1, wd_chunks=None):  # @ReservedAssignment
         X, Y, x_j, y_j, h_j, plane = self._get_grid(grid)
         wd, ws = self._wd_ws(wd, ws)
         sim_res = self.sel(wd=wd, ws=ws)
         for k in self.__slots__:
             setattr(sim_res, k, getattr(self, k))
-        aep_j = self.windFarmModel._aep_map(x_j, y_j, h_j, type, sim_res, n_cpu, memory_GB)
+        n_cpu = n_cpu or multiprocessing.cpu_count()
+        wd_chunks = np.minimum(wd_chunks or n_cpu, len(wd))
+        if n_cpu != 1:
+            n_cpu = n_cpu or multiprocessing.cpu_count()
+            map = get_pool_starmap(n_cpu)  # @ReservedAssignment
+            if len(wd) >= n_cpu:
+                # chunkification more efficient on wd than j
+                wd_i = np.linspace(0, len(wd), n_cpu + 1).astype(int)
+                args_lst = [[x_j, y_j, h_j, type, sim_res.sel(wd=wd[i0:i1])] for i0, i1 in zip(wd_i[:-1], wd_i[1:])]
+                aep_lst = map(self.windFarmModel._aep_map, args_lst)
+                aep_j = np.sum(aep_lst, 0)
+            else:
+                j_i = np.linspace(0, len(x_j), n_cpu + 1).astype(int)
+                args_lst = [[xyh_j[i0:i1] for xyh_j in [x_j, y_j, h_j]] + [type, sim_res]
+                            for i0, i1 in zip(j_i[:-1], j_i[1:])]
+                aep_lst = map(self.windFarmModel._aep_map, args_lst)
+                aep_j = np.concatenate(aep_lst)
+        else:
+            aep_j = self.windFarmModel._aep_map(x_j, y_j, h_j, type, sim_res)
         if normalize_probabilities:
             lw_j = self.windFarmModel.site.local_wind(x=x_j, y=y_j, h=h_j, wd=wd, ws=ws)
             aep_j /= lw_j.P_ilk.sum((1, 2))
@@ -729,7 +758,7 @@ class SimulationResult(xr.Dataset):
         else:  # pragma: no cover
             raise NotImplementedError()
 
-    def flow_map(self, grid=None, wd=None, ws=None, time=None, D_dst=0, memory_GB=1, n_cpu=1):
+    def flow_map(self, grid=None, wd=None, ws=None, time=None, D_dst=0):
         """Return a FlowMap object with WS_eff and TI_eff of all grid points
 
         Parameters
@@ -739,7 +768,7 @@ class SimulationResult(xr.Dataset):
         wd : int, float, array_like or None
             Wind directions to include in the flow map (if more than one, an weighted average will be computed)
             The simulation result must include the requested wind directions.
-            If None, a flow map with only the first wind direction in the simulation results will be computed.
+            If None, an weighted average of all wind directions from the simulation results will be computed.
             Note, computing a flow map with multiple wind directions may be slow
         ws : int, float, array_like or None
             Same as "wd", but for wind speed
@@ -748,35 +777,22 @@ class SimulationResult(xr.Dataset):
         D_dst : int, float or None
             In combination with a rotor average model, D_dst defines the downstream rotor diameter
             at which the deficits will be averaged
-        memory_GB : int or float, optional
-            If the additional memory needed to compute the flow map is assumed to exceed `memory_GB` GB using
-            simple models, then the flow map is split into a number of wind direction and/or point chunks to
-            reduce the memory consumption.
-            The default is 1 GB
-        n_cpu : int or None, otional
-            Number of CPUs used to compute the flow map.
-            If None, all available CPUs are used.
-            Default is 1.
-            Note, that for in many cases 1 CPU are the faster option
+
         See Also
         --------
         pywake.wind_farm_models.flow_map.FlowMap
         """
         X, Y, x_j, y_j, h_j, plane = self._get_grid(grid)
+        wd, ws = self._wd_ws(wd, ws)
         if 'time' in self:
             sim_res = self.sel(time=(time, slice(time))[time is None])
         else:
-            if wd is None:
-                wd = self.wd[[0]]
-            if ws is None:
-                ws = self.ws[[0]]
-            wd, ws = self._wd_ws(wd, ws)
             sim_res = self.sel(wd=wd, ws=ws)
-        for k in self.__slots__:
-            setattr(sim_res, k, getattr(self, k))
+        # for k in self.__slots__:
+        #     setattr(sim_res, k, getattr(self, k))
 
         lw_j, WS_eff_jlk, TI_eff_jlk = self.windFarmModel._flow_map(
-            x_j, y_j, h_j, sim_res, D_dst=D_dst, memory_GB=memory_GB, n_cpu=n_cpu)
+            x_j, y_j, h_j, self.localWind, wd, ws, sim_res, D_dst=D_dst)
         return FlowMap(sim_res, X, Y, lw_j, WS_eff_jlk, TI_eff_jlk, plane=plane)
 
     def _wd_ws(self, wd, ws):

@@ -36,6 +36,32 @@ def asarray(x, dtype=None, order=None, **kwargs):
     return np_asarray(x, dtype, order, **kwargs)
 
 
+def item_assign(x, idx, values, axis=0, test=0):
+    if axis:
+        x = np.moveaxis(x, axis, 0)
+        values = np.moveaxis(values, axis, 0)
+    assert x[idx].shape == np.shape(values)
+    if isinstance(x, ArrayBox) or test:
+        if isinstance(idx, slice):
+            idx = np.arange(x.shape[axis])[idx]
+        res = []
+        idx_i = 0
+        for x_i in range(x.shape[0]):
+            if idx_i < len(idx) and x_i == idx[idx_i]:
+                res.append(values[idx_i])
+                idx_i += 1
+            else:
+                res.append(x[x_i])
+        x = np.array(res)
+
+    else:
+        # x = x.copy()
+        x[idx] = values
+    if axis:
+        x = np.moveaxis(x, 0, axis)
+    return x
+
+
 # def asanyarray(x, dtype=None, order=None):
 #     if isinstance(x, (ArrayBox)):
 #         return x

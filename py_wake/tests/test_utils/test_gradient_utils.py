@@ -8,11 +8,13 @@ from py_wake.examples.data.hornsrev1 import V80
 from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines
 from py_wake.tests import npt
 from py_wake.utils import gradients
-from py_wake.utils.gradients import autograd, plot_gradients, fd, cs, hypot, cabs, interp, set_gradient_function
+from py_wake.utils.gradients import autograd, plot_gradients, fd, cs, hypot, cabs, interp, set_gradient_function, \
+    item_assign
 from py_wake.wind_turbines import WindTurbines
 from py_wake.wind_turbines import _wind_turbines
 from xarray.core.dataset import Dataset
 from py_wake.utils.numpy_utils import AutogradNumpy
+from autograd.numpy.numpy_boxes import ArrayBox
 
 
 @pytest.mark.parametrize('obj', [_wind_turbines, WindTurbines, V80().power, _wind_turbines.__dict__])
@@ -505,3 +507,37 @@ def test_asarray_xarray():
         return ds.x.values * 2
 
     autograd(f)([2, 3, 4])
+
+
+@pytest.mark.parametrize('test', [0, 1])
+def test_item_assignment(test):
+
+    for idx in [slice(1, 4, 2), [1, 3]]:
+        x = np.arange(1, 6)
+        x = item_assign(x, idx, [6, 7], test=test)
+        npt.assert_array_equal(x, [1, 6, 3, 7, 5])
+
+    x = np.arange(1, 6)
+    x = item_assign(x, [1], [6])
+    x = item_assign(x, [3], [7])
+    npt.assert_array_equal(x, [1, 6, 3, 7, 5])
+
+    def f(x):
+        if not isinstance(x, ArrayBox):
+            x = x.copy()
+        return item_assign(x, [1, 3], [6, x[3] * 2]).sum()
+
+    npt.assert_array_almost_equal(fd(f, vector_interdependence=True)(np.array([1, 2, 3, 4, 5])), [1, 0, 1, 2, 1])
+    npt.assert_array_equal(autograd(f, vector_interdependence=True)(np.array([1, 2, 3, 4, 5])), [1, 0, 1, 2, 1])
+
+    x_ref = np.arange(15).reshape(5, 3)
+    x_ref[[1, 3]] = [[10, 11, 12], [20, 21, 22]]
+    x = np.arange(15).reshape(5, 3)
+    x = item_assign(x, [1, 3], values=[[10, 11, 12], [20, 21, 22]], axis=0, test=test)
+    npt.assert_array_equal(x_ref, x)
+
+    x_ref = np.arange(15).reshape(3, 5)
+    x_ref[:, [1, 3]] = [[10, 20], [11, 21], [12, 22]]
+    x = np.arange(15).reshape(3, 5)
+    x = item_assign(x, [1, 3], values=[[10, 20], [11, 21], [12, 22]], axis=1, test=test)
+    npt.assert_array_equal(x_ref, x)

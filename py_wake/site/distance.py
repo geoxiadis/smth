@@ -20,42 +20,19 @@ class StraightDistance():
         """
         self.wind_direction = wind_direction
 
+    def setup(self, src_x_ilk, src_y_ilk, src_h_ilk, src_z_ilk, dst_xyhz_j=None):
+        return StraigtDistanceCalculator(self.wind_direction, src_x_ilk, src_y_ilk, src_h_ilk, src_z_ilk, dst_xyhz_j)
+
+
+class StraigtDistanceCalculator():
     def _cos_sin(self, wd):
         theta = gradients.deg2rad(90 - wd)
         cos = np.cos(theta)
         sin = np.sin(theta)
         return cos, sin
 
-    def plot(self, WD_ilk=None, wd_l=None, src_idx=slice(None), dst_idx=slice(None)):
-        import matplotlib.pyplot as plt
-
-        dw_ijlk, hcw_ijlk, _ = self(WD_ilk=WD_ilk, wd_l=wd_l)
-        if self.wind_direction == 'wd':
-            WD_ilk = np.asarray(wd_l)[na, :, na]
-
-        wdirs = mean_deg(WD_ilk, (0, 2))
-        for l, wd in enumerate(wdirs):
-            plt.figure()
-            ax = plt.gca()
-            theta = np.deg2rad(90 - wd)
-            ax.set_title(wd)
-            ax.arrow(0, 0, -np.cos(theta) * 20, -np.sin(theta) * 20, width=1)
-            colors = [c['color'] for c in iter(matplotlib.rcParams['axes.prop_cycle'])]
-            f = 2
-            for i, x_, y_ in zip(np.arange(len(self.src_x_ilk))[
-                                 src_idx], self.src_x_ilk[src_idx, 0, 0], self.src_y_ilk[src_idx, 0, 0]):
-                c = colors[i % len(colors)]
-                ax.plot(x_, y_, '2', color=c, ms=10, mew=3)
-                for j, dst_x, dst_y in zip(np.arange(len(self.dst_x_j))[dst_idx],
-                                           self.dst_x_j[dst_idx, 0, 0], self.dst_y_j[dst_idx, 0, 0]):
-                    ax.arrow(x_ - j / f, y_ - j / f, -np.cos(theta) * dw_ijlk[i, j, l, 0], -
-                             np.sin(theta) * dw_ijlk[i, j, l, 0], width=.3, color=c)
-                    ax.plot([dst_x - i / f, dst_x - np.sin(theta) * hcw_ijlk[i, j, l, 0] - i / f],
-                            [dst_y - i / f, dst_y + np.cos(theta) * hcw_ijlk[i, j, l, 0] - i / f], '--', color=c)
-            plt.plot(self.src_x_ilk[:, 0, 0], self.src_y_ilk[:, 0, 0], 'k2')
-            ax.axis('equal')
-
-    def setup(self, src_x_ilk, src_y_ilk, src_h_ilk, src_z_ilk, dst_xyhz_j=None):
+    def __init__(self, wind_direction, src_x_ilk, src_y_ilk, src_h_ilk, src_z_ilk, dst_xyhz_j=None):
+        self.wind_direction = wind_direction
         # ensure 3d and
         # +.0 ensures float or complex
         src_x_ilk, src_y_ilk, src_h_ilk, src_z_ilk = [np.expand_dims(v, tuple(range(len(np.shape(v)), 3))) + .0
@@ -125,6 +102,35 @@ class StraightDistance():
         dw_iil = -cos_l[na, na, :, na] * self.dx_ijlk - sin_l[na, na, :, na] * self.dy_ijlk
         dw_order_indices_lkd = np.moveaxis(np.argsort((dw_iil > 0).sum(0), 0), 0, -1)
         return dw_order_indices_lkd
+
+    def plot(self, WD_ilk=None, wd_l=None, src_idx=slice(None), dst_idx=slice(None)):
+        import matplotlib.pyplot as plt
+
+        dw_ijlk, hcw_ijlk, _ = self(WD_ilk=WD_ilk, wd_l=wd_l)
+        if self.wind_direction == 'wd':
+            WD_ilk = np.asarray(wd_l)[na, :, na]
+
+        wdirs = mean_deg(WD_ilk, (0, 2))
+        for l, wd in enumerate(wdirs):
+            plt.figure()
+            ax = plt.gca()
+            theta = np.deg2rad(90 - wd)
+            ax.set_title(wd)
+            ax.arrow(0, 0, -np.cos(theta) * 20, -np.sin(theta) * 20, width=1)
+            colors = [c['color'] for c in iter(matplotlib.rcParams['axes.prop_cycle'])]
+            f = 2
+            for i, x_, y_ in zip(np.arange(len(self.src_x_ilk))[
+                                 src_idx], self.src_x_ilk[src_idx, 0, 0], self.src_y_ilk[src_idx, 0, 0]):
+                c = colors[i % len(colors)]
+                ax.plot(x_, y_, '2', color=c, ms=10, mew=3)
+                for j, dst_x, dst_y in zip(np.arange(len(self.dst_x_j))[dst_idx],
+                                           self.dst_x_j[dst_idx, 0, 0], self.dst_y_j[dst_idx, 0, 0]):
+                    ax.arrow(x_ - j / f, y_ - j / f, -np.cos(theta) * dw_ijlk[i, j, l, 0], -
+                             np.sin(theta) * dw_ijlk[i, j, l, 0], width=.3, color=c)
+                    ax.plot([dst_x - i / f, dst_x - np.sin(theta) * hcw_ijlk[i, j, l, 0] - i / f],
+                            [dst_y - i / f, dst_y + np.cos(theta) * hcw_ijlk[i, j, l, 0] - i / f], '--', color=c)
+            plt.plot(self.src_x_ilk[:, 0, 0], self.src_y_ilk[:, 0, 0], 'k2')
+            ax.axis('equal')
 
 
 class TerrainFollowingDistance(StraightDistance):
