@@ -836,7 +836,7 @@ class SimulationResult(xr.Dataset):
             mode_vals = get_param_array("mode")
 
             # Compute directional vectors and coordinates
-            rotor_azimuth = np.radians(90 + (wd_deg + yaw_deg))  # TODO: check if this is correct
+            rotor_azimuth = -np.radians(90 + (wd_deg + yaw_deg))  # TODO: check if this is correct
             cos_az, sin_az = (
                 np.cos(rotor_azimuth)[:, None],
                 np.sin(rotor_azimuth)[:, None],
