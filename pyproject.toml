@@ -50,6 +50,7 @@ test  = [ 'pytest',  # for testing
           'surrogates-interface',
           'tensorflow',  # load surrogates
           'ipywidgets',  # notebook widgets
+          'jdwm', # AinslieDeficit
         ] 
 docs = [
           'sphinx',  # generating documentation

@@ -164,6 +164,8 @@ def get_exclude_dict():
         BlockageDeficitModel
     from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
     from py_wake.deficit_models.rans_lut import RANSLUTDeficit
+    from py_wake.deficit_models.ainslie import AinslieDeficit
+
     from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, NodeRotorAvgModel
     from py_wake.wind_farm_models.engineering_models import EngineeringWindFarmModel, PropagateDownwind
     from py_wake.deflection_models.deflection_model import DeflectionIntegrator
@@ -179,9 +181,9 @@ def get_exclude_dict():
         "WindFarmModel": ([EngineeringWindFarmModel], [], PropagateDownwind),
         "EngineeringWindFarmModel": ([], [], PropagateDownwind),
         "DeficitModel": ([ConvectionDeficitModel, BlockageDeficitModel, WakeDeficitModel, XRLUTDeficitModel,
-                          RANSLUTDeficit],
+                          RANSLUTDeficit, AinslieDeficit],
                          [RotorAvgModel], NOJDeficit),
-        "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel, RANSLUTDeficit], [RotorAvgModel], NOJDeficit),
+        "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel, RANSLUTDeficit, AinslieDeficit], [RotorAvgModel], NOJDeficit),
         "RotorAvgModel": ([NodeRotorAvgModel], [], None),
         "SuperpositionModel": ([], [], LinearSum),
         "BlockageDeficitModel": ([XRLUTDeficitModel, RANSLUTDeficit], [], None),
