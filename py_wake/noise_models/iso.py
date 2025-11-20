@@ -102,6 +102,9 @@ class ISONoiseModel:
         # sum up As+Ar+Am
         Agr_fijlk = np.sum([As_fijlk, Ar_fijlk, Am_fijlk], 0)
 
+        print(freqs_init)
+        print(self.freqs)
+        exit()
         # Interpolation to other frequencies are actually not following the standard completely.
         ip = GridInterpolator([freqs_init], Agr_fijlk)
         Agr_ijlkf = np.moveaxis(ip(np.array([self.freqs]).T), 0, -1)
@@ -234,13 +237,27 @@ def main():
 
         x, y = rectangle(4, 4, 5 * wt.diameter())
 
-        sim_res = wfm(x, y, wd=[270, 271], ws=[8, 10], mode=[1], yaw=[0, 10])
+        # print(wt.diameter())
+        # exit()
+        # sim_res = wfm(x, y, wd=[270, 271], ws=[8, 10], mode=[1], yaw=[0, 10])
+        sim_res = wfm(x, y, wd=[270, 271], ws=[10, 12], mode=[1], yaw=[0, 10])
 
         rec_x = np.array([x[0], x[-1]])
         rec_y = np.array([1000, 1000])
         rec_h = 2
 
-        noise_map = sim_res.sel(wd=270, ws=8).noise_map(
+        # noise_map = sim_res.sel(wd=270, ws=8).noise_map(
+        #     noiseModel=ISONoiseModel,
+        #     grid=XYGrid(x=np.linspace(-500, 3500, 50),
+        #                 y=np.linspace(-500, 1500, 50),
+        #                 h=2),
+        #     ground_type=0.0,
+        #     atmopheric_pressure=101325,
+        #     temperature=20,
+        #     relative_humidity=80
+        # )
+
+        noise_map = sim_res.sel(wd=270, ws=10).noise_map(
             noiseModel=ISONoiseModel,
             grid=XYGrid(x=np.linspace(-500, 3500, 50),
                         y=np.linspace(-500, 1500, 50),
@@ -250,14 +267,15 @@ def main():
             temperature=20,
             relative_humidity=80
         )
-
-        nm = sim_res.sel(wd=270, ws=8).noise_model(noiseModel=ISONoiseModel)
+        # nm = sim_res.sel(wd=270, ws=8).noise_model(noiseModel=ISONoiseModel)
+        nm = sim_res.sel(wd=270, ws=10).noise_model(noiseModel=ISONoiseModel)
         total_sp_jlk, spl_jlkf = nm(rec_x=rec_x, rec_y=rec_y, rec_h=rec_h,
                                     patm=101325, Temp=20, RHum=80, ground_type=0.0)
 
         fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
 
-        sim_res.flow_map(wd=270, ws=8).plot_wake_map(ax=ax1)
+        # sim_res.flow_map(wd=270, ws=8).plot_wake_map(ax=ax1)
+        sim_res.flow_map(wd=270, ws=10).plot_wake_map(ax=ax1)
         ax1.plot(rec_x, rec_y, 'ro', markersize=8, label='Receivers')
         ax1.legend()
 
