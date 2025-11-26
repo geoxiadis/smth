@@ -3,9 +3,18 @@ from numpy import newaxis as na
 from numpy import atleast_1d
 from py_wake.utils import gradients
 from autograd.numpy.numpy_boxes import ArrayBox
+from scipy.interpolate._rgi import RegularGridInterpolator
 
 
-class GridInterpolator(object):
+class GridInterpolator(RegularGridInterpolator):
+    def __init__(self, x, V, method='linear', bounds='check'):
+        RegularGridInterpolator.__init__(self, x, V)
+
+    def __call__(self, xp, deg=False):
+        return RegularGridInterpolator.__call__(self, xp)
+
+
+class PPGridInterpolator(object):
     # Faster than scipy.interpolate.interpolate.RegularGridInterpolator
     def __init__(self, x, V, method='linear', bounds='check'):
         """
