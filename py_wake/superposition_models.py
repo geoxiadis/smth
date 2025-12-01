@@ -89,13 +89,16 @@ class WeightedSum(SuperpositionModel):
 
     def __call__(self, centerline_deficit_jxxx, WS_xxx,
                  convection_velocity_jxxx,
-                 sigma_sqr_jxxx, cw_jxxx, hcw_jxxx, dh_jxxx):
+                 sigma_sqr_jxxx, cw_jxxx, hcw_jxxx, dh_jxxx, deficit2_jxxx):
 
         Ws = WS_xxx + np.zeros(centerline_deficit_jxxx.shape[1:])
 
         usc = centerline_deficit_jxxx
         uc = convection_velocity_jxxx
         sigma_sqr = sigma_sqr_jxxx
+        # print('usc', usc)
+        # print('uc', uc)
+        # print('sigma_sqr', sigma_sqr)
         cw = cw_jxxx
         hcw = hcw_jxxx * np.ones_like(usc)
         dh = dh_jxxx * np.ones_like(usc)
@@ -192,7 +195,14 @@ class WeightedSum(SuperpositionModel):
                 Uc_star[Ilx] = Ws[Ilx] - (sum1 + sum2)[Ilx] / Us_int[Ilx]
 
                 count += 1
-        return Us + np.sum(np.where(~Il, us, 0), axis=0)
+        # Setting ucn (weights) to 1.0 is the same as linear superposition
+        # ucn[:] = 1.0
+        # Replace nan with 1.0 for cases where convection variable are undefined (i.e. upstream of wt)
+        ucn = np.nan_to_num(ucn, nan=1.0)
+        # print('ucn', ucn)
+        return np.sum(deficit2_jxxx * ucn, 0)
+        # return np.sum(deficit2_jxxx, 0)
+        # return Us + np.sum(np.where(~Il, us, 0), axis=0)
 
 
 class CumulativeWakeSum(SuperpositionModel):

@@ -176,9 +176,11 @@ class EngineeringWindFarmModel(WindFarmModel):
 
     def _calc_deficit_convection(self, dw_ijlk, **kwargs):
         """Calculate wake convection deficit (and blockage)"""
-        deficit, uc, sigma_sqr = self.wake_deficitModel.calc_deficit_convection(dw_ijlk=dw_ijlk, **kwargs)
+        deficit, uc, sigma_sqr, actualdeficit = self.wake_deficitModel.calc_deficit_convection(dw_ijlk=dw_ijlk, **kwargs)
+        # print('actualdeficit conv', actualdeficit)
         deficit, blockage = self._add_blockage(deficit, dw_ijlk, **kwargs)
-        return deficit, uc, sigma_sqr, blockage
+        actualdeficit, _ = self._add_blockage(actualdeficit, dw_ijlk, **kwargs)
+        return deficit, uc, sigma_sqr, blockage, actualdeficit
 
     def _calc_added_turbulence(self, **kwargs):
         """Calculate added turbulence intensity."""
@@ -350,7 +352,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         # Calculate deficit
         # ===============================================================================================================
         if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)):
-            deficit_ijlk, uc_ijlk, sigma_sqr_ijlk, blockage_ijlk = self._calc_deficit_convection(**model_kwargs)
+            deficit_ijlk, uc_ijlk, sigma_sqr_ijlk, blockage_ijlk, actualdefict_ijlk = self._calc_deficit_convection(**model_kwargs)
         else:
             deficit_ijlk, blockage_ijlk = self._calc_deficit(**model_kwargs)
 
@@ -375,7 +377,8 @@ class EngineeringWindFarmModel(WindFarmModel):
         sp_kwargs = dict(deficit_jxxx=deficit_ijlk)
         if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)):
             if isinstance(self.superpositionModel, WeightedSum):
-                sp_kwargs.update({'WS_xxx': WS_jlk, 'convection_velocity_jxxx': uc_ijlk})
+                # print('actualdefict_ijlk', actualdefict_ijlk)
+                sp_kwargs.update({'WS_xxx': WS_jlk, 'convection_velocity_jxxx': uc_ijlk, 'deficit2_jxxx': actualdefict_ijlk})
             else:
                 sp_kwargs.update({'WS0_xxx': model_kwargs['WS_ilk'] * np.ones_like(model_kwargs['WS_eff_ilk']),
                                   'WS_eff_xxx': model_kwargs['WS_eff_ilk'], 'ct_xxx': model_kwargs['ct_ilk'],
@@ -385,6 +388,7 @@ class EngineeringWindFarmModel(WindFarmModel):
                                   hcw_jxxx=hcw_ijlk, dh_jxxx=dh_ijlk))
 
         WS_eff_jlk = WS_jlk - self.superpositionModel.superpose_deficit(**sp_kwargs)
+        # print('WS_eff_jlk', WS_eff_jlk)
         if self.blockage_deficitModel:
             WS_eff_jlk -= self.blockage_deficitModel.superpositionModel(blockage_ijlk)
 
@@ -595,6 +599,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
         """
 
         deficit_nk = []
+        actualdeficit_nk = []
         blockage_nk = []
         uc_nk = []
         sigma_sqr_nk = []
@@ -655,8 +660,11 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                                                                             ('dh_jxxx', dh_nk)]})
 
                     if isinstance(self.superpositionModel, WeightedSum):
+                        # print('actualdeficit3', actualdeficit_nk)
+                        # print('deficit_nk', deficit_nk)
                         sp_kwargs.update({'WS_xxx': WS_mk[m],
-                                          'convection_velocity_jxxx': get_value2WT(uc_nk)})
+                                          'convection_velocity_jxxx': get_value2WT(uc_nk),
+                                          'deficit2_jxxx': get_value2WT(actualdeficit_nk)})
                     else:
                         sp_kwargs.update({'WS0_xxx': np.array(WS_free_mk),
                                           'WS_eff_xxx': np.array(WS_eff_mk),
@@ -774,9 +782,11 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                         cw_nk[-1] = (self.wake_deficitModel.rotorAvgModel(lambda **kwargs: kwargs['cw_ijlk'],
                                                                           **model_kwargs))[0]
                     if isinstance(self.superpositionModel, WeightedSum):
-                        deficit, uc, sigma_sqr, _ = self._calc_deficit_convection(**model_kwargs)
+                        deficit, uc, sigma_sqr, _, actualdeficit = self._calc_deficit_convection(**model_kwargs)
+                        # print('actualdeficit', actualdeficit)
                         uc_nk.append(uc[0])
                         sigma_sqr_nk.append(sigma_sqr[0])
+                        actualdeficit_nk.append(actualdeficit[0])
                     elif isinstance(self.superpositionModel, CumulativeWakeSum):
                         # only sigma needed in cumulative wake model, centerline deficit computed inside superpostion model
                         # sigma set to zero upstream to ensure downwind activation only
@@ -1042,7 +1052,10 @@ class All2AllIterative(EngineeringWindFarmModel):
 
             # Calculate deficit
             if isinstance(self.superpositionModel, WeightedSum):
-                deficit_iilk, uc_iilk, sigmasqr_iilk, blockage_iilk = self._calc_deficit_convection(**model_kwargs)
+                deficit_iilk, uc_iilk, sigmasqr_iilk, blockage_iilk, actualdeficit_iilk = self._calc_deficit_convection(**model_kwargs)
+                # print('deficit_iilk', deficit_iilk)
+                # print('actualdeficit_iilk', actualdeficit_iilk)
+                # print('blockage_iilk', blockage_iilk)
             elif isinstance(self.superpositionModel, CumulativeWakeSum):
                 sigmasqr_iilk = (self.wake_deficitModel.sigma_ijlk(**model_kwargs))**2 * \
                     (model_kwargs['dw_ijlk'] > 1e-10)
@@ -1073,7 +1086,9 @@ class All2AllIterative(EngineeringWindFarmModel):
 
                 if isinstance(self.superpositionModel, WeightedSum):
                     sp_kwargs.update({'WS_xxx': WS_ilk,
-                                      'convection_velocity_jxxx': uc_iilk})
+                                      'convection_velocity_jxxx': uc_iilk,
+                                      'deficit2_jxxx': actualdeficit_iilk})
+
                 else:
                     sp_kwargs.update({'WS0_xxx': WS_ILK,
                                       'WS_eff_xxx': model_kwargs['WS_eff_ilk'],
@@ -1082,6 +1097,8 @@ class All2AllIterative(EngineeringWindFarmModel):
 
             WS_eff_ilk = WS_ilk.astype(dtype) - self.superpositionModel.superpose_deficit(**sp_kwargs)
             if self.blockage_deficitModel:
+                # print('blockage_iilk', blockage_iilk)
+                # print('WS_eff_ilk', WS_eff_ilk)
                 WS_eff_ilk -= self.blockage_deficitModel.superpositionModel(blockage_iilk)
 
             if self.turbulenceModel:
