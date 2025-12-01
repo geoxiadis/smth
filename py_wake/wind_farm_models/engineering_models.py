@@ -378,7 +378,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)):
             if isinstance(self.superpositionModel, WeightedSum):
                 # print('actualdefict_ijlk', actualdefict_ijlk)
-                sp_kwargs.update({'WS_xxx': WS_jlk, 'convection_velocity_jxxx': uc_ijlk, 'deficit2_jxxx': actualdefict_ijlk})
+                sp_kwargs.update({'WS_xxx': WS_jlk, 'convection_velocity_jxxx': uc_ijlk, 'actualdeficit_jxxx': actualdefict_ijlk})
             else:
                 sp_kwargs.update({'WS0_xxx': model_kwargs['WS_ilk'] * np.ones_like(model_kwargs['WS_eff_ilk']),
                                   'WS_eff_xxx': model_kwargs['WS_eff_ilk'], 'ct_xxx': model_kwargs['ct_ilk'],
@@ -664,7 +664,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                         # print('deficit_nk', deficit_nk)
                         sp_kwargs.update({'WS_xxx': WS_mk[m],
                                           'convection_velocity_jxxx': get_value2WT(uc_nk),
-                                          'deficit2_jxxx': get_value2WT(actualdeficit_nk)})
+                                          'actualdeficit_jxxx': get_value2WT(actualdeficit_nk)})
                     else:
                         sp_kwargs.update({'WS0_xxx': np.array(WS_free_mk),
                                           'WS_eff_xxx': np.array(WS_eff_mk),
@@ -1087,7 +1087,7 @@ class All2AllIterative(EngineeringWindFarmModel):
                 if isinstance(self.superpositionModel, WeightedSum):
                     sp_kwargs.update({'WS_xxx': WS_ilk,
                                       'convection_velocity_jxxx': uc_iilk,
-                                      'deficit2_jxxx': actualdeficit_iilk})
+                                      'actualdeficit_jxxx': actualdeficit_iilk})
 
                 else:
                     sp_kwargs.update({'WS0_xxx': WS_ILK,

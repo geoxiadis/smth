@@ -89,7 +89,7 @@ class WeightedSum(SuperpositionModel):
 
     def __call__(self, centerline_deficit_jxxx, WS_xxx,
                  convection_velocity_jxxx,
-                 sigma_sqr_jxxx, cw_jxxx, hcw_jxxx, dh_jxxx, deficit2_jxxx):
+                 sigma_sqr_jxxx, cw_jxxx, hcw_jxxx, dh_jxxx, actualdeficit_jxxx):
 
         Ws = WS_xxx + np.zeros(centerline_deficit_jxxx.shape[1:])
 
@@ -200,8 +200,8 @@ class WeightedSum(SuperpositionModel):
         # Replace nan with 1.0 for cases where convection variable are undefined (i.e. upstream of wt)
         ucn = np.nan_to_num(ucn, nan=1.0)
         # print('ucn', ucn)
-        return np.sum(deficit2_jxxx * ucn, 0)
-        # return np.sum(deficit2_jxxx, 0)
+        return np.sum(actualdeficit_jxxx * ucn, 0)
+        # return np.sum(actualdeficit_jxxx, 0)
         # return Us + np.sum(np.where(~Il, us, 0), axis=0)
 
 
