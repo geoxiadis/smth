@@ -14,7 +14,7 @@ from numpy import newaxis as na
 # TODO: make All2AllIterative work
 # class RANSLUT(All2AllIterative):
 class RANSLUT(PropagateDownwind):
-    def __init__(self, lut, site, windTurbines, rotorAvgModel=None):
+    def __init__(self, lut, convlut, site, windTurbines, rotorAvgModel=None):
         """
         Parameters
         ----------
@@ -39,10 +39,16 @@ class RANSLUT(PropagateDownwind):
                 lut = xr.load_dataset(lut)
             return lut
         lut_lst = [load_lut(lut) for lut in lut_lst]
+
+        if not isinstance(convlut, (list, tuple)):
+            convlut = [convlut]
+        convlut_lst = convlut
+        convlut_lst = [load_lut(convlut) for convlut in convlut_lst]
+
         blockage_deficit = RANSLUTDeficit(lut=[lut.deficits for lut in lut_lst], rotorAvgModel=rotorAvgModel, superpositionModel=LinearSum())
         # wake_deficit = RANSLUTDeficit(lut=[lut.deficits for lut in lut_lst], rotorAvgModel=rotorAvgModel, superpositionModel=LinearSum())
 
-        wake_deficit = RANSLUTConvDeficit(lut=[lut.deficits for lut in lut_lst], rotorAvgModel=rotorAvgModel, superpositionModel=WeightedSum())
+        wake_deficit = RANSLUTConvDeficit(lut=[lut.deficits for lut in lut_lst], convlut=convlut_lst ,rotorAvgModel=rotorAvgModel, superpositionModel=WeightedSum())
 
         turb = RANSLUTTurbulence(lut=[lut.added_ti for lut in lut_lst], rotorAvgModel=rotorAvgModel)
 
@@ -79,21 +85,20 @@ class RANSLUTDeficit(RANSLUTModel, XRLUTDeficitModel):
 class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
     """Expects LUT velocity deficit xarray"""
 
-    def __init__(self, lut, superpositionModel=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True,
+    def __init__(self, lut, convlut, superpositionModel=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True,
                  use_effective_ti=False, 
                  ct2a=ct2a_madsen, k=0.0324555, ceps=.2, ctlim=0.899):
         self._k = k
         self._ceps = ceps
         self._ctlim = ctlim
         self.ct2a = ct2a
+        # TODO: add WT type
+        self.convlut = convlut[0]
         assert use_effective_ws, "RANSLUTDeficit only makes sense when scaling with effective wind speed"
-        #print('superpositionModel', superpositionModel)
         XRLUTConvDeficitModel.__init__(self, self.get_lut(lut, 'deficits'),
                                        bounds='limit', superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                        use_effective_ws=True, use_effective_ti=use_effective_ti)
-        # TODO: Make path of convlut file a variable
-        self.convlut = xr.open_dataset('/home/plaa/git/pywake_ranslut/py_wake_ranslut/examples/TurbineRow_WES_MOST/gaussfit_zeta0.nc')
-        # #print('self.convlut', self.convlut)
+        # print('self.convlut', self.convlut)
  
     def wake_radius(self, dw_ijlk, **kwargs):
         # Required for PyWake but not needed for RANS LUT model
