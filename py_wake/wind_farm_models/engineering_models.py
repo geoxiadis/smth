@@ -938,9 +938,9 @@ class All2AllIterative(EngineeringWindFarmModel):
             self.blockage_deficitModel = None
             dw_order_indices_ld = self.site.distance.dw_order_indices(kwargs['x_ilk'], kwargs['y_ilk'], wd)[:, 0]
             self.direction = 'down'
-            WS_eff_ilk = PropagateUpDownIterative._propagate_deficit(
+            WS_eff_ilk, TI_eff_ilk = PropagateUpDownIterative._propagate_deficit(
                 self, wd, dw_order_indices_ld, WD_ilk=WD_ilk, WS_ilk=WS_ilk, TI_ilk=TI_ilk,
-                WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk, D_i=D_i, I=I, L=L, K=K, **kwargs)[0]
+                WS_eff_ilk=WS_eff_ilk, TI_eff_ilk=TI_eff_ilk, D_i=D_i, I=I, L=L, K=K, **kwargs)[0:2]
             self.blockage_deficitModel = blockage_deficitModel
         elif np.all(WS_eff_ilk == 0):
             WS_eff_ilk = WS_ILK + 0.
@@ -1066,7 +1066,8 @@ class All2AllIterative(EngineeringWindFarmModel):
 
             # set own deficit to 0
             deficit_iilk *= i2i_zero
-            actualdeficit_iilk *= i2i_zero
+            if isinstance(self.superpositionModel, WeightedSum):
+                actualdeficit_iilk *= i2i_zero
             if blockage_iilk is not None:
                 blockage_iilk *= i2i_zero
 
