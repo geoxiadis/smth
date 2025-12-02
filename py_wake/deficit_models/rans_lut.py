@@ -150,7 +150,7 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk, ctx_ijlk = self._calc_deficit(
             D_src_il, dw_ijlk, ct_ilk, **kwargs, **self.get_WS_ref_kwargs(kwargs))
 
-        actualdeficit = self.calc_deficit(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
+        # actualdeficit = self.calc_deficit(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
         # print('actualdeficit2', actualdeficit)
         # Convection velocity
         # Gaussian wake model:
@@ -158,7 +158,7 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         uc_ijlk = WS_ref_ijlk - 0.5 * deficit_centre_ijlk
         # print('uv_ijlk', uc_ijlk)
         sigma_sqr_ijlk = np.broadcast_to(sigma_sqr_ijlk, deficit_centre_ijlk.shape)
-        return deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk, actualdeficit
+        return deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk#, actualdeficit
 
 
 class RANSLUTDemoDeficit(RANSLUTDeficit):
