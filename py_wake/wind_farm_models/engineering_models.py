@@ -783,6 +783,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                                                                           **model_kwargs))[0]
                     if isinstance(self.superpositionModel, WeightedSum):
                         deficit, uc, sigma_sqr, _, actualdeficit = self._calc_deficit_convection(**model_kwargs)
+                        actualdeficit, blockage2 = self._calc_deficit(**model_kwargs)
                         # print('actualdeficit', actualdeficit)
                         uc_nk.append(uc[0])
                         sigma_sqr_nk.append(sigma_sqr[0])
