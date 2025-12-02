@@ -1,4 +1,5 @@
 import xarray as xr
+# from py_wake.utils.grid_interpolator import GridInterpolator
 from py_wake.deficit_models.deficit_model import XRLUTDeficitModel, ConvectionDeficitModel, XRLUTConvDeficitModel
 from py_wake import np
 from py_wake.superposition_models import LinearSum, SquaredSum, WeightedSum
@@ -80,7 +81,7 @@ class RANSLUTDeficit(RANSLUTModel, XRLUTDeficitModel):
 
 
 class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
-    """Expects LUT velocity deficit xarray"""
+    """Expects LUT velocity deficit and convection variables xarray"""
 
     def __init__(self, lut, convlut, superpositionModel=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True,
                  use_effective_ti=False, 
@@ -95,6 +96,9 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         XRLUTConvDeficitModel.__init__(self, self.get_lut(lut, 'deficits'),
                                        bounds='limit', superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                        use_effective_ws=True, use_effective_ti=use_effective_ti)
+        # TODO: use fast GridInterpolator
+        # self.sigma_interp_lst = [GridInterpolator([da[k].values for k in da.dims], da.values, method='linear', bounds='limit')
+        #                          for da in [convlut[0]['sigma']]]
         # print('self.convlut', self.convlut)
  
     def wake_radius(self, dw_ijlk, **kwargs):
@@ -114,12 +118,18 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         return self._ceps * np.sqrt(beta_ilk)
     '''
 
-    def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
+    def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, WS_ref_ijlk, **kwargs):
         # dimensional wake expansion
-        # TODO: add proper dimensions, currently only working for constant CT and single flow case
-        sigma = self.convlut.sigma.interp(x=(dw_ijlk[0, :, 0, 0] / D_src_il[0, 0]), ct=ct_ilk[0, 0, 0], ti=kwargs['TI_eff_ilk'][:, 0, 0]).values
+        # TODO: use fast GridInterpolator
+        I, _, L, K = WS_ref_ijlk.shape
+        J = dw_ijlk.shape[1]
+        sigma_ijlk = np.zeros((I, J, L, K))
+        for i in range(I):
+            for l in range(L):
+                for k in range(K):
+                    sigma_ijlk[i, :, l, k] = self.convlut.sigma.interp(x=(dw_ijlk[i, :, l, 0] / D_src_il[i, l]), ct=ct_ilk[i, l, k], ti=kwargs['TI_eff_ilk'][i, l, k]).values
         # print('sigma', sigma)
-        return sigma[0, :][na, :, na, na] * D_src_il[:, na, :, na]
+        return sigma_ijlk * D_src_il[:, na, :, na]
         # Gaussian wake model:
         # return self.k_ilk(**kwargs)[:, na] * dw_ijlk + \
         #    self.epsilon_ilk(ct_ilk, **kwargs)[:, na] * D_src_il[:, na, :, na]
@@ -129,14 +139,22 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
 
     def _calc_deficit(self, D_src_il, dw_ijlk, ct_ilk, WS_ref_ijlk, **kwargs):
         # dimensional wake expansion
-        sigma_sqr_ijlk = (self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs))**2
+        sigma_sqr_ijlk = (self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, WS_ref_ijlk=WS_ref_ijlk, **kwargs))**2
         # print('sigma_sqr_ijlk', sigma_sqr_ijlk)
         ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
         # Gaussian wake model:
         # deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1,
         #                                              2. * self.ct2a(ctx_ijlk * D_src_il[:, na, :, na]**2 /
         #                                                             (8. * sigma_sqr_ijlk)))
-        deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1.0, self.convlut.centerline_deficit.interp(x=(dw_ijlk[0, :, 0, 0] / D_src_il[0, 0]), ct=ct_ilk[0, 0, 0], ti=kwargs['TI_eff_ilk'][:, 0, 0]).values[:, :, na, na])
+        # TODO: use fast GridInterpolator
+        I, _, L, K = WS_ref_ijlk.shape
+        J = dw_ijlk.shape[1]
+        deficit_centre_ijlk = np.zeros((I, J, L, K))
+        for i in range(I):
+            for l in range(L):
+                for k in range(K):
+                    deficit_centre_ijlk[i, :, l, k] = self.convlut.centerline_deficit.interp(x=(dw_ijlk[i, :, l, 0] / D_src_il[i, l]), ct=ct_ilk[i, l, k], ti=kwargs['TI_eff_ilk'][i, l, k]).values
+        deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1.0, deficit_centre_ijlk)
         # print('deficit_centre_ijlk', deficit_centre_ijlk)
         return WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk, ctx_ijlk
  
@@ -157,7 +175,7 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         uc_ijlk = WS_ref_ijlk - 0.5 * deficit_centre_ijlk
         # print('uv_ijlk', uc_ijlk)
         sigma_sqr_ijlk = np.broadcast_to(sigma_sqr_ijlk, deficit_centre_ijlk.shape)
-        return deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk#, actualdeficit
+        return deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk
 
 
 class RANSLUTDemoDeficit(RANSLUTDeficit):
