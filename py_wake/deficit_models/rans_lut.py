@@ -11,9 +11,8 @@ from py_wake.deficit_models.utils import ct2a_madsen
 from numpy import newaxis as na
 
 
-# TODO: make All2AllIterative work
-# class RANSLUT(All2AllIterative):
-class RANSLUT(PropagateDownwind):
+class RANSLUT(All2AllIterative):
+# class RANSLUT(PropagateDownwind):
     def __init__(self, lut, site, windTurbines, convlut=None, rotorAvgModel=None):
         """
         Parameters
@@ -56,10 +55,10 @@ class RANSLUT(PropagateDownwind):
         blockage_deficit = RANSLUTDeficit(lut=[lut.deficits for lut in lut_lst], rotorAvgModel=rotorAvgModel, superpositionModel=LinearSum())
         turb = RANSLUTTurbulence(lut=[lut.added_ti for lut in lut_lst], rotorAvgModel=rotorAvgModel)
 
-        # All2AllIterative.__init__(self, site, windTurbines,
-        PropagateDownwind.__init__(self, site, windTurbines,
+        All2AllIterative.__init__(self, site, windTurbines,
+        # PropagateDownwind.__init__(self, site, windTurbines,
                                    wake_deficitModel=wake_deficit,
-                                   #blockage_deficitModel=blockage_deficit,
+                                   blockage_deficitModel=blockage_deficit,
                                    turbulenceModel=turb,
                                    superpositionModel=superpositionModel)
 

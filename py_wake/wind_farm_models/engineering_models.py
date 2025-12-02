@@ -178,9 +178,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         """Calculate wake convection deficit (and blockage)"""
         deficit, uc, sigma_sqr = self.wake_deficitModel.calc_deficit_convection(dw_ijlk=dw_ijlk, **kwargs)
         deficit, blockage = self._add_blockage(deficit, dw_ijlk, **kwargs)
-        actualdeficit, _ = self._calc_deficit(dw_ijlk=dw_ijlk, **kwargs)
-        actualdeficit, _ = self._add_blockage(actualdeficit, dw_ijlk, **kwargs)
-        # print('actualdeficit conv', actualdeficit)
+        actualdeficit, blockage = self._calc_deficit(dw_ijlk=dw_ijlk, **kwargs)
         return deficit, uc, sigma_sqr, blockage, actualdeficit
 
     def _calc_added_turbulence(self, **kwargs):
@@ -1054,9 +1052,6 @@ class All2AllIterative(EngineeringWindFarmModel):
             # Calculate deficit
             if isinstance(self.superpositionModel, WeightedSum):
                 deficit_iilk, uc_iilk, sigmasqr_iilk, blockage_iilk, actualdeficit_iilk = self._calc_deficit_convection(**model_kwargs)
-                # print('deficit_iilk', deficit_iilk)
-                # print('actualdeficit_iilk', actualdeficit_iilk)
-                # print('blockage_iilk', blockage_iilk)
             elif isinstance(self.superpositionModel, CumulativeWakeSum):
                 sigmasqr_iilk = (self.wake_deficitModel.sigma_ijlk(**model_kwargs))**2 * \
                     (model_kwargs['dw_ijlk'] > 1e-10)
@@ -1071,6 +1066,7 @@ class All2AllIterative(EngineeringWindFarmModel):
 
             # set own deficit to 0
             deficit_iilk *= i2i_zero
+            actualdeficit_iilk *= i2i_zero
             if blockage_iilk is not None:
                 blockage_iilk *= i2i_zero
 

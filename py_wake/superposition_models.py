@@ -200,7 +200,7 @@ class WeightedSum(SuperpositionModel):
         # Replace nan with 1.0 for cases where convection variable are undefined (i.e. upstream of wt)
         ucn = np.nan_to_num(ucn, nan=1.0)
         # print('ucn', ucn)
-        return np.sum(actualdeficit_jxxx * ucn, 0)
+        return np.sum(actualdeficit_jxxx * ucn, axis=0)
         # return np.sum(actualdeficit_jxxx, 0)
         # return Us + np.sum(np.where(~Il, us, 0), axis=0)
 
