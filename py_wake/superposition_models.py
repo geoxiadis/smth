@@ -105,7 +105,8 @@ class WeightedSum(SuperpositionModel):
         Us = np.zeros_like(Ws)
         # Determine non-centreline deficit ratio
         # Local deficit
-        us = usc * np.exp(-1 / (2 * sigma_sqr) * cw**2)
+        us = usc * np.exp(-1 / (2 * (sigma_sqr + 1e-30)) * cw**2)
+        us[usc == 0] = 0.0
 
         # Set lower deficit limit below which deficits are linearly added
         us_lim = max(self.delta, 1e-30) * Ws[na]
@@ -198,7 +199,9 @@ class WeightedSum(SuperpositionModel):
         # Setting ucn (weights) to 1.0 is the same as linear superposition
         # ucn[:] = 1.0
         # Replace nan with 1.0 for cases where convection variable are undefined (i.e. upstream of wt)
-        ucn = np.nan_to_num(ucn, nan=1.0)
+        # ucn = np.nan_to_num(ucn, nan=1.0)
+        # Limit weights for near wake to not exceed linear superposition
+        ucn = np.minimum(ucn, 1.0)
         # print('ucn', ucn)
         return np.sum(actualdeficit_jxxx * ucn, axis=0)
         # return np.sum(actualdeficit_jxxx, 0)

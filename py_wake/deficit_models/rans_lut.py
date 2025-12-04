@@ -128,7 +128,10 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
             for l in range(L):
                 for k in range(K):
                     sigma_ijlk[i, :, l, k] = self.convlut.sigma.interp(x=(dw_ijlk[i, :, l, 0] / D_src_il[i, l]), ct=ct_ilk[i, l, k], ti=kwargs['TI_eff_ilk'][i, l, k]).values
-        # print('sigma', sigma)
+        # Replace undefined sigma values (upstream of WT) with zeros
+        upstream = dw_ijlk[:, :, :, 0] < 0
+        for k in range(K):
+            sigma_ijlk[:, :, :, k][upstream] = 0.0
         return sigma_ijlk * D_src_il[:, na, :, na]
         # Gaussian wake model:
         # return self.k_ilk(**kwargs)[:, na] * dw_ijlk + \
@@ -155,6 +158,10 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
                 for k in range(K):
                     deficit_centre_ijlk[i, :, l, k] = self.convlut.centerline_deficit.interp(x=(dw_ijlk[i, :, l, 0] / D_src_il[i, l]), ct=ct_ilk[i, l, k], ti=kwargs['TI_eff_ilk'][i, l, k]).values
         deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1.0, deficit_centre_ijlk)
+        # Replace undefined center deficit values (upstream of WT) with zeros
+        upstream = dw_ijlk[:, :, :, 0] < 0
+        for k in range(K):
+            deficit_centre_ijlk[:, :, :, k][upstream] = 0.0
         # print('deficit_centre_ijlk', deficit_centre_ijlk)
         return WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk, ctx_ijlk
  
