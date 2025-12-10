@@ -79,13 +79,15 @@ class WeightedSum(SuperpositionModel):
     J. Fluid Mech. (2020), vol. 889, A8; doi:10.1017/jfm.2020.77
     """
 
-    def __init__(self, delta=0.01, max_err=1e-3, max_iter=5):
+    def __init__(self, delta=0.01, max_err=1e-3, max_iter=5, weight_limit=1.0):
         # minimum deficit (as fraction of free-stream) to invoke weighted summation
         self.delta = delta
         # convergence limit for computing global convection velocity
         self.max_err = max_err
         # maximum number of iterations used in computing weights
         self.max_iter = max_iter
+        # Limit weights to this value. A limit of 1.0 means not exceeding linear superposition
+        self.weight_limit = weight_limit
 
     def __call__(self, centerline_deficit_jxxx, WS_xxx,
                  convection_velocity_jxxx,
@@ -150,7 +152,9 @@ class WeightedSum(SuperpositionModel):
                 # Initialize and avoid division by zero
                 ucn[:] = 1.
                 Inz = Uc != 0
-                ucn[:, Inz] = uc[:, Inz] / Uc[Inz]
+                # Limit weights to linear superposition
+                # ucn[:, Inz] = uc[:, Inz] / Uc[Inz]
+                ucn[:, Inz] = np.minimum(uc[:, Inz] / Uc[Inz], self.weight_limit)
 
                 # Combined local deficit
                 # dummy matrix to keep original matrix shape
@@ -200,8 +204,6 @@ class WeightedSum(SuperpositionModel):
         # ucn[:] = 1.0
         # Replace nan with 1.0 for cases where convection variable are undefined (i.e. upstream of wt)
         # ucn = np.nan_to_num(ucn, nan=1.0)
-        # Limit weights for near wake to not exceed linear superposition
-        ucn = np.minimum(ucn, 1.0)
         # print('ucn', ucn)
         return np.sum(actualdeficit_jxxx * ucn, axis=0)
         # return np.sum(actualdeficit_jxxx, 0)
