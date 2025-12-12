@@ -127,7 +127,7 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         for i in range(I):
             for l in range(L):
                 for k in range(K):
-                    sigma_ijlk[i, :, l, k] = self.convlut.sigma.interp(x=(dw_ijlk[i, :, l, 0] / D_src_il[i, l]), ct=ct_ilk[i, l, k], ti=kwargs['TI_eff_ilk'][i, l, k]).values
+                    sigma_ijlk[i, :, l, k] = self.convlut.sigma.interp(x=(dw_ijlk[i, :, l, 0] / D_src_il[i, 0]), ct=ct_ilk[i, l, k], ti=kwargs['TI_eff_ilk'][i, l, k]).values
         # Replace undefined sigma values (upstream of WT) with zeros
         upstream = dw_ijlk[:, :, :, 0] < 0
         for k in range(K):
@@ -156,7 +156,7 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         for i in range(I):
             for l in range(L):
                 for k in range(K):
-                    deficit_centre_ijlk[i, :, l, k] = self.convlut.centerline_deficit.interp(x=(dw_ijlk[i, :, l, 0] / D_src_il[i, l]), ct=ct_ilk[i, l, k], ti=kwargs['TI_eff_ilk'][i, l, k]).values
+                    deficit_centre_ijlk[i, :, l, k] = self.convlut.centerline_deficit.interp(x=(dw_ijlk[i, :, l, 0] / D_src_il[i, 0]), ct=ct_ilk[i, l, k], ti=kwargs['TI_eff_ilk'][i, l, k]).values
         deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1.0, deficit_centre_ijlk)
         # Replace undefined center deficit values (upstream of WT) with zeros
         upstream = dw_ijlk[:, :, :, 0] < 0
