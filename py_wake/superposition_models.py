@@ -115,6 +115,7 @@ class WeightedSum(SuperpositionModel):
         # Get indices
         Il = us >= us_lim
 
+        ucn = np.ones_like(uc)
         # Only start weighting computation if at least two deficits need to be combined
         # Computations are performed where velocities exceed the specified limit (us_lim).
         # The more complex indexing leads to more complex code.
@@ -203,8 +204,10 @@ class WeightedSum(SuperpositionModel):
         # Setting ucn (weights) to 1.0 is the same as linear superposition
         # ucn[:] = 1.0
         # Replace nan with 1.0 for cases where convection variable are undefined (i.e. upstream of wt)
-        # ucn = np.nan_to_num(ucn, nan=1.0)
+        ucn = np.nan_to_num(ucn, nan=1.0)
         # print('ucn', ucn)
+        # Reset weights to linear sum where WeightedSum is not applied
+        ucn[~Il] = 1.0
         return np.sum(actualdeficit_jxxx * ucn, axis=0)
         # return np.sum(actualdeficit_jxxx, 0)
         # return Us + np.sum(np.where(~Il, us, 0), axis=0)
