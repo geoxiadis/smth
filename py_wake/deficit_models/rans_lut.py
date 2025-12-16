@@ -1,6 +1,6 @@
 import xarray as xr
-# from py_wake.utils.grid_interpolator import GridInterpolator
 from py_wake.deficit_models.deficit_model import XRLUTDeficitModel, ConvectionDeficitModel, XRLUTConvDeficitModel
+from py_wake.utils.model_utils import XRLUTModel
 from py_wake import np
 from py_wake.superposition_models import LinearSum, SquaredSum, WeightedSum
 from py_wake.wind_farm_models.engineering_models import All2AllIterative, PropagateDownwind
@@ -80,62 +80,85 @@ class RANSLUTDeficit(RANSLUTModel, XRLUTDeficitModel):
         return wake_radius_ijlk
 
 
+class XRLUTConvModel(XRLUTModel):
+    """Deficit model based on xarray.dataarray look-up table with linear interpolation"""
+
+    def __init__(self, da, get_input=None, get_output=None,
+                 method='linear', bounds='limit'):
+        """
+        Parameters
+        ----------
+        da : xarray.dataarray
+            dataarray containing lookup table.
+        get_input : function or None, optional
+            if None (default): The get_input method of XRDeficitModel is used. This option requires that the
+            names of the input dimensions matches names of the default PyWake keyword arguments, e.g. dw_ijlk, WS_ilk,
+            D_src_il, etc, or user-specified custom inputs
+            if function: The names of the input for the function should match the names of the default PyWake
+            keyword arguments, e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
+            The function should output interpolation coordinates [x_ijlk, y_ijlk, ...], where (x,y,...) match
+            the order of the dimensions of the dataarray
+        get_output : function or None, optional
+            if None (default): The interpolated output is scaled with the local wind speed, WS_ilk,
+            or local effective wind speed, WS_eff_ilk, depending on the value of <use_effective_ws>.
+            if function: The function should take the argument output_ijlk and an optional set of PyWake inputs. The
+            names of the PyWake inputs should match the names of the default PyWake keyword arguments,
+            e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
+            The function should return deficit_ijlk
+        method : {'linear' or 'nearest} or [{'linear' or 'nearest}, ...]
+            interpolation method
+        bounds : {'limit', 'check', 'ignore'}
+            how to handle out-of-bounds coordinate interpolation, see GridInterpolator
+        """
+        XRLUTModel.__init__(self, da, get_input, get_output, method=method, bounds=bounds)
+
+    def get_input(self, dw_ijlk, hcw_ijlk, z_ijlk, D_src_il, h_ilk, TI_eff_ilk, ct_ilk, type_il, **kwargs):
+        kwargs = dict(x=dw_ijlk / D_src_il[:, na, :, na],
+                      y=hcw_ijlk / D_src_il[:, na, :, na],
+                      z=(z_ijlk - h_ilk[:, na]) / D_src_il[:, na, :, na],
+                      ti=TI_eff_ilk[:, na],
+                      ct=ct_ilk[:, na],
+                      type_i=type_il[:, na, :, na])
+
+        return [kwargs[k] for k in self.da_lst[0].dims]
+
+    def get_output(self, output_ijlk, **kwargs):
+        """Default get_output function.
+        This function just scales the interpolated values with the local wind speed, WS_ilk, or local effective
+        wind speed, WS_eff_ilk, depending on the value of <use_effective_ws>"""
+        return output_ijlk
+
+
 class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
     """Expects LUT velocity deficit and convection variables xarray"""
 
     def __init__(self, lut, convlut, superpositionModel=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True,
                  use_effective_ti=False, 
                  ct2a=ct2a_madsen, k=0.0324555, ceps=.2, ctlim=0.899):
-        self._k = k
-        self._ceps = ceps
-        self._ctlim = ctlim
-        self.ct2a = ct2a
         # TODO: add WT type
-        self.convlut = convlut[0]
+        # self.convlut = convlut[0]
+        # self.convlut = convlut[0].sel(y=0.0, z=0.0)
         assert use_effective_ws, "RANSLUTDeficit only makes sense when scaling with effective wind speed"
         XRLUTConvDeficitModel.__init__(self, self.get_lut(lut, 'deficits'),
                                        bounds='limit', superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                        use_effective_ws=True, use_effective_ti=use_effective_ti)
-        # TODO: use fast GridInterpolator
-        # self.sigma_interp_lst = [GridInterpolator([da[k].values for k in da.dims], da.values, method='linear', bounds='limit')
-        #                          for da in [convlut[0]['sigma']]]
-        # print('self.convlut', self.convlut)
+        self.sigma_lut = XRLUTConvModel(self.get_lut(convlut[0], 'sigma'), bounds='limit')
+        self.center_def_lut = XRLUTConvModel(self.get_lut(convlut[0], 'centerline_deficit'), bounds='limit')
  
     def wake_radius(self, dw_ijlk, **kwargs):
         # Required for PyWake but not needed for RANS LUT model
         wake_radius_ijlk = np.ones(dw_ijlk.shape)
         return wake_radius_ijlk
 
-    '''
-    def k_ilk(self, **kwargs):
-        return np.array([[[self._k]]])
-
-    def epsilon_ilk(self, ct_ilk, **kwargs):
-        # only valid for CT < 0.9.
-        sqrt1ct_ilk = np.sqrt(1 - np.minimum(self._ctlim, ct_ilk))
-        beta_ilk = 1 / 2 * (1 + sqrt1ct_ilk) / sqrt1ct_ilk
-
-        return self._ceps * np.sqrt(beta_ilk)
-    '''
-
     def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, WS_ref_ijlk, **kwargs):
         # dimensional wake expansion
-        # TODO: use fast GridInterpolator
+        sigma_ijlk = self.sigma_lut.__call__(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
         I, _, L, K = WS_ref_ijlk.shape
-        J = dw_ijlk.shape[1]
-        sigma_ijlk = np.zeros((I, J, L, K))
-        for i in range(I):
-            for l in range(L):
-                for k in range(K):
-                    sigma_ijlk[i, :, l, k] = self.convlut.sigma.interp(x=(dw_ijlk[i, :, l, 0] / D_src_il[i, 0]), ct=ct_ilk[i, l, k], ti=kwargs['TI_eff_ilk'][i, l, k]).values
         # Replace undefined sigma values (upstream of WT) with zeros
         upstream = dw_ijlk[:, :, :, 0] < 0
         for k in range(K):
             sigma_ijlk[:, :, :, k][upstream] = 0.0
         return sigma_ijlk * D_src_il[:, na, :, na]
-        # Gaussian wake model:
-        # return self.k_ilk(**kwargs)[:, na] * dw_ijlk + \
-        #    self.epsilon_ilk(ct_ilk, **kwargs)[:, na] * D_src_il[:, na, :, na]
 
     def ct_func(self, ct_ilk, **_):
         return ct_ilk[:, na]
@@ -145,18 +168,8 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         sigma_sqr_ijlk = (self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, WS_ref_ijlk=WS_ref_ijlk, **kwargs))**2
         # print('sigma_sqr_ijlk', sigma_sqr_ijlk)
         ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
-        # Gaussian wake model:
-        # deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1,
-        #                                              2. * self.ct2a(ctx_ijlk * D_src_il[:, na, :, na]**2 /
-        #                                                             (8. * sigma_sqr_ijlk)))
-        # TODO: use fast GridInterpolator
+        deficit_centre_ijlk = self.center_def_lut.__call__(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
         I, _, L, K = WS_ref_ijlk.shape
-        J = dw_ijlk.shape[1]
-        deficit_centre_ijlk = np.zeros((I, J, L, K))
-        for i in range(I):
-            for l in range(L):
-                for k in range(K):
-                    deficit_centre_ijlk[i, :, l, k] = self.convlut.centerline_deficit.interp(x=(dw_ijlk[i, :, l, 0] / D_src_il[i, 0]), ct=ct_ilk[i, l, k], ti=kwargs['TI_eff_ilk'][i, l, k]).values
         deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1.0, deficit_centre_ijlk)
         # Replace undefined center deficit values (upstream of WT) with zeros
         upstream = dw_ijlk[:, :, :, 0] < 0
