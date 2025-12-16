@@ -114,19 +114,11 @@ class XRLUTConvModel(XRLUTModel):
 
     def get_input(self, dw_ijlk, hcw_ijlk, z_ijlk, D_src_il, h_ilk, TI_eff_ilk, ct_ilk, type_il, **kwargs):
         kwargs = dict(x=dw_ijlk / D_src_il[:, na, :, na],
-                      y=hcw_ijlk / D_src_il[:, na, :, na],
-                      z=(z_ijlk - h_ilk[:, na]) / D_src_il[:, na, :, na],
                       ti=TI_eff_ilk[:, na],
                       ct=ct_ilk[:, na],
                       type_i=type_il[:, na, :, na])
 
         return [kwargs[k] for k in self.da_lst[0].dims]
-
-    def get_output(self, output_ijlk, **kwargs):
-        """Default get_output function.
-        This function just scales the interpolated values with the local wind speed, WS_ilk, or local effective
-        wind speed, WS_eff_ilk, depending on the value of <use_effective_ws>"""
-        return output_ijlk
 
 
 class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
@@ -135,13 +127,11 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
     def __init__(self, lut, convlut, superpositionModel=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True,
                  use_effective_ti=False, 
                  ct2a=ct2a_madsen, k=0.0324555, ceps=.2, ctlim=0.899):
-        # TODO: add WT type
-        # self.convlut = convlut[0]
-        # self.convlut = convlut[0].sel(y=0.0, z=0.0)
         assert use_effective_ws, "RANSLUTDeficit only makes sense when scaling with effective wind speed"
         XRLUTConvDeficitModel.__init__(self, self.get_lut(lut, 'deficits'),
                                        bounds='limit', superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                        use_effective_ws=True, use_effective_ti=use_effective_ti)
+        # TODO: add WT type
         self.sigma_lut = XRLUTConvModel(self.get_lut(convlut[0], 'sigma'), bounds='limit')
         self.center_def_lut = XRLUTConvModel(self.get_lut(convlut[0], 'centerline_deficit'), bounds='limit')
  
