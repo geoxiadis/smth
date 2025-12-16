@@ -125,8 +125,7 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
     """Expects LUT velocity deficit and convection variables xarray"""
 
     def __init__(self, lut, convlut, superpositionModel=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True,
-                 use_effective_ti=False, 
-                 ct2a=ct2a_madsen, k=0.0324555, ceps=.2, ctlim=0.899):
+                 use_effective_ti=False):
         assert use_effective_ws, "RANSLUTDeficit only makes sense when scaling with effective wind speed"
         XRLUTConvDeficitModel.__init__(self, self.get_lut(lut, 'deficits'),
                                        bounds='limit', superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
@@ -143,47 +142,31 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
     def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, WS_ref_ijlk, **kwargs):
         # dimensional wake expansion
         sigma_ijlk = self.sigma_lut.__call__(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
-        I, _, L, K = WS_ref_ijlk.shape
         # Replace undefined sigma values (upstream of WT) with zeros
         upstream = dw_ijlk[:, :, :, 0] < 0
-        for k in range(K):
-            sigma_ijlk[:, :, :, k][upstream] = 0.0
+        sigma_ijlk[:, :, :][upstream] = 0.0
         return sigma_ijlk * D_src_il[:, na, :, na]
-
-    def ct_func(self, ct_ilk, **_):
-        return ct_ilk[:, na]
 
     def _calc_deficit(self, D_src_il, dw_ijlk, ct_ilk, WS_ref_ijlk, **kwargs):
         # dimensional wake expansion
         sigma_sqr_ijlk = (self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, WS_ref_ijlk=WS_ref_ijlk, **kwargs))**2
         # print('sigma_sqr_ijlk', sigma_sqr_ijlk)
-        ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
         deficit_centre_ijlk = self.center_def_lut.__call__(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
-        I, _, L, K = WS_ref_ijlk.shape
         deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1.0, deficit_centre_ijlk)
         # Replace undefined center deficit values (upstream of WT) with zeros
         upstream = dw_ijlk[:, :, :, 0] < 0
-        for k in range(K):
-            deficit_centre_ijlk[:, :, :, k][upstream] = 0.0
+        deficit_centre_ijlk[:, :, :][upstream] = 0.0
         # print('deficit_centre_ijlk', deficit_centre_ijlk)
-        return WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk, ctx_ijlk
+        return WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk
  
     def calc_deficit_convection(self, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **kwargs):
         if self.groundModel:
             raise NotImplementedError(
                 "calc_deficit_convection (WeightedSum) cannot be used in combination with GroundModels")
-        # Here, we need to replace sigma_sqr_ijlk, deficit_centre_ijlk and uc_ijlk with values from the LUT model
-        # This may/should be added to XRLUTConvDeficitModel directly instead of here
-        WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk, ctx_ijlk = self._calc_deficit(
+        WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk = self._calc_deficit(
             D_src_il, dw_ijlk, ct_ilk, **kwargs, **self.get_WS_ref_kwargs(kwargs))
-
-        # actualdeficit = self.calc_deficit(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
-        # print('actualdeficit2', actualdeficit)
         # Convection velocity
-        # Gaussian wake model:
-        # uc_ijlk = WS_ref_ijlk * (1. - self.ct2a(ctx_ijlk * D_src_il[:, na, :, na]**2 / (8. * sigma_sqr_ijlk)))
         uc_ijlk = WS_ref_ijlk - 0.5 * deficit_centre_ijlk
-        # print('uv_ijlk', uc_ijlk)
         sigma_sqr_ijlk = np.broadcast_to(sigma_sqr_ijlk, deficit_centre_ijlk.shape)
         return deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk
 
