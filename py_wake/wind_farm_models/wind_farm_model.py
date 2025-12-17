@@ -798,11 +798,20 @@ class SimulationResult(xr.Dataset):
             for k, v in self.wt_kwargs.items()
             if v is not None
         }
+        print("wt_kwargs in noise_model--windfarm.py:")
+        print(wt_kwargs)
+        # exit()
 
         freqs, sound_power_level = self.windFarmModel.windTurbines.sound_power_level(ws_eff_i, **wt_kwargs)
         wt = self.windFarmModel.windTurbines
+        # sound_power_level: shape (n_modes, n_freqs, n_wsp, n_yaw)
+        sound_power_level = sound_power_level[:, :, 0, 0]  # select first wind speed and yaw
+        print("In noise_model--windfarm.py:")
+        print("sound_power_level.shape:", sound_power_level.shape)
+        # exit()
 
         delta_swl_correction = self._create_directional_correction(wt)
+        # delta_swl_correction= np.zeros_like(delta_swl_correction) 
 
         return noiseModel(
             src_x=self.x.values,
@@ -819,6 +828,24 @@ class SimulationResult(xr.Dataset):
             return None
 
         def delta_swl_correction(rec_x, rec_y, rec_h, freqs, **_):
+            """directivity correction to be applied to the sound power level
+
+            Parameters
+            ----------
+            rec_x : _type_
+                _description_
+            rec_y : _type_
+                _description_
+            rec_h : _type_
+                _description_
+            freqs : _type_
+                _description_
+
+            Returns
+            -------
+            _type_
+                _description_
+            """
             rec_x, rec_y = np.atleast_1d(rec_x), np.atleast_1d(rec_y)
             rec_h = np.atleast_1d(rec_h) if not np.isscalar(rec_h) else np.full_like(rec_x, rec_h)
 
@@ -856,15 +883,47 @@ class SimulationResult(xr.Dataset):
 
             lat_flat = lat_deg.ravel()  # Shape: (n_src * n_rec,)
             lon_flat = lon_deg.ravel()  # Shape: (n_src * n_rec,)
+            
+            # this interpolator from turbine_noise.py
+            print("Calling spherical_interpolate_delta_swl")
+            print("mode_vals shape:", mode_vals.shape)
+            print("freqs shape:", freqs.shape)
+            print("ws_vals shape:", ws_vals.shape)
+            print("yaw_deg shape:", yaw_deg.shape)
+            print("lat_flat shape:", lat_flat.shape)
+            print("lon_flat shape:", lon_flat.shape)
+            print("mode_vals", mode_vals)
+            print("freqs", freqs)
+            print("ws_vals", ws_vals)
+            print("yaw_deg", yaw_deg)
+            print("lat_flat", lat_flat)
+            print("lon_flat", lon_flat)
 
-            delta_swl_result = wt.spherical_interpolate_delta_swl(
-                mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
+
+            delta_swl_result = wt.new_spherical_interpolate_delta_swl(
+               mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
             )
+
+            # delta_swl_result = wt.spherical_interpolate_delta_swl(
+            #    mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
+            # )
+            
+            # delta_swl_result = wt.old_spherical_interpolate_delta_swl(
+            #     mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
+            # )
+
+            print("delta_swl_result shape:", delta_swl_result.shape)
 
             src_indices = np.arange(n_src)[:, None]  # Shape: (n_src, 1)
             obs_indices = np.arange(n_rec)[None, :] + src_indices * n_rec  # Shape: (n_src, n_rec)
 
             result = delta_swl_result[src_indices, obs_indices]  # Shape: (n_src, n_rec, 1, 1, n_freq)
+
+            print("delta_swl_result shape:", result.shape)
+            print("n_src:", n_src)
+            print("n_rec:", n_rec)
+
+            # exit()
 
             return result
 
@@ -893,14 +952,29 @@ class SimulationResult(xr.Dataset):
             relative_humidity,
             ground_type=ground_type,
         )
+        
+        print("SPL shapes:")
+        print("spl_jlk.shape:", spl_jlk.shape)
+        print("spl_jlkf.shape:", spl_jlkf.shape)
+        print("Grid shape:", X.shape)
+        # exit()
 
         grid_shape = X.shape
         wd_size = max(1, len(np.atleast_1d(self.wd.values)))
         ws_size = max(1, len(np.atleast_1d(self.ws.values)))
 
+        print("Reshaping SPL arrays:")
+        print("grid_shape + (wd_size, ws_size):", grid_shape + (wd_size, ws_size))
+        print("wd_size:", wd_size)
+        print("ws_size:", ws_size)
+        print("ws.values:", self.ws.values)
+
         spl_total = spl_jlk.reshape(grid_shape + (wd_size, ws_size))
         spl_freq = spl_jlkf.reshape(grid_shape + (wd_size, ws_size, len(nm.freqs)))
-
+        print(grid_shape + (wd_size, ws_size) )
+        print(spl_jlk.shape) 
+        # exit() 
+        
         coords = {
             "x": X[0],
             "y": Y[:, 0],

@@ -37,14 +37,39 @@ class ISONoiseModel:
         self.src_z = elevation_function(src_x, src_y)
         self.n_src = len(src_x)
         self.distance = StraightDistance()
-        self.freqs = freqs
+        
         self.sound_power_level = sound_power_level
         self.delta_swl_correction = delta_swl_correction
 
-    def ground_eff(self, ground_distance_ijlk, distance_ijlk, rec_h, ground_type):
-        # Ground effects ISO
+        print("SPL in ISONoiseModel:")
+        print("sound_power_level.shape:", sound_power_level.shape)
+        # print("delta_swl_correction.shape:", delta_swl_correction.shape)
+        
+        freqs_init = np.array([63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 
+                               4000.0, 8000.0])
 
-        freqs_init = np.array([63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 8000.0])
+        self.freqs = freqs
+        self.freqs_init = freqs_init 
+
+    def ground_eff(self, ground_distance_ijlk, distance_ijlk, ground_type):
+        """_summary_
+
+        Parameters
+        ----------
+        ground_distance_ijlk : _type_
+            _description_
+        distance_ijlk : _type_
+            _description_
+        ground_type : _type_
+            _description_
+
+        Returns
+        -------
+        _type_
+            _description_
+        """
+        freqs_init = self.freqs_init
+        # Ground effects ISO
 
         src_h_ilk = np.expand_dims(self.src_h, tuple(range(len(np.shape(self.src_h)), 3))) + .0
         src_h_ijlk = src_h_ilk[:, na]
@@ -87,6 +112,7 @@ class ISONoiseModel:
                              -1.5 + Gs * c_source_ijlk,  # 500Hz
                              -1.5 + Gs * d_source_ijlk,  # 1000Hz
                              zeros - 1.5 * (1.0 - Gs),  # 2000Hz
+                             zeros - 1.5 * (1.0 - Gs),  # 4000Hz
                              zeros - 1.5 * (1.0 - Gs)  # 8000Hz
                              ])
 
@@ -96,15 +122,13 @@ class ISONoiseModel:
                              -1.5 + Gr * c_rec_ijlk,  # 500 Hz
                              -1.5 + Gr * d_rec_ijlk,  # 1000 Hz
                              zeros - 1.5 * (1.0 - Gr),  # 2000 Hz
+                             zeros - 1.5 * (1.0 - Gr),  # 4000 Hz
                              zeros - 1.5 * (1.0 - Gr)  # 8000 Hz
                              ])
 
         # sum up As+Ar+Am
         Agr_fijlk = np.sum([As_fijlk, Ar_fijlk, Am_fijlk], 0)
 
-        print(freqs_init)
-        print(self.freqs)
-        exit()
         # Interpolation to other frequencies are actually not following the standard completely.
         ip = GridInterpolator([freqs_init], Agr_fijlk)
         Agr_ijlkf = np.moveaxis(ip(np.array([self.freqs]).T), 0, -1)
@@ -206,15 +230,27 @@ class ISONoiseModel:
 
         Delta_SPL_ijlkf = self.transmission_loss(rec_x, rec_y, rec_h, ground_type, patm, Temp, RHum)
 
+        print("IN ISONoiseModel __call__:")
+        print("Delta_SPL_ijlkf.shape:", Delta_SPL_ijlkf.shape)
+        # exit()
+
         sound_power_ijlkf = np.expand_dims(self.sound_power_level,
                                            tuple(range(1, 6 - len(np.shape(self.sound_power_level)))))
 
+        print("sound_power_ijlkf.shape:", sound_power_ijlkf.shape)
+        # exit()
+    
         if self.delta_swl_correction is not None:
             correction = self.delta_swl_correction(rec_x, rec_y, rec_h, self.freqs, **kwargs)
             sound_power_ijlkf = sound_power_ijlkf + correction
 
+        # Do not integrate over different frequencies but make a map for diff. freq. 
         spl_jlkf = 10.0 * np.log10(np.sum(10.0**((sound_power_ijlkf + Delta_SPL_ijlkf) / 10.0), axis=0))
         total_spl_jlk = 10.0 * np.log10(np.sum(10.0**(spl_jlkf / 10.0), axis=-1))
+        
+        print(spl_jlkf.shape)
+        # exit()
+        
         return total_spl_jlk, spl_jlkf
 
 
@@ -235,28 +271,19 @@ def main():
             warnings.filterwarnings('ignore', 'The .* model is not representative of the setup used in the literature')
         wfm = ZongGaussian(site, wt, turbulenceModel=CrespoHernandez())
 
+        # coordiantes with a row with 4 turbines
         x, y = rectangle(4, 4, 5 * wt.diameter())
 
-        # print(wt.diameter())
-        # exit()
-        # sim_res = wfm(x, y, wd=[270, 271], ws=[8, 10], mode=[1], yaw=[0, 10])
-        sim_res = wfm(x, y, wd=[270, 271], ws=[10, 12], mode=[1], yaw=[0, 10])
+        # sim_res = wfm(x, y, wd=[270, 271], ws=[9, 12], mode=[1], yaw=[0, 10])
+        # different wind situations for the turbines
+        sim_res = wfm(x, y, wd=[270], ws=[10], mode=[0], yaw=[-20])
 
         rec_x = np.array([x[0], x[-1]])
         rec_y = np.array([1000, 1000])
         rec_h = 2
-
-        # noise_map = sim_res.sel(wd=270, ws=8).noise_map(
-        #     noiseModel=ISONoiseModel,
-        #     grid=XYGrid(x=np.linspace(-500, 3500, 50),
-        #                 y=np.linspace(-500, 1500, 50),
-        #                 h=2),
-        #     ground_type=0.0,
-        #     atmopheric_pressure=101325,
-        #     temperature=20,
-        #     relative_humidity=80
-        # )
-
+        
+        # get the noise map for the wind speed and direction from the situations
+        # specified above
         noise_map = sim_res.sel(wd=270, ws=10).noise_map(
             noiseModel=ISONoiseModel,
             grid=XYGrid(x=np.linspace(-500, 3500, 50),
@@ -272,7 +299,7 @@ def main():
         total_sp_jlk, spl_jlkf = nm(rec_x=rec_x, rec_y=rec_y, rec_h=rec_h,
                                     patm=101325, Temp=20, RHum=80, ground_type=0.0)
 
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 5))
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 5))
 
         # sim_res.flow_map(wd=270, ws=8).plot_wake_map(ax=ax1)
         sim_res.flow_map(wd=270, ws=10).plot_wake_map(ax=ax1)
@@ -283,7 +310,11 @@ def main():
         ax2.plot(nm.freqs, spl_jlkf[1, 0, 0], 'r-', label='Receiver 2')
         setup_plot(xlabel='Frequency [Hz]', ylabel='Sound pressure level [dB]', ax=ax2)
         ax2.legend()
+        plt.tight_layout()
+        plt.savefig("iso_noise_model_receivers.png", dpi=150)
+        plt.close()
 
+        fig, ax3 = plt.subplots(1, 1, figsize=(8, 6))
         total_spl_map = noise_map['Total sound pressure level']
         if len(total_spl_map.shape) > 2:
             total_spl_map = total_spl_map.squeeze()
@@ -301,6 +332,7 @@ def main():
 
         plt.tight_layout()
         plt.show()
+        fig.savefig("iso_noise_model_map.png", dpi=150)
 
 
 main()
