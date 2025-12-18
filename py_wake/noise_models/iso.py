@@ -331,7 +331,7 @@ def main():
         cbar.set_label('Total SPL [dB]')
 
         plt.tight_layout()
-        plt.show()
+        # plt.show()
         fig.savefig("iso_noise_model_map.png", dpi=150)
 
 
