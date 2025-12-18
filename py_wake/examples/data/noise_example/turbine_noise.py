@@ -6,7 +6,7 @@ from py_wake.wind_turbines._wind_turbines import WindTurbine
 from py_wake.utils.grid_interpolator import GridInterpolator
 from py_wake.utils.plotting import setup_plot
 
-from scipy.interpolate import griddata
+from scipy.interpolate import (griddata, RectSphereBivariateSpline, RegularGridInterpolator)
 import gc
 
 
@@ -212,257 +212,6 @@ class TurbineNoise(WindTurbine):
 
         return result[:, :, None, None, :]  # (n_cases, n_obs, 1, 1, n_freq)
     
-    def spherical_interpolate_delta_swl(
-        self,
-        mode,
-        freq,
-        ws,
-        yaw,
-        lat_deg,
-        lon_deg
-    ):
-        """_summary_
-
-        Parameters
-        ----------
-        mode : _type_
-            _description_
-        freq : _type_
-            _description_
-        ws : _type_
-            _description_
-        yaw : _type_
-            _description_
-        lat_deg : _type_
-            _description_
-        lon_deg : _type_
-            _description_
-
-        Returns
-        -------
-        _type_
-            _description_
-        """
-        # observed data
-        ds = self.ds
-        # unpack the observed data
-        obs_lat_deg = np.rad2deg(ds["lat"].values)
-        obs_lon_deg = np.rad2deg(ds["lon"].values)
-        # delta_swl values
-        # Shape: (mode, freq, obs, ws, yaw)
-        vals = ds["delta_swl"].values
-
-        print(f"Original Data Shape: {vals.shape}")
-        # we reshape the values to (obs, mode, freq, ws, yaw)
-        # for vectorized interpolation
-        vals_transposed = vals.transpose(2, 0, 1, 3 ,4)
-        print(f"Transposed Data Shape: {vals_transposed.shape}")
-
-        # Flatten all non-spatial dimensions into one "feature vector" 
-        # per observer. We do this by stacking the mode, freq, ws, yaw 
-        # dimensions into a single dimension.
-        n_obs = vals_transposed.shape[0]
-        other_dims = vals_transposed.shape[1:] # (mode, freq, ws, yaw)
-        n_features = np.prod(other_dims)
-        
-        vals_flat = vals_transposed.reshape(n_obs, n_features)
-        print(f"Flattened Shape: {vals_flat.shape} (obs, features)")        
-
-        # Spatial re-gridding by defining a regular grid
-        # we choose these points to maintain a
-        # 4 degree per step resolution in each direction. this can be adjusted
-        # for finer or coarser interpolation
-        n_grid_lat = 45
-        n_grid_lon = 90
-        
-        # lat/lon gridding spaces for smooth interpolation
-        grid_lat_ax = np.linspace(-90, 90, n_grid_lat)
-        grid_lon_ax = np.linspace(-180, 180, n_grid_lon)
-
-        print(f"   Grid Bounds -> Lat: [{grid_lat_ax[0]:.2f}, {grid_lat_ax[-1]:.2f}], Lon: [{grid_lon_ax[0]:.2f}, {grid_lon_ax[-1]:.2f}]")
-
-        gridded_lat, gridded_lon = np.meshgrid(grid_lat_ax, grid_lon_ax, 
-                                               indexing='ij')
-        
-        print(f"   Interpolating {n_obs} scattered points to {n_grid_lat}x{n_grid_lon} grid...")
-
-        # Run griddata on the flattened features and get interpolated 
-        # values on the expanded grid
-        grid_vals_flat = griddata(points=(obs_lat_deg, obs_lon_deg),
-                                  values=vals_flat,
-                                  xi=(gridded_lat, gridded_lon),
-                                  method='linear',
-                                  fill_value=0
-                                  )
-        
-        print(f"   Gridded Shape: {grid_vals_flat.shape} (lat, lon, features)")
-
-        # Build the interpolator on the gridded data
-        # but first we need to unflatten the features back to their original shape
-        shape = (n_grid_lat, n_grid_lon) + other_dims
-        grid_vals_ND = grid_vals_flat.reshape(shape)
-        print(f"   Unflattened Gridded Shape: {grid_vals_ND.shape}: (lat, lon, mode, freq, ws, yaw)")
-        print("\n Reshaping for GridInterpolator...")
-        print(f"Final 6D Matrix Shape: {grid_vals_ND.shape}")
-
-        # now we build the grid interpolator
-        # NOTE: The order here defines the column order for query input!
-        # Dim 0: Lat
-        # Dim 1: Lon
-        # Dim 2: Mode
-        # Dim 3: Freq
-        # Dim 4: WS
-        # Dim 5: Yaw
-        coords = [
-            grid_lat_ax,    
-            grid_lon_ax,    
-            ds['mode'].values,   
-            ds['freq'].values,   
-            ds['ws'].values,     
-            ds['yaw'].values     
-        ]        
-
-        interp = GridInterpolator(coords,
-                                 grid_vals_ND,
-                                 method='linear'
-                                 )
-
-        def get_directivity_generator(mode, freq, ws, yaw, lat_deg, lon_deg,
-                                      batch_size=1000):
-
-            # ============Process query points==================
-            # input data
-            freq_inp = np.atleast_1d(freq)
-            ws_inp = np.atleast_1d(ws)
-            yaw_inp = np.atleast_1d(yaw)
-            mode_inp = np.atleast_1d(mode)
-            lat_inp = np.atleast_1d(lat_deg)
-            lon_inp = np.atleast_1d(lon_deg)
-    
-            # Create indices for every dimension
-            idx_obs = np.arange(len(lat_inp))
-            idx_mode = np.arange(len(mode_inp))
-            idx_freq = np.arange(len(freq_inp))
-            idx_ws = np.arange(len(ws_inp))
-            idx_yaw = np.arange(len(yaw_inp))
-    
-            n_obs_inp = len(lat_inp)
-            # Pre-allocate the full result array
-            # Shape: (N_obs, M, F, W, Y)
-
-            print(f"Processing {n_obs} observers in batches of {batch_size}...")
-            
-        #     ----batch processing to avoid memory issues---- 
-            ############### BATCH PROCESSING START ###############
-            for i in range(0, n_obs_inp, batch_size):
-                # define the batch range
-                i_end = min(i + batch_size, n_obs_inp)
-                batch_size_actual = i_end - i
-                print(f" Processing observers {i} to {i_end}... ", end='', flush=True)
-                # slice the spatial data for this batch
-                lat_batch = lat_inp[i:i_end]
-                lon_batch = lon_inp[i:i_end]
-                # create local indices for this batch
-                idx_obs_batch = np.arange(batch_size_actual)
-    
-                # Meshgrid to create all combinations
-                # We use indexing='ij' to keep dimensions ordered as inputs
-                # Result shape: (N_obs, M, F, W, Y)
-                I_obs, I_mode, I_freq, I_ws, I_yaw = np.meshgrid(
-                    idx_obs_batch, idx_mode, idx_freq, idx_ws, idx_yaw, indexing='ij'
-                )
-    
-                # Flatten everything to create the query list
-                # Shape: (Total_Combinations, )
-                flat_obs  = I_obs.ravel()
-                flat_mode = I_mode.ravel()
-                flat_freq = I_freq.ravel()
-                flat_ws   = I_ws.ravel()
-                flat_yaw  = I_yaw.ravel()
-    
-                # Map indices back to actual values
-                # Note: Lat and Lon have same index as they are paired by n_obs
-                q_lat = lat_batch[flat_obs]
-                q_lon = lon_batch[flat_obs]
-                q_mode = mode_inp[flat_mode]
-                q_freq = freq_inp[flat_freq]
-                q_ws = ws_inp[flat_ws]
-                q_yaw = yaw_inp[flat_yaw]
-    
-                # Stack for the Interpolator (Must match coords order: Lat, Lon, 
-                # Mode, Freq, WS, Yaw)
-                query_inp = np.column_stack([q_lat, q_lon, q_mode, q_freq, q_ws, 
-                                             q_yaw])
-                
-                # ==============interpolate=========================
-                batch_flat_results = interp(query_inp)
-                # reshape reslut to (batch_size, mode, freq, ws, yaw)
-                batch_shape = (batch_size_actual, len(mode_inp), len(freq_inp),
-                               len(ws_inp), len(yaw_inp))
-                batch_results_reshaped = batch_flat_results.reshape(batch_shape)
-
-                yield i, i_end, batch_results_reshaped
-
-                # Explicit Garbage Collection after yield returns control
-                del q_lat, q_lon, query_inp, batch_flat_results, batch_results_reshaped
-                gc.collect()
-                # Print Progress
-                if (i // batch_size) % 2 == 0:
-                    print(f"     -> Processed batch {i}-{i_end}...")
- 
-       
-       
-       
-        n_obs_inp = len(lat_deg)
-        result_shape = (n_obs_inp, len(mode), len(freq),
-                        len(ws), len(yaw))
-        print(f" Allocating Output Matrix: {result_shape}")
-        final_result = np.zeros(result_shape)   
-
-        # Initialize Generator
-        batch_gen = get_directivity_generator(
-            mode,
-            freq,
-            ws,
-            yaw,
-            lat_deg,
-            lon_deg,
-            batch_size=1000 # Process 1000 at a time
-        )
-
-        # Iterate and Save
-        for start, end, data_chunk in batch_gen:
-
-            # Store into final result array
-            final_result[start:end, ...] = data_chunk
-    
-
-        ############### BATCH PROCESSING END ###############
-    
-    
-                
-
-        # print(ds)
-
-        from matplotlib import pyplot as plt
-        plt.plot(np.rad2deg(ds["lon"].values), np.rad2deg(ds["lat"].values),
-                  'o', label='data obs')        
-        plt.plot(lon_deg, lat_deg, 'x', label='target obs')
-        plt.legend()
-        plt.xlabel("Longitude (deg)")
-        plt.ylabel("Latitude (deg)")
-        plt.title("Observer locations in data")
-        plt.savefig("./observer_locations.png", dpi=150)
-
-        # exit()
-        result = final_result.transpose(3, 0, 1, 4, 2)
-        result = result[:, :, 0, 0, :]
-
-        print(f"result.shape = {result.shape}")
-        print(f"result[:, :, None, None, :]  = {result[:, :, None, None, :].shape}")
-        # exit()
-
-        return result[:, :, None, None, :]  # (n_cases, n_obs, 1, 1, n_freq)
 
     def new_spherical_interpolate_delta_swl(
         self,
@@ -651,22 +400,22 @@ class TurbineNoise(WindTurbine):
             final_result[start:end, ...] = data_chunk
     
         # --- PLOTTING (From your code) ---
-        from matplotlib import pyplot as plt
-        plt.figure(figsize=(10,6))
-        plt.plot(np.rad2deg(ds["lon"].values), np.rad2deg(ds["lat"].values), 'o', label='Data Obs')        
-        plt.plot(lon_deg[:500], lat_deg[:500], 'x', label='Target Obs (Subset)') # Plot subset for speed
-        plt.legend()
-        plt.xlabel("Longitude (deg)")
-        plt.ylabel("Latitude (deg)")
-        plt.title("Observer locations")
-        plt.grid(True)
-        # Check if we can write to disk, otherwise skip saving
-        try:
-            plt.savefig("./observer_locations.png", dpi=100)
-            print("Saved plot to ./observer_locations.png")
-        except:
-            pass
-        plt.close()
+        # from matplotlib import pyplot as plt
+        # plt.figure(figsize=(10,6))
+        # plt.plot(np.rad2deg(ds["lon"].values), np.rad2deg(ds["lat"].values), 'o', label='Data Obs')        
+        # plt.plot(lon_deg[:500], lat_deg[:500], 'x', label='Target Obs (Subset)') # Plot subset for speed
+        # plt.legend()
+        # plt.xlabel("Longitude (deg)")
+        # plt.ylabel("Latitude (deg)")
+        # plt.title("Observer locations")
+        # plt.grid(True)
+        # # Check if we can write to disk, otherwise skip saving
+        # try:
+        #     plt.savefig("./observer_locations.png", dpi=100)
+        #     print("Saved plot to ./observer_locations.png")
+        # except:
+        #     pass
+        # plt.close()
 
         # --- FINAL RESHAPE ---
         # Current: (Obs, Mode, Freq, WS, Yaw) indices 0,1,2,3,4
@@ -685,6 +434,141 @@ class TurbineNoise(WindTurbine):
         
         return final_5d
 
+    def interpolate_directivity(self, mode, freq, ws, yaw, lat_deg, lon_deg):
+        """
+        Docstring for interpolate_directivity
+        
+        :param self: Description
+        :param mode: Description
+        :param freq: Description
+        :param ws: Description
+        :param yaw: Description
+        :param lat_deg: Description
+        :param lon_deg: Description
+        """
+        #----------step 1: ------------
+        # hawc2 directivity data from netcdf
+        ds = self.ds
+        # radians to degrees of observed lat. and lon.
+        obs_lat_deg = np.rad2deg(ds["lat"].values)
+        obs_lon_deg = np.rad2deg(ds["lon"].values)
+
+        # observed direcitivity values
+        # Shape: (mode, freq, obs, ws, yaw)
+        obs_vals = ds["delta_swl"].values
+
+        # we reshape the values to (obs, mode, freq, ws, yaw)
+        # for vectorized interpolation
+        obs_vals_transposed = obs_vals.transpose(2, 0, 1, 3 ,4)
+
+        # Flatten all non-spatial dimensions into one "feature vector" 
+        # per observer. We do this by stacking the mode, freq, ws, yaw 
+        # dimensions into a single dimension.
+        n_obs = obs_vals_transposed.shape[0]
+        other_dims = obs_vals_transposed.shape[1:] # (mode, freq, ws, yaw)
+        n_features = np.prod(other_dims)
+        obs_vals_flat = obs_vals_transposed.reshape(n_obs, n_features)
+
+        # ----------step 2: ------------
+        # 4 deg resolution
+        n_grid_lat = 45
+        n_grid_lon = 90
+        # 10 deg resolution
+        # n_grid_lat = 19
+        # n_grid_lon = 36
+        
+        # lat/lon gridding spaces for smooth interpolation
+        grid_lat_ax = np.linspace(-90, 90, n_grid_lat)
+        grid_lon_ax = np.linspace(-180, 180, n_grid_lon)
+        
+        # generate the latitude and longitude regular grid
+        gridded_lat, gridded_lon = np.meshgrid(grid_lat_ax, grid_lon_ax, indexing='ij')
+        
+        print(f" {n_obs} data points --> {n_grid_lat*n_grid_lon} regular grid")
+
+        # interpolate the values on the regular grid
+        grid_obs_vals_flat = griddata(points=(obs_lat_deg, obs_lon_deg),
+                                  values=obs_vals_flat,
+                                  xi=(gridded_lat, gridded_lon),
+                                  method='linear',
+                                  fill_value=0
+                                  )
+        # unflatten the gridded observed values back to original shape
+        # shape = (n_grid_lat, n_grid_lon) + other_dims
+        # Reshape back to (lat, lon, mode, freq, ws, yaw)
+        shape = (n_grid_lat, n_grid_lon) + other_dims
+        grid_obs_vals_ND = grid_obs_vals_flat.reshape(shape)
+
+        # build the grid interpolator
+        # Dim 0: Lat
+        # Dim 1: Lon
+        # Dim 2: Mode
+        # Dim 3: Freq
+        # Dim 4: WS
+        # Dim 5: Yaw
+        coords = [
+            grid_lat_ax,    
+            grid_lon_ax,
+            ds['mode'].values,   
+            ds['freq'].values,   
+            ds['ws'].values,     
+            ds['yaw'].values     
+        ]
+        # we have a interpolator mapped on a regular lat/lon grid
+        interp = RegularGridInterpolator(coords,
+                                 grid_obs_vals_ND,
+                                 method='linear',
+                                 bounds_error=True, 
+                                 fill_value=0
+                                 )
+
+        # ----------step 3: Query points-----------
+
+        freq_inp = np.atleast_1d(freq)
+        ws_inp = np.atleast_1d(ws)
+        yaw_inp = np.atleast_1d(yaw)
+        mode_inp = np.atleast_1d(mode)
+        lat_inp = np.atleast_1d(lat_deg)
+        lon_inp = np.atleast_1d(lon_deg)
+
+        n_obs_inp = len(lat_inp)
+
+        # print(f"freq_inp: {freq_inp.shape}")
+        # print(f"ws_inp: {ws_inp.shape}")
+        # print(f"yaw_inp: {yaw_inp.shape}")
+        # print(f"mode_inp: {mode_inp.shape}")
+        # print(f"lat_inp: {lat_inp.shape}")
+        # print(f"lon_inp: {lon_inp.shape}")
+
+        # Using numpy new axis to create empty dimensions for broadcasting
+        # Latitutde and Longitude are coupled (dimension: 0)
+        lat_b = lat_inp[:, np.newaxis, np.newaxis, np.newaxis, np.newaxis]
+        lon_b = lon_inp[:, np.newaxis, np.newaxis, np.newaxis, np.newaxis]
+        mode_b = mode_inp[np.newaxis, :, np.newaxis, np.newaxis, np.newaxis]
+        freq_b = freq_inp[np.newaxis, np.newaxis, :, np.newaxis, np.newaxis]
+        ws_b = ws_inp[np.newaxis, np.newaxis, np.newaxis, :, np.newaxis]
+        yaw_b = yaw_inp[np.newaxis, np.newaxis, np.newaxis, np.newaxis, :]
+
+        query_points = np.stack(np.broadcast_arrays(lat_b, lon_b, mode_b,
+                                                    freq_b, ws_b, yaw_b),
+                                                    axis=-1)
+        n_query_points = np.prod(query_points.shape[:-1])
+        print(f"Total query points: {n_query_points}")  
+        print(f"query_points.shape: {query_points.shape}")
+
+        result = interp(query_points)
+        
+        print(result.shape)
+        result = result.transpose(3, 0, 1, 4, 2)
+        result = result[:, :, 0, 0, :]
+
+        print(f"result.shape = {result.shape}")
+        print(f"result[:, :, None, None, :]  = {result[:, :, None, None, :].shape}")
+        # exit()
+
+        return result[:, :, None, None, :]
+            
+        # exit()             
 
 def main():
     if __name__ == "__main__":
