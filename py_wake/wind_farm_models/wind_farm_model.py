@@ -903,32 +903,15 @@ class SimulationResult(xr.Dataset):
             delta_swl_result = wt.interpolate_directivity(
                mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
             )
-
-            #delta_swl_result = wt.new_spherical_interpolate_delta_swl(
-            #   mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
-            #)
-
-
-            # delta_swl_result = wt.spherical_interpolate_delta_swl(
-            #    mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
-            # )
             
-            # delta_swl_result = wt.old_interpolate_directivity(
+            # delta_swl_result = wt.fast_spherical_interpolate_directivity(
             #         mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
             #     )
-
-            # print("delta_swl_result shape:", delta_swl_result.shape)
 
             src_indices = np.arange(n_src)[:, None]  # Shape: (n_src, 1)
             obs_indices = np.arange(n_rec)[None, :] + src_indices * n_rec  # Shape: (n_src, n_rec)
 
             result = delta_swl_result[src_indices, obs_indices]  # Shape: (n_src, n_rec, 1, 1, n_freq)
-
-            # print("delta_swl_result shape:", result.shape)
-            # print("n_src:", n_src)
-            # print("n_rec:", n_rec)
-
-            # exit()
 
             return result
 
