@@ -111,7 +111,7 @@ class TurbineNoise(WindTurbine):
             sound_power_level=sound_power_level,
         )
 
-    def old_interpolate_directivity(
+    def fast_spherical_interpolate_directivity(
         self,
         mode,
         freq,
