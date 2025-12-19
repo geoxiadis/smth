@@ -128,3 +128,7 @@ archieve
 /.settings/org.eclipse.core.resources.prefs
 /py_wake/version.py
 /py_wake/tests/test_files/tmp
+
+# uv
+*.lock
+*.python-version
