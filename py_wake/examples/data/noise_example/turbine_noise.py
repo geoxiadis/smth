@@ -296,7 +296,7 @@ class TurbineNoise(WindTurbine):
         interp = RegularGridInterpolator(coords,
                                  grid_obs_vals_ND,
                                  method='linear',
-                                 bounds_error=True, 
+                                 bounds_error=False, 
                                  fill_value=0
                                  )
 
@@ -309,15 +309,6 @@ class TurbineNoise(WindTurbine):
         lat_inp = np.atleast_1d(lat_deg)
         lon_inp = np.atleast_1d(lon_deg)
 
-        n_obs_inp = len(lat_inp)
-
-        # print(f"freq_inp: {freq_inp.shape}")
-        # print(f"ws_inp: {ws_inp.shape}")
-        # print(f"yaw_inp: {yaw_inp.shape}")
-        # print(f"mode_inp: {mode_inp.shape}")
-        # print(f"lat_inp: {lat_inp.shape}")
-        # print(f"lon_inp: {lon_inp.shape}")
-
         # Using numpy new axis to create empty dimensions for broadcasting
         # Latitutde and Longitude are coupled (dimension: 0)
         lat_b = lat_inp[:, np.newaxis, np.newaxis, np.newaxis, np.newaxis]
@@ -326,27 +317,26 @@ class TurbineNoise(WindTurbine):
         freq_b = freq_inp[np.newaxis, np.newaxis, :, np.newaxis, np.newaxis]
         ws_b = ws_inp[np.newaxis, np.newaxis, np.newaxis, :, np.newaxis]
         yaw_b = yaw_inp[np.newaxis, np.newaxis, np.newaxis, np.newaxis, :]
-
+        
         query_points = np.stack(np.broadcast_arrays(lat_b, lon_b, mode_b,
                                                     freq_b, ws_b, yaw_b),
                                                     axis=-1)
         n_query_points = np.prod(query_points.shape[:-1])
-        print(f"Total query points: {n_query_points}")  
-        print(f"query_points.shape: {query_points.shape}")
+
+        # print(f"Total query points: {n_query_points}")  
+        # print(f"query_points.shape: {query_points.shape}")
 
         result = interp(query_points)
         
-        print(result.shape)
+        # print(f"result.shape = {result.shape}")
         result = result.transpose(3, 0, 1, 4, 2)
         result = result[:, :, 0, 0, :]
 
-        print(f"result.shape = {result.shape}")
-        print(f"result[:, :, None, None, :]  = {result[:, :, None, None, :].shape}")
-        # exit()
+        # print(f"result.shape = {result.shape}")
+        # print(f"result[:, :, None, None, :]  = {result[:, :, None, None, :].shape}")
 
         return result[:, :, None, None, :]
-            
-        # exit()             
+
 
 def main():
     if __name__ == "__main__":
