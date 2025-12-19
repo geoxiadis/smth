@@ -41,8 +41,8 @@ class ISONoiseModel:
         self.sound_power_level = sound_power_level
         self.delta_swl_correction = delta_swl_correction
 
-        print("SPL in ISONoiseModel:")
-        print("sound_power_level.shape:", sound_power_level.shape)
+        # print("SPL in ISONoiseModel:")
+        # print("sound_power_level.shape:", sound_power_level.shape)
         # print("delta_swl_correction.shape:", delta_swl_correction.shape)
         
         freqs_init = np.array([63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 
@@ -248,7 +248,7 @@ class ISONoiseModel:
         spl_jlkf = 10.0 * np.log10(np.sum(10.0**((sound_power_ijlkf + Delta_SPL_ijlkf) / 10.0), axis=0))
         total_spl_jlk = 10.0 * np.log10(np.sum(10.0**(spl_jlkf / 10.0), axis=-1))
         
-        print(spl_jlkf.shape)
+        # print(spl_jlkf.shape)
         # exit()
         
         return total_spl_jlk, spl_jlkf
@@ -284,6 +284,8 @@ def main():
         
         # get the noise map for the wind speed and direction from the situations
         # specified above
+
+        # 50 points in x, 50 points in y. And then 4 turbines so we have 50*50*4 = 10000 recievers
         noise_map = sim_res.sel(wd=270, ws=10).noise_map(
             noiseModel=ISONoiseModel,
             grid=XYGrid(x=np.linspace(-500, 3500, 50),
