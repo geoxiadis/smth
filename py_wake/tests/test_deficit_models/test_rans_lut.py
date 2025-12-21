@@ -10,11 +10,12 @@ from py_wake.utils.grid_interpolator import GridInterpolator
 from py_wake.wind_farm_models.engineering_models import All2AllIterative
 from py_wake.utils.profiling import timeit
 import xarray as xr
-from py_wake.utils.rans_lut_utils import ADControl, get_Ellipsys_equivalent_output
+from py_wake.utils.rans_lut_utils import ADControl, get_Ellipsys_equivalent_output, fit_gauss
 from py_wake.turbulence_models.rans_lut_turb import RANSLUTDemoTurbulence
 from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
 from py_wake.examples.data import hornsrev1
 from py_wake.wind_turbines._wind_turbines import WindTurbines
+from py_wake.rotor_avg_models.rotor_avg_model import GQGridRotorAvg
 
 
 def test_rans_lut_deficit():
@@ -302,3 +303,25 @@ def test_RANSLUT_multiturbine():
     for type_i in [(0, 0, 0, 0), (1, 1, 1, 1)]:
         sim_res = wfm([0, 500, 1000, 1500], [0, 0, 0, 0], type=type_i, wd=[90, 270], ws=10.0)
         ellipsys_power, WS_eff_star, ct_star = get_Ellipsys_equivalent_output(sim_res, aDControl)
+
+
+def test_rans_conv_lut():
+    # move turbine 1 600 300
+    wt_x = [-250, 600, -500, 0, 500, -250, 250]
+    wt_y = [433, 300, 0, 0, 0, -433, -433]
+    wts = HornsrevV80()
+    site = UniformSite([1, 0, 0, 0], ti=0.075 * 0.8)
+    Dref = wts.diameter()
+    demo_lut = ptf('ranslut/V80_ranslut_demo.nc',
+                   '846213eb655255f6e2201a47c2406f9e77f243f369398cb389bf7320b457dea8')
+    # Fig Gaussian deficits to hub height profiles for WeightedSum superposition
+    demo_convlut = 'V80_gaussian.nc'
+    fit_gauss(demo_lut, 'V80_gaussian.nc', ymin=-10, ymax=10, xfits=np.linspace(0.0, 100.0, 11))
+    wfm = RANSLUT(demo_lut, site, wts, convlut=demo_convlut, rotorAvgModel=GQGridRotorAvg(4, 3))
+
+    simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
+                       profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.97151361, 9.93714351, 7.97948828, 9.99274407, 9.20836865,
+                                                                7.98181956, 7.44557278])
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79339881, 0.79387999, 0.80597949, 0.79310158, 0.80408284,
+                                                            0.80598182, 0.80544557])
