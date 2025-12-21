@@ -2,8 +2,8 @@ import xarray as xr
 from py_wake.deficit_models.deficit_model import XRLUTDeficitModel, ConvectionDeficitModel, XRLUTConvDeficitModel
 from py_wake.utils.model_utils import XRLUTModel
 from py_wake import np
-from py_wake.superposition_models import LinearSum, SquaredSum, WeightedSum
-from py_wake.wind_farm_models.engineering_models import All2AllIterative, PropagateDownwind
+from py_wake.superposition_models import LinearSum, WeightedSum
+from py_wake.wind_farm_models.engineering_models import All2AllIterative
 from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
 from py_wake.utils.rans_lut_utils import RANSLUTModel
 from py_wake.tests import ptf
@@ -13,7 +13,6 @@ from numpy import newaxis as na
 
 
 class RANSLUT(All2AllIterative):
-# class RANSLUT(PropagateDownwind):
     def __init__(self, lut, site, windTurbines, convlut=None, rotorAvgModel=None):
         """
         Parameters
@@ -42,26 +41,25 @@ class RANSLUT(All2AllIterative):
 
         if convlut is not None:
             # Use convection wake deficit model for WeigthedSum superposition
-            superpositionModel=WeightedSum()
+            superpositionModel = WeightedSum()
             if not isinstance(convlut, (list, tuple)):
                 convlut = [convlut]
                 convlut_lst = convlut
                 convlut_lst = [load_lut(convlut) for convlut in convlut_lst]
-                wake_deficit = RANSLUTConvDeficit(lut=[lut.deficits for lut in lut_lst], convlut=convlut_lst ,rotorAvgModel=rotorAvgModel, superpositionModel=WeightedSum())
+                wake_deficit = RANSLUTConvDeficit(lut=[lut.deficits for lut in lut_lst], convlut=convlut_lst, rotorAvgModel=rotorAvgModel, superpositionModel=WeightedSum())
         else:
             # Use linear wake superposition
-            superpositionModel=LinearSum()
+            superpositionModel = LinearSum()
             wake_deficit = RANSLUTDeficit(lut=[lut.deficits for lut in lut_lst], rotorAvgModel=rotorAvgModel, superpositionModel=LinearSum())
 
         blockage_deficit = RANSLUTDeficit(lut=[lut.deficits for lut in lut_lst], rotorAvgModel=rotorAvgModel, superpositionModel=LinearSum())
         turb = RANSLUTTurbulence(lut=[lut.added_ti for lut in lut_lst], rotorAvgModel=rotorAvgModel)
 
         All2AllIterative.__init__(self, site, windTurbines,
-        # PropagateDownwind.__init__(self, site, windTurbines,
-                                   wake_deficitModel=wake_deficit,
-                                   blockage_deficitModel=blockage_deficit,
-                                   turbulenceModel=turb,
-                                   superpositionModel=superpositionModel)
+                                  wake_deficitModel=wake_deficit,
+                                  blockage_deficitModel=blockage_deficit,
+                                  turbulenceModel=turb,
+                                  superpositionModel=superpositionModel)
 
 
 class RANSLUTDeficit(RANSLUTModel, XRLUTDeficitModel):
@@ -133,7 +131,7 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         # TODO: add WT type
         self.sigma_lut = XRLUTConvModel(self.get_lut(convlut[0], 'sigma'), bounds='limit')
         self.center_def_lut = XRLUTConvModel(self.get_lut(convlut[0], 'centerline_deficit'), bounds='limit')
- 
+
     def wake_radius(self, dw_ijlk, **kwargs):
         # Required for PyWake but not needed for RANS LUT model
         wake_radius_ijlk = np.ones(dw_ijlk.shape)
@@ -158,7 +156,7 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         deficit_centre_ijlk[:, :, :][upstream] = 0.0
         # print('deficit_centre_ijlk', deficit_centre_ijlk)
         return WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk
- 
+
     def calc_deficit_convection(self, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **kwargs):
         if self.groundModel:
             raise NotImplementedError(
