@@ -41,12 +41,12 @@ class RANSLUT(All2AllIterative):
 
         if convlut is not None:
             # Use convection wake deficit model for WeigthedSum superposition
-            superpositionModel = WeightedSum()
+            superpositionModel = WeightedSum(weight_limit=1.0)
             if not isinstance(convlut, (list, tuple)):
                 convlut = [convlut]
                 convlut_lst = convlut
                 convlut_lst = [load_lut(convlut) for convlut in convlut_lst]
-                wake_deficit = RANSLUTConvDeficit(lut=[lut.deficits for lut in lut_lst], convlut=convlut_lst, rotorAvgModel=rotorAvgModel, superpositionModel=WeightedSum())
+                wake_deficit = RANSLUTConvDeficit(lut=[lut.deficits for lut in lut_lst], convlut=convlut_lst, rotorAvgModel=rotorAvgModel, superpositionModel=WeightedSum(weight_limit=1.0))
         else:
             # Use linear wake superposition
             superpositionModel = LinearSum()
