@@ -1,5 +1,5 @@
 import xarray as xr
-from py_wake.deficit_models.deficit_model import XRLUTDeficitModel, ConvectionDeficitModel, XRLUTConvDeficitModel
+from py_wake.deficit_models.deficit_model import XRLUTDeficitModel, XRLUTConvDeficitModel
 from py_wake.utils.model_utils import XRLUTModel
 from py_wake import np
 from py_wake.superposition_models import LinearSum, WeightedSum
@@ -8,7 +8,6 @@ from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
 from py_wake.utils.rans_lut_utils import RANSLUTModel
 from py_wake.tests import ptf
 from pathlib import Path
-from py_wake.deficit_models.utils import ct2a_madsen
 from numpy import newaxis as na
 
 

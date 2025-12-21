@@ -98,9 +98,6 @@ class WeightedSum(SuperpositionModel):
         usc = centerline_deficit_jxxx
         uc = convection_velocity_jxxx
         sigma_sqr = sigma_sqr_jxxx
-        # print('usc', usc)
-        # print('uc', uc)
-        # print('sigma_sqr', sigma_sqr)
         cw = cw_jxxx
         hcw = hcw_jxxx * np.ones_like(usc)
         dh = dh_jxxx * np.ones_like(usc)
@@ -153,8 +150,7 @@ class WeightedSum(SuperpositionModel):
                 # Initialize and avoid division by zero
                 ucn[:] = 1.
                 Inz = Uc != 0
-                # Limit weights to linear superposition
-                # ucn[:, Inz] = uc[:, Inz] / Uc[Inz]
+                # Limit weights to self.weight_limit
                 ucn[:, Inz] = np.minimum(uc[:, Inz] / Uc[Inz], self.weight_limit)
 
                 # Combined local deficit

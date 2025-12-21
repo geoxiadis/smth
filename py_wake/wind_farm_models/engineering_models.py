@@ -376,7 +376,6 @@ class EngineeringWindFarmModel(WindFarmModel):
         sp_kwargs = dict(deficit_jxxx=deficit_ijlk)
         if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)):
             if isinstance(self.superpositionModel, WeightedSum):
-                # print('actualdefict_ijlk', actualdefict_ijlk)
                 sp_kwargs.update({'WS_xxx': WS_jlk, 'convection_velocity_jxxx': uc_ijlk, 'actualdeficit_jxxx': actualdefict_ijlk})
             else:
                 sp_kwargs.update({'WS0_xxx': model_kwargs['WS_ilk'] * np.ones_like(model_kwargs['WS_eff_ilk']),
@@ -387,7 +386,6 @@ class EngineeringWindFarmModel(WindFarmModel):
                                   hcw_jxxx=hcw_ijlk, dh_jxxx=dh_ijlk))
 
         WS_eff_jlk = WS_jlk - self.superpositionModel.superpose_deficit(**sp_kwargs)
-        # print('WS_eff_jlk', WS_eff_jlk)
         if self.blockage_deficitModel:
             WS_eff_jlk -= self.blockage_deficitModel.superpositionModel(blockage_ijlk)
 
@@ -782,7 +780,6 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                                                                           **model_kwargs))[0]
                     if isinstance(self.superpositionModel, WeightedSum):
                         deficit, uc, sigma_sqr, _, actualdeficit = self._calc_deficit_convection(**model_kwargs)
-                        # print('actualdeficit', actualdeficit)
                         uc_nk.append(uc[0])
                         sigma_sqr_nk.append(sigma_sqr[0])
                         actualdeficit_nk.append(actualdeficit[0])
@@ -1095,8 +1092,6 @@ class All2AllIterative(EngineeringWindFarmModel):
 
             WS_eff_ilk = WS_ilk.astype(dtype) - self.superpositionModel.superpose_deficit(**sp_kwargs)
             if self.blockage_deficitModel:
-                # print('blockage_iilk', blockage_iilk)
-                # print('WS_eff_ilk', WS_eff_ilk)
                 WS_eff_ilk -= self.blockage_deficitModel.superpositionModel(blockage_iilk)
 
             if self.turbulenceModel:
