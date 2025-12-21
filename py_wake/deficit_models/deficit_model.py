@@ -178,7 +178,6 @@ class ConvectionDeficitModel(WakeDeficitModel):
         """
 
 
-# class XRLUTConvDeficitModel(ConvectionDeficitModel, BlockageDeficitModel, XRLUTModel):
 class XRLUTConvDeficitModel(ConvectionDeficitModel, XRLUTModel):
 
     """Deficit model based on xarray.dataarray look-up table with linear interpolation"""
@@ -212,7 +211,6 @@ class XRLUTConvDeficitModel(ConvectionDeficitModel, XRLUTModel):
             how to handle out-of-bounds coordinate interpolation, see GridInterpolator
         """
         XRLUTModel.__init__(self, da, get_input, get_output, method=method, bounds=bounds)
-        # BlockageDeficitModel.__init__(self, upstream_only=True, superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel)
         ConvectionDeficitModel.__init__(self, superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                         use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
 

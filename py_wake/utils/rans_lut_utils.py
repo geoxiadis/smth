@@ -272,7 +272,7 @@ def fit_gauss(path_LUT, database_name, ymin=-10, ymax=10, xfits=np.linspace(0.0,
                 try:
                     # Substract outer values to make fit possible when velocity deficit at hub height is completely negative in the very far wake due to vertical wake center displacement
                     popt, pcov = curve_fit(gauss, u.y, u.deficits - u.deficits.isel(y=0), p0=[1.0, 0.0, 1.0], maxfev=800)
-                except Exception:
+                except Exception:  # pragma: no cover
                     plt.plot(u.y, u.deficits, 'b+:', label='data')
                     plt.plot(u.y, gauss(u.y, *popt), 'ro:', label='fit')
                     plt.savefig('fittest.pdf')

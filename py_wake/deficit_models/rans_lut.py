@@ -132,11 +132,6 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         self.sigma_lut = XRLUTConvModel(self.get_lut(convlut[0], 'sigma'), bounds='limit')
         self.center_def_lut = XRLUTConvModel(self.get_lut(convlut[0], 'centerline_deficit'), bounds='limit')
 
-    def wake_radius(self, dw_ijlk, **kwargs):
-        # Required for PyWake but not needed for RANS LUT model
-        wake_radius_ijlk = np.ones(dw_ijlk.shape)
-        return wake_radius_ijlk
-
     def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, WS_ref_ijlk, **kwargs):
         # dimensional wake expansion
         sigma_ijlk = self.sigma_lut.__call__(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
@@ -158,7 +153,7 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         return WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk
 
     def calc_deficit_convection(self, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **kwargs):
-        if self.groundModel:
+        if self.groundModel:  # pragma: no cover
             raise NotImplementedError(
                 "calc_deficit_convection (WeightedSum) cannot be used in combination with GroundModels")
         WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk = self._calc_deficit(
