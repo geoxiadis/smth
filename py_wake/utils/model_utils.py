@@ -180,7 +180,7 @@ def get_exclude_dict():
         "DeficitModel": ([ConvectionDeficitModel, BlockageDeficitModel, WakeDeficitModel, XRLUTDeficitModel,
                           RANSLUTDeficit],
                          [RotorAvgModel], NOJDeficit),
-        "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel, RANSLUTDeficit], [RotorAvgModel], NOJDeficit),
+        "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel, RANSLUTDeficit, XRLUTConvDeficitModel, RANSLUTConvDeficit], [RotorAvgModel], NOJDeficit),
         "RotorAvgModel": ([NodeRotorAvgModel], [], None),
         "SuperpositionModel": ([], [], LinearSum),
         "BlockageDeficitModel": ([XRLUTDeficitModel, RANSLUTDeficit], [], None),

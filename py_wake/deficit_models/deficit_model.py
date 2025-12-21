@@ -229,6 +229,11 @@ class XRLUTConvDeficitModel(ConvectionDeficitModel, XRLUTModel):
     def calc_deficit(self, **kwargs):
         return XRLUTModel.__call__(self, **kwargs)
 
+    @abstractmethod
+    def calc_deficit_convection(self):
+        """
+        """
+
 
 class XRLUTDeficitModel(WakeDeficitModel, BlockageDeficitModel, XRLUTModel):
     """Deficit model based on xarray.dataarray look-up table with linear interpolation"""
