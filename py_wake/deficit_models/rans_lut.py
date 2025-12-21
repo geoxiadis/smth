@@ -135,20 +135,15 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         # dimensional wake expansion
         sigma_ijlk = self.sigma_lut.__call__(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
         # Replace undefined sigma values (upstream of WT) with zeros
-        upstream = dw_ijlk[:, :, :, 0] < 0
-        sigma_ijlk[:, :, :][upstream] = 0.0
+        sigma_ijlk[:, :, :][dw_ijlk[:, :, :, 0] < 0] = 0.0
         return sigma_ijlk * D_src_il[:, na, :, na]
 
     def _calc_deficit(self, D_src_il, dw_ijlk, ct_ilk, WS_ref_ijlk, **kwargs):
         # dimensional wake expansion
         sigma_sqr_ijlk = (self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, WS_ref_ijlk=WS_ref_ijlk, **kwargs))**2
-        # print('sigma_sqr_ijlk', sigma_sqr_ijlk)
-        deficit_centre_ijlk = self.center_def_lut.__call__(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
-        deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1.0, deficit_centre_ijlk)
+        deficit_centre_ijlk = WS_ref_ijlk * np.minimum(1.0, self.center_def_lut.__call__(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs))
         # Replace undefined center deficit values (upstream of WT) with zeros
-        upstream = dw_ijlk[:, :, :, 0] < 0
-        deficit_centre_ijlk[:, :, :][upstream] = 0.0
-        # print('deficit_centre_ijlk', deficit_centre_ijlk)
+        deficit_centre_ijlk[:, :, :][dw_ijlk[:, :, :, 0] < 0] = 0.0
         return WS_ref_ijlk, sigma_sqr_ijlk, deficit_centre_ijlk
 
     def calc_deficit_convection(self, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **kwargs):
