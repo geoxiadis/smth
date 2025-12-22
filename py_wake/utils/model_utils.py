@@ -180,6 +180,8 @@ def get_exclude_dict():
     from py_wake.superposition_models import LinearSum
     from py_wake.deficit_models.deficit_model import XRLUTDeficitModel, XRLUTConvDeficitModel
     from py_wake.deficit_models.rans_lut import RANSLUTDeficit, RANSLUTConvDeficit
+    from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
+    from py_wake.turbulence_models.turbulence_model import XRLUTTurbulenceModel
     from py_wake.wind_farm_models.engineering_models import (
         EngineeringWindFarmModel,
         PropagateDownwind,
