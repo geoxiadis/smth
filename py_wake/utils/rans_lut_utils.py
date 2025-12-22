@@ -6,6 +6,9 @@ from py_wake.rotor_avg_models.rotor_avg_model import EllipSysPolygonRotorAvg
 import os
 from pathlib import Path
 from py_wake.utils.most import phi, psi, phi_eps
+import sys
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
 
 
 class RANSLUTModel():
@@ -267,3 +270,53 @@ def get_Ellipsys_equivalent_output(sim_res, aDControl, flowmap_maxpoints=None,
     power_ilk *= operating
     # print('power_ilk', power_ilk, 'WS_eff_star_ilk', WS_eff_star_ilk)
     return power_ilk, WS_eff_star_ilk, ct_star_ilk
+
+
+def gauss(x, a, x0, sigma):
+    return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
+
+
+def fit_gauss(path_LUT, database_name, ymin=-10, ymax=10, xfits=np.linspace(0.0, 100.0, 101)):
+    # Fit a Gaussian for each single wake shape and store sigma and magnitude
+    ds = xr.open_dataset(path_LUT).interp(z=0.0)
+    ds = ds.where(ds.y >= ymin, drop=True).where(ds.y <= ymax, drop=True)
+    centerline_deficit = np.zeros((len(ds.ct), len(ds.ti), len(xfits) + 1))
+    sigma = np.zeros((len(ds.ct), len(ds.ti), len(xfits) + 1))
+    for k in range(len(ds.ct)):
+        for j in range(len(ds.ti)):
+            deficit = ds.isel(ct=k, ti=j)
+            for i in range(len(xfits)):
+                u = deficit.interp(x=xfits[i])
+                try:
+                    # Substract outer values to make fit possible when velocity deficit at hub height is completely negative in the very far wake due to vertical wake center displacement
+                    popt, pcov = curve_fit(gauss, u.y, u.deficits - u.deficits.isel(y=0), p0=[1.0, 0.0, 1.0], maxfev=800)
+                except Exception:  # pragma: no cover
+                    plt.plot(u.y, u.deficits, 'b+:', label='data')
+                    plt.plot(u.y, gauss(u.y, *popt), 'ro:', label='fit')
+                    plt.savefig('fittest.pdf')
+                    sys.exit()
+                centerline_deficit[k, j, i] = popt[0]
+                sigma[k, j, i] = popt[2]
+
+    centerline_deficit[:, :, -1] = centerline_deficit[:, :, -2]
+    sigma[:, :, -1] = sigma[:, :, -2]
+    xfits = np.append(xfits, 10**10)
+    dsout = xr.Dataset({'centerline_deficit': xr.DataArray(centerline_deficit,
+                        [('ct', ds.ct.values),
+                         ('ti', ds.ti.values),
+                         ('x', xfits)],
+                        attrs={'long_name': 'Normalized streamwise centerline deficit from fitted Gaussian', 'units': '[-]'}),
+                       'sigma': xr.DataArray(sigma,
+                        [('ct', ds.ct.values),
+                         ('ti', ds.ti.values),
+                         ('x', xfits)],
+                        attrs={'long_name': 'Standard deviation normalized by rotor diameter from fitted Gaussian', 'units': '[-]'})})
+    encoding = {}
+    vars = ['centerline_deficit', 'sigma']
+    for var in vars:
+        encoding[var] = {'dtype': 'float32'}
+    vars = ['x', 'ct', 'ti']
+    for var in vars:
+        encoding[var] = {'dtype': 'float64'}
+    # Write netcdf file
+    dsout.to_netcdf(database_name, encoding=encoding)

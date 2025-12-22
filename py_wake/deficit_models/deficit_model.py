@@ -183,7 +183,7 @@ class XRLUTDeficitModel(WakeDeficitModel, BlockageDeficitModel, XRLUTModel):
 
     def __init__(self, da, get_input=None, get_output=None,
                  method='linear', bounds='limit',
-                 rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False):
+                 superpositionModel=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False):
         """
         Parameters
         ----------
@@ -210,8 +210,8 @@ class XRLUTDeficitModel(WakeDeficitModel, BlockageDeficitModel, XRLUTModel):
             how to handle out-of-bounds coordinate interpolation, see GridInterpolator
         """
         XRLUTModel.__init__(self, da, get_input, get_output, method=method, bounds=bounds)
-        BlockageDeficitModel.__init__(self, upstream_only=True, rotorAvgModel=rotorAvgModel, groundModel=groundModel)
-        WakeDeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
+        BlockageDeficitModel.__init__(self, upstream_only=True, superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel)
+        WakeDeficitModel.__init__(self, superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                   use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
 
     @property
@@ -226,3 +226,58 @@ class XRLUTDeficitModel(WakeDeficitModel, BlockageDeficitModel, XRLUTModel):
 
     def calc_deficit(self, **kwargs):
         return XRLUTModel.__call__(self, **kwargs)
+
+
+class XRLUTConvDeficitModel(ConvectionDeficitModel, XRLUTModel):
+
+    """Deficit model based on xarray.dataarray look-up table with linear interpolation"""
+
+    def __init__(self, da, get_input=None, get_output=None,
+                 method='linear', bounds='limit',
+                 superpositionModel=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False):
+        """
+        Parameters
+        ----------
+        da : xarray.dataarray
+            dataarray containing lookup table.
+        get_input : function or None, optional
+            if None (default): The get_input method of XRDeficitModel is used. This option requires that the
+            names of the input dimensions matches names of the default PyWake keyword arguments, e.g. dw_ijlk, WS_ilk,
+            D_src_il, etc, or user-specified custom inputs
+            if function: The names of the input for the function should match the names of the default PyWake
+            keyword arguments, e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
+            The function should output interpolation coordinates [x_ijlk, y_ijlk, ...], where (x,y,...) match
+            the order of the dimensions of the dataarray
+        get_output : function or None, optional
+            if None (default): The interpolated output is scaled with the local wind speed, WS_ilk,
+            or local effective wind speed, WS_eff_ilk, depending on the value of <use_effective_ws>.
+            if function: The function should take the argument output_ijlk and an optional set of PyWake inputs. The
+            names of the PyWake inputs should match the names of the default PyWake keyword arguments,
+            e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
+            The function should return deficit_ijlk
+        method : {'linear' or 'nearest} or [{'linear' or 'nearest}, ...]
+            interpolation method
+        bounds : {'limit', 'check', 'ignore'}
+            how to handle out-of-bounds coordinate interpolation, see GridInterpolator
+        """
+        XRLUTModel.__init__(self, da, get_input, get_output, method=method, bounds=bounds)
+        ConvectionDeficitModel.__init__(self, superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
+                                        use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
+
+    @property
+    def args4deficit(self):
+        return XRLUTModel.args4model.fget(self) | ConvectionDeficitModel.args4deficit.fget(self)
+
+    def get_output(self, output_ijlk, **kwargs):
+        """Default get_output function.
+        This function just scales the interpolated values with the local wind speed, WS_ilk, or local effective
+        wind speed, WS_eff_ilk, depending on the value of <use_effective_ws>"""
+        return output_ijlk * kwargs[self.WS_key][:, na]
+
+    def calc_deficit(self, **kwargs):
+        return XRLUTModel.__call__(self, **kwargs)
+
+    @abstractmethod
+    def calc_deficit_convection(self):
+        """
+        """
