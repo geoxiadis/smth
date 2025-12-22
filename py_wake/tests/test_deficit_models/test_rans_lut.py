@@ -325,3 +325,43 @@ def test_rans_conv_lut():
                                                                 7.98181956, 7.44557278])
     npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79339881, 0.79387999, 0.80597949, 0.79310158, 0.80408284,
                                                             0.80598182, 0.80544557])
+
+
+def test_rans_conv_lut_multiturbine():
+    # Test with provided control file
+    demo_lut = ptf('ranslut/V80_ranslut_demo.nc',
+                   '846213eb655255f6e2201a47c2406f9e77f243f369398cb389bf7320b457dea8')
+    ds = xr.load_dataset(demo_lut)
+
+    # Test multi lut (using the same file for now with 50% wake deficit)
+    lut_V120 = ds.copy(deep=True)
+    lut_V120.deficits[:] *= .5
+
+    # Fig Gaussian deficits to hub height profiles for WeightedSum superposition
+    demo_convlut = 'V80_gaussian.nc'
+    fit_gauss(demo_lut, 'V80_gaussian.nc', ymin=-10, ymax=10, xfits=np.linspace(0.0, 100.0, 11))
+    lut_V120.to_netcdf('V120.nc')
+    fit_gauss('V120.nc', 'V120_gaussian.nc', ymin=-10, ymax=10, xfits=np.linspace(0.0, 100.0, 11))
+
+    v80 = HornsrevV80()
+    v120 = WindTurbine('V120', 120, 70, powerCtFunction=PowerCtTabular(
+        hornsrev1.power_curve[:, 0], hornsrev1.power_curve[:, 1], 'w', hornsrev1.ct_curve[:, 1]))
+    wts = WindTurbine.from_WindTurbines([v80, v120])
+
+    wfm = RANSLUT([ds, lut_V120], UniformSite(ti=0.075 * 0.8), wts, convlut=['V80_gaussian.nc', 'V120_gaussian.nc'], rotorAvgModel=GQGridRotorAvg(4, 3))
+    type_i = np.array([0, 0, 1, 1])
+    sim_res = wfm([0, 500, 1000, 1500], [0, 0, 0, 0], type=type_i, wd=[90, 270], ws=10.0)
+    if 0:
+        axes = plt.subplots(2, 1)[1]
+        sim_res.flow_map(wd=90).plot_wake_map(ax=axes[0], levels=np.linspace(3, 10.5))
+        sim_res.flow_map(wd=270).plot_wake_map(ax=axes[1], levels=np.linspace(3, 10.5))
+        plt.show()
+
+    WS_eff_ref = [[7.39734955, 7.90998823, 8.56042535, 9.97638533], [9.97756182, 7.94966908, 7.78869013, 7.50030798]]
+    ct_ref = [[0.80539735, 0.80590999, 0.80656043, 0.79333061], [0.79331413, 0.80594967, 0.80578869, 0.80550031]]
+    power_ref = [[0.55377449, 0.67475722, 0.8641276, 1.33285294], [1.33325883, 0.6841219, 0.64613087, 0.57807268]]
+    TI_eff_ref = [[0.26789829, 0.21534878, 0.14177617, 0.06003113], [0.0600239, 0.13786305, 0.18521198, 0.23600163]]
+    npt.assert_array_almost_equal(sim_res.WS_eff_ilk.squeeze().T, WS_eff_ref, 6)
+    npt.assert_array_almost_equal(sim_res.ct_ilk.squeeze().T, ct_ref, 6)
+    npt.assert_array_almost_equal(sim_res.power_ilk.squeeze().T * 1e-6, power_ref, 6)
+    npt.assert_array_almost_equal(sim_res.TI_eff.values.squeeze().T, TI_eff_ref, 6)

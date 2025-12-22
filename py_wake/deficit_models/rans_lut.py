@@ -43,9 +43,9 @@ class RANSLUT(All2AllIterative):
             superpositionModel = WeightedSum(weight_limit=1.0)
             if not isinstance(convlut, (list, tuple)):
                 convlut = [convlut]
-                convlut_lst = convlut
-                convlut_lst = [load_lut(convlut) for convlut in convlut_lst]
-                wake_deficit = RANSLUTConvDeficit(lut=[lut.deficits for lut in lut_lst], convlut=convlut_lst, rotorAvgModel=rotorAvgModel, superpositionModel=WeightedSum(weight_limit=1.0))
+            convlut_lst = convlut
+            convlut_lst = [load_lut(convlut) for convlut in convlut_lst]
+            wake_deficit = RANSLUTConvDeficit(lut=[lut.deficits for lut in lut_lst], convlut=convlut_lst, rotorAvgModel=rotorAvgModel, superpositionModel=WeightedSum(weight_limit=1.0))
         else:
             # Use linear wake superposition
             superpositionModel = LinearSum()
@@ -127,9 +127,8 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         XRLUTConvDeficitModel.__init__(self, self.get_lut(lut, 'deficits'),
                                        bounds='limit', superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                        use_effective_ws=True, use_effective_ti=use_effective_ti)
-        # TODO: add WT type
-        self.sigma_lut = XRLUTConvModel(self.get_lut(convlut[0], 'sigma'), bounds='limit')
-        self.center_def_lut = XRLUTConvModel(self.get_lut(convlut[0], 'centerline_deficit'), bounds='limit')
+        self.sigma_lut = XRLUTConvModel(self.get_lut([lut.sigma for lut in convlut], 'sigma'), bounds='limit')
+        self.center_def_lut = XRLUTConvModel(self.get_lut([lut.centerline_deficit for lut in convlut], 'centerline_deficit'), bounds='limit')
 
     def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, WS_ref_ijlk, **kwargs):
         # dimensional wake expansion
