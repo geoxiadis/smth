@@ -272,6 +272,28 @@ def get_Ellipsys_equivalent_output(sim_res, aDControl, flowmap_maxpoints=None,
     return power_ilk, WS_eff_star_ilk, ct_star_ilk
 
 
+def get_Ellipsys_equivalent_ctstar_1Dmom(sim_res, aDControl):
+    """
+    Calculate CTstar, the thrust coefficient based rotor averaged wind speed, U_AD, without
+    flow_map integration by using 1D momentum for U_AD but not for CTstar. Instead
+    we use RANS-based interpolation using CTstar = f(U_AD) relation, as done in EllipSys.
+    """
+    type_i = sim_res.type.values
+    I = sim_res.WS_eff_ilk.shape[0]
+
+    def get_ct(i, t):
+        ax = 0.5 * (1.0 - np.sqrt(1.0 - sim_res.ct_ilk[i, ::]))
+        UAD = sim_res.WS_eff_ilk[i, ::] * (1.0 - ax)
+        ct_star = aDControl.fint_CTstar[t](UAD)
+        return ct_star
+
+    if np.all(type_i == 0):
+        ct_star_ilk = get_ct(slice(None), 0)
+    else:
+        ct_star_ilk = np.stack([get_ct(i, type_i[i]) for i in range(I)])
+    return ct_star_ilk
+
+
 def gauss(x, a, x0, sigma):
     return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
 

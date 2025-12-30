@@ -11,7 +11,8 @@ from py_wake.tests import npt, ptf
 from py_wake.turbulence_models.rans_lut_turb import RANSLUTDemoTurbulence
 from py_wake.utils.grid_interpolator import GridInterpolator
 from py_wake.utils.profiling import timeit
-from py_wake.utils.rans_lut_utils import ADControl, get_Ellipsys_equivalent_output, fit_gauss
+from py_wake.utils.rans_lut_utils import ADControl, get_Ellipsys_equivalent_output
+from py_wake.utils.rans_lut_utils import get_Ellipsys_equivalent_ctstar_1Dmom, fit_gauss
 from py_wake.wind_farm_models.engineering_models import All2AllIterative
 from py_wake.wind_turbines import WindTurbine
 from py_wake.wind_turbines._wind_turbines import WindTurbines
@@ -326,6 +327,10 @@ def test_rans_conv_lut():
                                                                 7.98181956, 7.44557278])
     npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79339881, 0.79387999, 0.80597949, 0.79310158, 0.80408284,
                                                             0.80598182, 0.80544557])
+    ds = xr.load_dataset(demo_lut)
+    aDControl = ADControl.from_lut(ds.deficits, wts, ws_cutin=4, ws_cutout=25, dws=1.0, cal_TI=0.06)
+    ct_star = get_Ellipsys_equivalent_ctstar_1Dmom(simres, aDControl)
+    npt.assert_array_almost_equal(ct_star.flatten(), [1.35234975, 1.35364645, 1.36415988, 1.35154843, 1.36735535, 1.36416583, 1.36279666])
 
 
 def test_rans_conv_lut_multiturbine():
@@ -366,3 +371,8 @@ def test_rans_conv_lut_multiturbine():
     npt.assert_array_almost_equal(sim_res.ct_ilk.squeeze().T, ct_ref, 6)
     npt.assert_array_almost_equal(sim_res.power_ilk.squeeze().T * 1e-6, power_ref, 6)
     npt.assert_array_almost_equal(sim_res.TI_eff.values.squeeze().T, TI_eff_ref, 6)
+
+    aDControl = ADControl.from_lut([ds, lut_V120], wts, ws_cutin=[3, 4], ws_cutout=[26, 25], dws=1.0, cal_TI=0.06)
+    ct_star = get_Ellipsys_equivalent_ctstar_1Dmom(sim_res, aDControl)
+    ct_star_ref = [[1.36267373, 1.36398248, 1.04636191, 1.04842057], [1.3521215, 1.36408377, 1.04532323, 1.04493478]]
+    npt.assert_array_almost_equal(ct_star.squeeze().T, ct_star_ref, 6)
