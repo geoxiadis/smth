@@ -298,10 +298,14 @@ def gauss(x, a, x0, sigma):
     return a * np.exp(-(x - x0) ** 2 / (2 * sigma ** 2))
 
 
-def fit_gauss(path_LUT, database_name, ymin=-10, ymax=10, xfits=np.linspace(0.0, 100.0, 101)):
+def fit_gauss(path_LUT, database_name, ymin=-10, ymax=10, xfits=None):
     # Fit a Gaussian for each single wake shape and store sigma and magnitude
     ds = xr.open_dataset(path_LUT).interp(z=0.0)
     ds = ds.where(ds.y >= ymin, drop=True).where(ds.y <= ymax, drop=True)
+    if xfits is None:
+        xmin = 2.0
+        xmax = 100.0
+        xfits = np.insert(np.append(ds.x.where(ds.x > xmin, drop=True).where(ds.x < xmax, drop=True), xmax), 0, 0.0)
     centerline_deficit = np.zeros((len(ds.ct), len(ds.ti), len(xfits) + 1))
     sigma = np.zeros((len(ds.ct), len(ds.ti), len(xfits) + 1))
     for k in range(len(ds.ct)):
@@ -310,7 +314,8 @@ def fit_gauss(path_LUT, database_name, ymin=-10, ymax=10, xfits=np.linspace(0.0,
             for i in range(len(xfits)):
                 u = deficit.interp(x=xfits[i])
                 try:
-                    # Substract outer values to make fit possible when velocity deficit at hub height is completely negative in the very far wake due to vertical wake center displacement
+                    # Substract outer values to make fit possible when velocity deficit at hub height is completely negative
+                    # in the very far wake due to vertical wake center displacement
                     popt, pcov = curve_fit(gauss, u.y, u.deficits - u.deficits.isel(y=0), p0=[1.0, 0.0, 1.0], maxfev=800)
                 except Exception:  # pragma: no cover
                     plt.plot(u.y, u.deficits, 'b+:', label='data')
@@ -319,6 +324,11 @@ def fit_gauss(path_LUT, database_name, ymin=-10, ymax=10, xfits=np.linspace(0.0,
                     sys.exit()
                 centerline_deficit[k, j, i] = popt[0]
                 sigma[k, j, i] = popt[2]
+        # Limit centerline deficit in near wake to 1D momentum value, 2*a_x, since fitting a gaussian to a non-gaussian near wake
+        # is prone to overpredicting the deficit
+        centerline_deficit[k, :, :] = np.minimum(centerline_deficit[k, :, :], (1.0 - np.sqrt(1.0 - np.minimum(ds.ct.isel(ct=k).values, 1.0)))[na, na])
+        # Likewise, limit deficit at x=0 with 1D momentum value, a_x
+        centerline_deficit[k, :, 0] = np.minimum(centerline_deficit[k, :, 0], (0.5 * (1.0 - np.sqrt(1.0 - np.minimum(ds.ct.isel(ct=k).values, 1.0))))[na])
 
     centerline_deficit[:, :, -1] = centerline_deficit[:, :, -2]
     sigma[:, :, -1] = sigma[:, :, -2]

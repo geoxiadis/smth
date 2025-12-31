@@ -316,21 +316,21 @@ def test_rans_conv_lut():
     Dref = wts.diameter()
     demo_lut = ptf('ranslut/V80_ranslut_demo.nc',
                    '846213eb655255f6e2201a47c2406f9e77f243f369398cb389bf7320b457dea8')
-    # Fig Gaussian deficits to hub height profiles for WeightedSum superposition
+    # Fit Gaussian deficits to hub height profiles for WeightedSum superposition
     demo_convlut = 'V80_gaussian.nc'
-    fit_gauss(demo_lut, 'V80_gaussian.nc', ymin=-10, ymax=10, xfits=np.linspace(0.0, 100.0, 11))
+    fit_gauss(demo_lut, 'V80_gaussian.nc', ymin=-10, ymax=10)
     wfm = RANSLUT(demo_lut, site, wts, convlut=demo_convlut, rotorAvgModel=GQGridRotorAvg(4, 3))
 
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
                        profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
-    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.97151361, 9.93714351, 7.97948828, 9.99274407, 9.20836865,
-                                                                7.98181956, 7.44557278])
-    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79339881, 0.79387999, 0.80597949, 0.79310158, 0.80408284,
-                                                            0.80598182, 0.80544557])
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.97150681, 9.93711854, 7.97991956, 9.99272109, 9.20975831,
+                                                                7.98196409, 7.46986422])
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.7933989, 0.79388034, 0.80597992, 0.7931019, 0.80406338,
+                                                            0.80598196, 0.80546986])
     ds = xr.load_dataset(demo_lut)
     aDControl = ADControl.from_lut(ds.deficits, wts, ws_cutin=4, ws_cutout=25, dws=1.0, cal_TI=0.06)
     ct_star = get_Ellipsys_equivalent_ctstar_1Dmom(simres, aDControl)
-    npt.assert_array_almost_equal(ct_star.flatten(), [1.35234975, 1.35364645, 1.36415988, 1.35154843, 1.36735535, 1.36416583, 1.36279666])
+    npt.assert_array_almost_equal(ct_star.flatten(), [1.35235001, 1.35364739, 1.36416098, 1.35154929, 1.3673593, 1.3641662, 1.36285859])
 
 
 def test_rans_conv_lut_multiturbine():
@@ -343,7 +343,7 @@ def test_rans_conv_lut_multiturbine():
     lut_V120 = ds.copy(deep=True)
     lut_V120.deficits[:] *= .5
 
-    # Fig Gaussian deficits to hub height profiles for WeightedSum superposition
+    # Fit Gaussian deficits to hub height profiles for WeightedSum superposition
     demo_convlut = 'V80_gaussian.nc'
     fit_gauss(demo_lut, 'V80_gaussian.nc', ymin=-10, ymax=10, xfits=np.linspace(0.0, 100.0, 11))
     lut_V120.to_netcdf('V120.nc')
@@ -363,9 +363,9 @@ def test_rans_conv_lut_multiturbine():
         sim_res.flow_map(wd=270).plot_wake_map(ax=axes[1], levels=np.linspace(3, 10.5))
         plt.show()
 
-    WS_eff_ref = [[7.39734955, 7.90998823, 8.56042535, 9.97638533], [9.97756182, 7.94966908, 7.78869013, 7.50030798]]
+    WS_eff_ref = [[7.3973466, 7.90998823, 8.56042535, 9.97638533], [9.97756182, 7.94966889, 7.78868653, 7.50030898]]
     ct_ref = [[0.80539735, 0.80590999, 0.80656043, 0.79333061], [0.79331413, 0.80594967, 0.80578869, 0.80550031]]
-    power_ref = [[0.55377449, 0.67475722, 0.8641276, 1.33285294], [1.33325883, 0.6841219, 0.64613087, 0.57807268]]
+    power_ref = [[0.5537738, 0.67475722, 0.8641276, 1.33285294], [1.33325883, 0.68412186, 0.64613002, 0.57807292]]
     TI_eff_ref = [[0.26789829, 0.21534878, 0.14177617, 0.06003113], [0.0600239, 0.13786305, 0.18521198, 0.23600163]]
     npt.assert_array_almost_equal(sim_res.WS_eff_ilk.squeeze().T, WS_eff_ref, 6)
     npt.assert_array_almost_equal(sim_res.ct_ilk.squeeze().T, ct_ref, 6)
@@ -374,5 +374,5 @@ def test_rans_conv_lut_multiturbine():
 
     aDControl = ADControl.from_lut([ds, lut_V120], wts, ws_cutin=[3, 4], ws_cutout=[26, 25], dws=1.0, cal_TI=0.06)
     ct_star = get_Ellipsys_equivalent_ctstar_1Dmom(sim_res, aDControl)
-    ct_star_ref = [[1.36267373, 1.36398248, 1.04636191, 1.04842057], [1.3521215, 1.36408377, 1.04532323, 1.04493478]]
+    ct_star_ref = [[1.36267372, 1.36398248, 1.04636191, 1.04842057], [1.3521215, 1.36408377, 1.04532323, 1.04493478]]
     npt.assert_array_almost_equal(ct_star.squeeze().T, ct_star_ref, 6)
