@@ -220,7 +220,7 @@ def test_rans_lut_multi_wd_ws():
     ADcontrolfile = 'lutcal_WT80_Ti0.06_0.dat'
     aDControl_saved = ADControl.from_files([ADcontrolfile])
 
-    npt.assert_array_almost_equal(aDControl.U_CT_CP_AD, aDControl_saved.U_CT_CP_AD, 10)
+    npt.assert_array_almost_equal(aDControl.U_CT_CP_AD_ws, aDControl_saved.U_CT_CP_AD_ws, 10)
 
     wfm = RANSLUT(dataset, site, wts)
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
