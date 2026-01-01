@@ -11,8 +11,7 @@ from py_wake.tests import npt, ptf
 from py_wake.turbulence_models.rans_lut_turb import RANSLUTDemoTurbulence
 from py_wake.utils.grid_interpolator import GridInterpolator
 from py_wake.utils.profiling import timeit
-from py_wake.utils.rans_lut_utils import ADControl, get_Ellipsys_equivalent_output
-from py_wake.utils.rans_lut_utils import get_Ellipsys_equivalent_ctstar_1Dmom, fit_gauss
+from py_wake.utils.rans_lut_utils import ADControl, get_Ellipsys_equivalent_output, fit_gauss
 from py_wake.wind_farm_models.engineering_models import All2AllIterative
 from py_wake.wind_turbines import WindTurbine
 from py_wake.wind_turbines._wind_turbines import WindTurbines
@@ -105,7 +104,7 @@ def test_rans_lut():
 
     aDControl_saved = ADControl.from_files([ADcontrolfile])
 
-    npt.assert_array_almost_equal(aDControl.U_CT_CP_AD, aDControl_saved.U_CT_CP_AD, 10)
+    npt.assert_array_almost_equal(aDControl.U_CT_CP_AD_ws, aDControl_saved.U_CT_CP_AD_ws, 10)
 
     wfm = RANSLUT(dataset, site, wts)
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
@@ -329,8 +328,9 @@ def test_rans_conv_lut():
                                                             0.80598196, 0.80546986])
     ds = xr.load_dataset(demo_lut)
     aDControl = ADControl.from_lut(ds.deficits, wts, ws_cutin=4, ws_cutout=25, dws=1.0, cal_TI=0.06)
-    ct_star = get_Ellipsys_equivalent_ctstar_1Dmom(simres, aDControl)
-    npt.assert_array_almost_equal(ct_star.flatten(), [1.35235001, 1.35364739, 1.36416098, 1.35154929, 1.3673593, 1.3641662, 1.36285859])
+    _, WS_eff_star, ct_star = get_Ellipsys_equivalent_output(simres, aDControl, rotorAvgModel=None)
+    npt.assert_array_almost_equal(WS_eff_star.flatten(), [7.69759095, 7.66977332, 6.1306985, 7.71475178, 7.08139117, 6.13226504, 5.7398877])
+    npt.assert_array_almost_equal(ct_star.flatten(), [1.33143388, 1.33273949, 1.36552774, 1.33062844, 1.36035502, 1.36553333, 1.36413403])
 
 
 def test_rans_conv_lut_multiturbine():
@@ -373,6 +373,8 @@ def test_rans_conv_lut_multiturbine():
     npt.assert_array_almost_equal(sim_res.TI_eff.values.squeeze().T, TI_eff_ref, 6)
 
     aDControl = ADControl.from_lut([ds, lut_V120], wts, ws_cutin=[3, 4], ws_cutout=[26, 25], dws=1.0, cal_TI=0.06)
-    ct_star = get_Ellipsys_equivalent_ctstar_1Dmom(sim_res, aDControl)
-    ct_star_ref = [[1.36267372, 1.36398248, 1.04636191, 1.04842057], [1.3521215, 1.36408377, 1.04532323, 1.04493478]]
+    _, WS_eff_star, ct_star = get_Ellipsys_equivalent_output(sim_res, aDControl, rotorAvgModel=None)
+    WS_eff_ref = [[5.68432379, 6.07711624, 7.50664894, 8.76770315], [7.70248902, 6.10752006, 6.83079781, 6.57818957]]
+    ct_star_ref = [[1.36393587, 1.36533666, 1.0488932, 1.0271518], [1.33120399, 1.36544508, 1.04761978, 1.04714416]]
+    npt.assert_array_almost_equal(WS_eff_star.squeeze().T, WS_eff_ref, 6)
     npt.assert_array_almost_equal(ct_star.squeeze().T, ct_star_ref, 6)

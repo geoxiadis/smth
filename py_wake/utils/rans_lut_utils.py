@@ -32,29 +32,31 @@ class RANSLUTModel():
 
 
 class ADControl():
-    def __init__(self, UAD_CTstar_CPstar_lst, generate_args=None):
-        self.U_CT_CP_AD = UAD_CTstar_CPstar_lst
+    def __init__(self, UAD_CTstar_CPstar_ws_lst, generate_args=None):
+        self.U_CT_CP_AD_ws = UAD_CTstar_CPstar_ws_lst
         self.generate_args = generate_args
         self.fint_CTstar = []
         self.fint_CPstar = []
-        for UAD, CTstar, CPstar in UAD_CTstar_CPstar_lst:
-            assert len(UAD) == len(CTstar) == len(CPstar)
+        self.fint_UAD = []
+        for UAD, CTstar, CPstar, ws in UAD_CTstar_CPstar_ws_lst:
+            assert len(UAD) == len(CTstar) == len(CPstar) == len(ws)
             self.fint_CPstar.append(interp1d(UAD, CPstar, fill_value=0.0, bounds_error=False))
             self.fint_CTstar.append(interp1d(UAD, CTstar, fill_value=0.0, bounds_error=False))
+            self.fint_UAD.append(interp1d(ws, UAD, fill_value=0.0, bounds_error=False))
 
     @staticmethod
     def from_files(ADcontrolfiles):
         # RANS based calibrated control file for CPstar and CTstar as function of
         # the disk averaged velocity UAD provided by the user
-        UAD_CTstar_CPstar_lst = [np.genfromtxt(ADcontrolfile, skip_header=True).T[:3]
-                                 for ADcontrolfile in ADcontrolfiles]
-        return ADControl(UAD_CTstar_CPstar_lst)
+        UAD_CTstar_CPstar_ws_lst = [np.genfromtxt(ADcontrolfile, skip_header=True).T[:4]
+                                    for ADcontrolfile in ADcontrolfiles]
+        return ADControl(UAD_CTstar_CPstar_ws_lst)
 
     def save(self, folder='.'):
         assert self.generate_args is not None
         windTurbines, cal_TI, ws_lst = self.generate_args
 
-        for type_, U_CT_CP_AD in enumerate(self.U_CT_CP_AD):
+        for type_, U_CT_CP_AD_ws in enumerate(self.U_CT_CP_AD_ws):
             Dref = windTurbines.diameter(type_)
             cal_TI = cal_TI
             ws = ws_lst[type_]
@@ -63,7 +65,7 @@ class ADControl():
                 f.write('%s %s\n' % (str(ws.size + 2), ' 4'))
                 # f.write('%16.14f %16.14f %16.14f %16.14f\n' %
                 #        (0.95 * U_CT_CP_AD[0, 0], U_CT_CP_AD[0, 1], U_CT_CP_AD[0, 2], 0.95 * ws[0]))
-                for (U, CT, CP), ws_ in zip(U_CT_CP_AD.T, ws):
+                for U, CT, CP, ws_ in U_CT_CP_AD_ws.T:
                     f.write('%16.14f %16.14f %16.14f %16.14f\n' % (U, CT, CP, ws_))
                 # f.write('%16.14f %16.14f %16.14f %16.14f\n' % (ws[-1], 0.0, 0.0, ws[-1]))
 
@@ -142,16 +144,28 @@ class ADControl():
             U = mostshear[na, :] - 1.0 + Udata.interp(ct=cts, kwargs={"fill_value": "extrapolate"}).values
             UAD = ws * np.sum(np.reshape(U, (len(ws), -1)) * weights, axis=1)
             ratio = ws / UAD
-            UAD_CTstar_CPstar = np.array([UAD, cts * ratio ** 2, cps * ratio ** 3])
-            UAD_CTstar_CPstar[0, 0] = 0.95 * UAD[1]
-            UAD_CTstar_CPstar[:, -1] = ws[-1], 0.0, 0.0
+            UAD_CTstar_CPstar_ws = np.array([UAD, cts * ratio ** 2, cps * ratio ** 3, ws])
+            UAD_CTstar_CPstar_ws[0, 0] = 0.95 * UAD[1]
+            UAD_CTstar_CPstar_ws[3, 0] = 0.95 * ws[1]
+            UAD_CTstar_CPstar_ws[:, -1] = ws[-1], 0.0, 0.0, ws[-1]
 
-            return UAD_CTstar_CPstar
+            return UAD_CTstar_CPstar_ws
         return ADControl([get_UAD_CTstar_CPstar(t) for t in types], (windTurbines, cal_TI, ws_lst))
 
 
 def get_Ellipsys_equivalent_output(sim_res, aDControl, flowmap_maxpoints=None,
                                    rotorAvgModel=EllipSysPolygonRotorAvg(n_r=9, n_theta=32)):
+    if rotorAvgModel is not None:
+        # Use flow map to integrate rotor-averaged wind speed
+        return get_Ellipsys_equivalent_output_flowmap(sim_res, aDControl, flowmap_maxpoints=flowmap_maxpoints,
+                                                      rotorAvgModel=rotorAvgModel)
+    else:
+        # Interpolate rotor-averaged wind speed, applicable when a rotorAvgModel is used inside RANSLUT model
+        return get_Ellipsys_equivalent_output_simple(sim_res, aDControl)
+
+
+def get_Ellipsys_equivalent_output_flowmap(sim_res, aDControl, flowmap_maxpoints=None,
+                                           rotorAvgModel=EllipSysPolygonRotorAvg(n_r=9, n_theta=32)):
     """
     Recalculate wt power and thrust by the integrating rotor averaged wind speed
     including induction and interpolation with a CPstar, CTstar = f(U_AD) relation,
@@ -242,7 +256,7 @@ def get_Ellipsys_equivalent_output(sim_res, aDControl, flowmap_maxpoints=None,
     #
     # WS_eff_star_ilk = get_WS_eff_ilk()
 
-    U_tab_lst = [U_CT_CP_AD[0, :] for U_CT_CP_AD in aDControl.U_CT_CP_AD]
+    U_tab_lst = [U_CT_CP_AD[0, :] for U_CT_CP_AD in aDControl.U_CT_CP_AD_ws[:3]]
 
     Prated = [wts.power(U_tab,
                         **{k: t for k in ['type']
@@ -272,26 +286,29 @@ def get_Ellipsys_equivalent_output(sim_res, aDControl, flowmap_maxpoints=None,
     return power_ilk, WS_eff_star_ilk, ct_star_ilk
 
 
-def get_Ellipsys_equivalent_ctstar_1Dmom(sim_res, aDControl):
+def get_Ellipsys_equivalent_output_simple(sim_res, aDControl):
     """
     Calculate CTstar, the thrust coefficient based rotor averaged wind speed, U_AD, without
-    flow_map integration by using 1D momentum for U_AD but not for CTstar. Instead
-    we use RANS-based interpolation using CTstar = f(U_AD) relation, as done in EllipSys.
+    flow_map integration, by interpolating a U_AD, CTstar = f(WS_eff) relation from RANS,
+    as done in EllipSys.
     """
     type_i = sim_res.type.values
     I = sim_res.WS_eff_ilk.shape[0]
 
-    def get_ct(i, t):
-        ax = 0.5 * (1.0 - np.sqrt(1.0 - sim_res.ct_ilk[i, ::]))
-        UAD = sim_res.WS_eff_ilk[i, ::] * (1.0 - ax)
+    def get_UAD_ct(i, t):
+        UAD = aDControl.fint_UAD[t](sim_res.WS_eff_ilk[i, ::])
         ct_star = aDControl.fint_CTstar[t](UAD)
-        return ct_star
+        return UAD, ct_star
 
     if np.all(type_i == 0):
-        ct_star_ilk = get_ct(slice(None), 0)
+        WS_eff_star_ilk, ct_star_ilk = map(np.array, get_UAD_ct(slice(None), 0))
     else:
-        ct_star_ilk = np.stack([get_ct(i, type_i[i]) for i in range(I)])
-    return ct_star_ilk
+        WS_eff_star_ilk, ct_star_ilk = map(np.array, zip(*[get_UAD_ct(i, type_i[i]) for i in range(I)]))
+
+    # Set ct to zero for wts that were originally shut down
+    operating = sim_res.power_ilk > 0
+    ct_star_ilk *= operating
+    return sim_res.power_ilk, WS_eff_star_ilk, ct_star_ilk
 
 
 def gauss(x, a, x0, sigma):
