@@ -1,5 +1,5 @@
 import xarray as xr
-from py_wake.deficit_models.deficit_model import XRLUTDeficitModel, XRLUTConvDeficitModel
+from py_wake.deficit_models.deficit_model import XRLUTDeficitModel, ConvectionDeficitModel
 from py_wake.utils.model_utils import XRLUTModel
 from py_wake import np
 from py_wake.superposition_models import LinearSum, WeightedSum
@@ -77,58 +77,27 @@ class RANSLUTDeficit(RANSLUTModel, XRLUTDeficitModel):
         return wake_radius_ijlk
 
 
-class XRLUTConvModel(XRLUTModel):
-    """Deficit model based on xarray.dataarray look-up table with linear interpolation"""
-
-    def __init__(self, da, get_input=None, get_output=None,
-                 method='linear', bounds='limit'):
-        """
-        Parameters
-        ----------
-        da : xarray.dataarray
-            dataarray containing lookup table.
-        get_input : function or None, optional
-            if None (default): The get_input method of XRDeficitModel is used. This option requires that the
-            names of the input dimensions matches names of the default PyWake keyword arguments, e.g. dw_ijlk, WS_ilk,
-            D_src_il, etc, or user-specified custom inputs
-            if function: The names of the input for the function should match the names of the default PyWake
-            keyword arguments, e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
-            The function should output interpolation coordinates [x_ijlk, y_ijlk, ...], where (x,y,...) match
-            the order of the dimensions of the dataarray
-        get_output : function or None, optional
-            if None (default): The interpolated output is scaled with the local wind speed, WS_ilk,
-            or local effective wind speed, WS_eff_ilk, depending on the value of <use_effective_ws>.
-            if function: The function should take the argument output_ijlk and an optional set of PyWake inputs. The
-            names of the PyWake inputs should match the names of the default PyWake keyword arguments,
-            e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs.
-            The function should return deficit_ijlk
-        method : {'linear' or 'nearest} or [{'linear' or 'nearest}, ...]
-            interpolation method
-        bounds : {'limit', 'check', 'ignore'}
-            how to handle out-of-bounds coordinate interpolation, see GridInterpolator
-        """
-        XRLUTModel.__init__(self, da, get_input, get_output, method=method, bounds=bounds)
-
-    def get_input(self, dw_ijlk, hcw_ijlk, z_ijlk, D_src_il, h_ilk, TI_eff_ilk, ct_ilk, type_il, **kwargs):
-        kwargs = dict(x=dw_ijlk / D_src_il[:, na, :, na],
-                      ti=TI_eff_ilk[:, na],
-                      ct=ct_ilk[:, na],
-                      type_i=type_il[:, na, :, na])
-
-        return [kwargs[k] for k in self.da_lst[0].dims]
-
-
-class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
+class RANSLUTConvDeficit(RANSLUTModel, XRLUTDeficitModel, ConvectionDeficitModel):
     """Expects LUT velocity deficit and convection variables xarray"""
 
     def __init__(self, lut, convlut, superpositionModel=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True,
                  use_effective_ti=False):
         assert use_effective_ws, "RANSLUTDeficit only makes sense when scaling with effective wind speed"
-        XRLUTConvDeficitModel.__init__(self, self.get_lut(lut, 'deficits'),
-                                       bounds='limit', superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                                       use_effective_ws=True, use_effective_ti=use_effective_ti)
-        self.sigma_lut = XRLUTConvModel(self.get_lut([lut.sigma for lut in convlut], 'sigma'), bounds='limit')
-        self.center_def_lut = XRLUTConvModel(self.get_lut([lut.centerline_deficit for lut in convlut], 'centerline_deficit'), bounds='limit')
+        XRLUTDeficitModel.__init__(self, self.get_lut(lut, 'deficits'),
+                                   bounds='limit', superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
+                                   use_effective_ws=True, use_effective_ti=use_effective_ti)
+        self.sigma_lut = XRLUTModel(self.get_lut([lut.sigma for lut in convlut], 'sigma'),
+                                    self.get_conv_input, bounds='limit')
+        self.center_def_lut = XRLUTModel(self.get_lut([lut.centerline_deficit for lut in convlut], 'centerline_deficit'),
+                                         self.get_conv_input, bounds='limit')
+
+    def get_conv_input(self, dw_ijlk, D_src_il, TI_eff_ilk, ct_ilk, type_il, **kwargs):
+        kwargs = dict(x=dw_ijlk / D_src_il[:, na, :, na],
+                      ti=TI_eff_ilk[:, na],
+                      ct=ct_ilk[:, na],
+                      type_i=type_il[:, na, :, na])
+
+        return [kwargs[k] for k in self.sigma_lut.da_lst[0].dims]
 
     def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, WS_ref_ijlk, **kwargs):
         # dimensional wake expansion
@@ -155,6 +124,10 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTConvDeficitModel):
         uc_ijlk = WS_ref_ijlk - 0.5 * deficit_centre_ijlk
         sigma_sqr_ijlk = np.broadcast_to(sigma_sqr_ijlk, deficit_centre_ijlk.shape)
         return deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk
+
+    @property
+    def args4deficit(self):
+        return XRLUTModel.args4model.fget(self) | ConvectionDeficitModel.args4deficit.fget(self)
 
 
 class RANSLUTDemoDeficit(RANSLUTDeficit):
