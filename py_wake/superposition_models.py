@@ -89,13 +89,13 @@ class WeightedSum(SuperpositionModel):
         # Limit weights to this value. A limit of 1.0 means not exceeding linear superposition
         self.weight_limit = weight_limit
 
-    def __call__(self, centerline_deficit_jxxx, WS_xxx,
+    def __call__(self, deficit_jxxx, WS_xxx,
                  convection_velocity_jxxx,
-                 sigma_sqr_jxxx, cw_jxxx, hcw_jxxx, dh_jxxx, actualdeficit_jxxx):
+                 sigma_sqr_jxxx, cw_jxxx, hcw_jxxx, dh_jxxx, deficit_centre_jxxx):
 
-        Ws = WS_xxx + np.zeros(centerline_deficit_jxxx.shape[1:])
+        Ws = WS_xxx + np.zeros(deficit_centre_jxxx.shape[1:])
 
-        usc = centerline_deficit_jxxx
+        usc = deficit_centre_jxxx
         uc = convection_velocity_jxxx
         sigma_sqr = sigma_sqr_jxxx
         cw = cw_jxxx
@@ -201,7 +201,7 @@ class WeightedSum(SuperpositionModel):
         ucn = np.nan_to_num(ucn, nan=1.0)
         # Reset weights to linear sum where WeightedSum is not applied
         ucn[~Il] = 1.0
-        return np.sum(actualdeficit_jxxx * ucn, axis=0)
+        return np.sum(deficit_jxxx * ucn, axis=0)
 
 
 class CumulativeWakeSum(SuperpositionModel):

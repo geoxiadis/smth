@@ -191,10 +191,10 @@ class EngineeringWindFarmModel(WindFarmModel):
 
     def _calc_deficit_convection(self, dw_ijlk, **kwargs):
         """Calculate wake convection deficit (and blockage)"""
-        deficit, uc, sigma_sqr = self.wake_deficitModel.calc_deficit_convection(dw_ijlk=dw_ijlk, **kwargs)
-        deficit, blockage = self._add_blockage(deficit, dw_ijlk, **kwargs)
-        actualdeficit, blockage = self._calc_deficit(dw_ijlk=dw_ijlk, **kwargs)
-        return deficit, uc, sigma_sqr, blockage, actualdeficit
+        deficit_centre, uc, sigma_sqr = self.wake_deficitModel.calc_deficit_convection(dw_ijlk=dw_ijlk, **kwargs)
+        deficit_centre, blockage = self._add_blockage(deficit_centre, dw_ijlk, **kwargs)
+        deficit, blockage = self._calc_deficit(dw_ijlk=dw_ijlk, **kwargs)
+        return deficit_centre, uc, sigma_sqr, blockage, deficit
 
     def _calc_added_turbulence(self, **kwargs):
         """Calculate added turbulence intensity."""
@@ -370,7 +370,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         # Calculate deficit
         # ===============================================================================================================
         if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)):
-            deficit_ijlk, uc_ijlk, sigma_sqr_ijlk, blockage_ijlk, actualdefict_ijlk = self._calc_deficit_convection(**model_kwargs)
+            deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk, blockage_ijlk, defict_ijlk = self._calc_deficit_convection(**model_kwargs)
         else:
             deficit_ijlk, blockage_ijlk = self._calc_deficit(**model_kwargs)
 
@@ -394,7 +394,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         sp_kwargs = dict(deficit_jxxx=deficit_ijlk)
         if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)):
             if isinstance(self.superpositionModel, WeightedSum):
-                sp_kwargs.update({'WS_xxx': WS_jlk, 'convection_velocity_jxxx': uc_ijlk, 'actualdeficit_jxxx': actualdefict_ijlk})
+                sp_kwargs.update({'WS_xxx': WS_jlk, 'convection_velocity_jxxx': uc_ijlk, 'deficit_centre_jxxx': defict_centre_ijlk})
             else:
                 sp_kwargs.update({'WS0_xxx': model_kwargs['WS_ilk'] * np.ones_like(model_kwargs['WS_eff_ilk']),
                                   'WS_eff_xxx': model_kwargs['WS_eff_ilk'], 'ct_xxx': model_kwargs['ct_ilk'],
@@ -621,7 +621,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
         """
 
         deficit_nk = []
-        actualdeficit_nk = []
+        deficit_centre_nk = []
         blockage_nk = []
         uc_nk = []
         sigma_sqr_nk = []
@@ -684,7 +684,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                     if isinstance(self.superpositionModel, WeightedSum):
                         sp_kwargs.update({'WS_xxx': WS_mk[m],
                                           'convection_velocity_jxxx': get_value2WT(uc_nk),
-                                          'actualdeficit_jxxx': get_value2WT(actualdeficit_nk)})
+                                          'deficit_centre_jxxx': get_value2WT(deficit_centre_nk)})
                     else:
                         sp_kwargs.update({'WS0_xxx': np.array(WS_free_mk),
                                           'WS_eff_xxx': np.array(WS_eff_mk),
@@ -802,10 +802,10 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                         cw_nk[-1] = (self.wake_deficitModel.rotorAvgModel(lambda **kwargs: kwargs['cw_ijlk'],
                                                                           **model_kwargs))[0]
                     if isinstance(self.superpositionModel, WeightedSum):
-                        deficit, uc, sigma_sqr, _, actualdeficit = self._calc_deficit_convection(**model_kwargs)
+                        deficit_centre, uc, sigma_sqr, _, deficit = self._calc_deficit_convection(**model_kwargs)
                         uc_nk.append(uc[0])
                         sigma_sqr_nk.append(sigma_sqr[0])
-                        actualdeficit_nk.append(actualdeficit[0])
+                        deficit_centre_nk.append(deficit_centre[0])
                     elif isinstance(self.superpositionModel, CumulativeWakeSum):
                         # only sigma needed in cumulative wake model, centerline deficit computed inside superpostion model
                         # sigma set to zero upstream to ensure downwind activation only
@@ -1067,7 +1067,7 @@ class All2AllIterative(EngineeringWindFarmModel):
 
             # Calculate deficit
             if isinstance(self.superpositionModel, WeightedSum):
-                deficit_iilk, uc_iilk, sigmasqr_iilk, blockage_iilk, actualdeficit_iilk = self._calc_deficit_convection(**model_kwargs)
+                deficit_centre_iilk, uc_iilk, sigmasqr_iilk, blockage_iilk, deficit_iilk = self._calc_deficit_convection(**model_kwargs)
             elif isinstance(self.superpositionModel, CumulativeWakeSum):
                 sigmasqr_iilk = (self.wake_deficitModel.sigma_ijlk(**model_kwargs))**2 * \
                     (model_kwargs['dw_ijlk'] > 1e-10)
@@ -1083,7 +1083,7 @@ class All2AllIterative(EngineeringWindFarmModel):
             # set own deficit to 0
             deficit_iilk *= i2i_zero
             if isinstance(self.superpositionModel, WeightedSum):
-                actualdeficit_iilk *= i2i_zero
+                deficit_centre_iilk *= i2i_zero
             if blockage_iilk is not None:
                 blockage_iilk *= i2i_zero
 
@@ -1101,7 +1101,7 @@ class All2AllIterative(EngineeringWindFarmModel):
                 if isinstance(self.superpositionModel, WeightedSum):
                     sp_kwargs.update({'WS_xxx': WS_ilk,
                                       'convection_velocity_jxxx': uc_iilk,
-                                      'actualdeficit_jxxx': actualdeficit_iilk})
+                                      'deficit_centre_jxxx': deficit_centre_iilk})
                 else:
                     sp_kwargs.update({'WS0_xxx': WS_ILK,
                                       'WS_eff_xxx': model_kwargs['WS_eff_ilk'],
