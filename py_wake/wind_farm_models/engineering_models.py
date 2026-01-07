@@ -370,7 +370,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         # Calculate deficit
         # ===============================================================================================================
         if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)):
-            deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk, blockage_ijlk, defict_ijlk = self._calc_deficit_convection(**model_kwargs)
+            deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk, blockage_ijlk, deficit_ijlk = self._calc_deficit_convection(**model_kwargs)
         else:
             deficit_ijlk, blockage_ijlk = self._calc_deficit(**model_kwargs)
 
@@ -394,7 +394,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         sp_kwargs = dict(deficit_jxxx=deficit_ijlk)
         if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)):
             if isinstance(self.superpositionModel, WeightedSum):
-                sp_kwargs.update({'WS_xxx': WS_jlk, 'convection_velocity_jxxx': uc_ijlk, 'deficit_centre_jxxx': defict_centre_ijlk})
+                sp_kwargs.update({'WS_xxx': WS_jlk, 'convection_velocity_jxxx': uc_ijlk, 'deficit_centre_jxxx': deficit_centre_ijlk})
             else:
                 sp_kwargs.update({'WS0_xxx': model_kwargs['WS_ilk'] * np.ones_like(model_kwargs['WS_eff_ilk']),
                                   'WS_eff_xxx': model_kwargs['WS_eff_ilk'], 'ct_xxx': model_kwargs['ct_ilk'],
