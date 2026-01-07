@@ -191,10 +191,12 @@ class EngineeringWindFarmModel(WindFarmModel):
 
     def _calc_deficit_convection(self, dw_ijlk, **kwargs):
         """Calculate wake convection deficit (and blockage)"""
-        deficit_centre, uc, sigma_sqr = self.wake_deficitModel.calc_deficit_convection(dw_ijlk=dw_ijlk, **kwargs)
+        deficit, deficit_centre, uc, sigma_sqr = self.wake_deficitModel.calc_deficit_convection(dw_ijlk=dw_ijlk, **kwargs)
         deficit_centre, blockage = self._add_blockage(deficit_centre, dw_ijlk, **kwargs)
-        deficit, blockage = self._calc_deficit(dw_ijlk=dw_ijlk, **kwargs)
-        return deficit_centre, uc, sigma_sqr, blockage, deficit
+        deficit, blockage = self._add_blockage(deficit, dw_ijlk, **kwargs)
+        # This works:
+        # deficit, blockage = self._calc_deficit(dw_ijlk=dw_ijlk, **kwargs)
+        return deficit, deficit_centre, uc, sigma_sqr, blockage
 
     def _calc_added_turbulence(self, **kwargs):
         """Calculate added turbulence intensity."""
@@ -370,7 +372,7 @@ class EngineeringWindFarmModel(WindFarmModel):
         # Calculate deficit
         # ===============================================================================================================
         if isinstance(self.superpositionModel, (WeightedSum, CumulativeWakeSum)):
-            deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk, blockage_ijlk, deficit_ijlk = self._calc_deficit_convection(**model_kwargs)
+            deficit_ijlk, deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk, blockage_ijlk = self._calc_deficit_convection(**model_kwargs)
         else:
             deficit_ijlk, blockage_ijlk = self._calc_deficit(**model_kwargs)
 
@@ -802,7 +804,7 @@ class PropagateUpDownIterative(EngineeringWindFarmModel):
                         cw_nk[-1] = (self.wake_deficitModel.rotorAvgModel(lambda **kwargs: kwargs['cw_ijlk'],
                                                                           **model_kwargs))[0]
                     if isinstance(self.superpositionModel, WeightedSum):
-                        deficit_centre, uc, sigma_sqr, _, deficit = self._calc_deficit_convection(**model_kwargs)
+                        deficit, deficit_centre, uc, sigma_sqr, _ = self._calc_deficit_convection(**model_kwargs)
                         uc_nk.append(uc[0])
                         sigma_sqr_nk.append(sigma_sqr[0])
                         deficit_centre_nk.append(deficit_centre[0])
@@ -1067,7 +1069,7 @@ class All2AllIterative(EngineeringWindFarmModel):
 
             # Calculate deficit
             if isinstance(self.superpositionModel, WeightedSum):
-                deficit_centre_iilk, uc_iilk, sigmasqr_iilk, blockage_iilk, deficit_iilk = self._calc_deficit_convection(**model_kwargs)
+                deficit_iilk, deficit_centre_iilk, uc_iilk, sigmasqr_iilk, blockage_iilk = self._calc_deficit_convection(**model_kwargs)
             elif isinstance(self.superpositionModel, CumulativeWakeSum):
                 sigmasqr_iilk = (self.wake_deficitModel.sigma_ijlk(**model_kwargs))**2 * \
                     (model_kwargs['dw_ijlk'] > 1e-10)

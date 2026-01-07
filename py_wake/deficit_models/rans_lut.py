@@ -123,7 +123,9 @@ class RANSLUTConvDeficit(RANSLUTModel, XRLUTDeficitModel, ConvectionDeficitModel
         # Convection velocity
         uc_ijlk = WS_ref_ijlk - 0.5 * deficit_centre_ijlk
         sigma_sqr_ijlk = np.broadcast_to(sigma_sqr_ijlk, deficit_centre_ijlk.shape)
-        return deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk
+        # Deficit
+        deficit_ijlk = self.calc_deficit(D_src_il=D_src_il, dw_ijlk=dw_ijlk, cw_ijlk=cw_ijlk, ct_ilk=ct_ilk, **kwargs)
+        return deficit_ijlk, deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk
 
     @property
     def args4deficit(self):

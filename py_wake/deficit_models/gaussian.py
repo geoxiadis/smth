@@ -85,7 +85,8 @@ class BastankhahGaussianDeficit(ConvectionDeficitModel):
         uc_ijlk = WS_ref_ijlk * (1. - self.ct2a(ctx_ijlk * D_src_il[:, na, :, na]**2 / (8. * sigma_sqr_ijlk)))
         sigma_sqr_ijlk = np.broadcast_to(sigma_sqr_ijlk, deficit_centre_ijlk.shape)
 
-        return deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk
+        deficit_ijlk = self.calc_deficit(D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **self.get_WS_ref_kwargs(kwargs), **kwargs)
+        return deficit_ijlk, deficit_centre_ijlk, uc_ijlk, sigma_sqr_ijlk
 
 
 class BastankhahGaussian(PropagateDownwind, DeprecatedModel):
