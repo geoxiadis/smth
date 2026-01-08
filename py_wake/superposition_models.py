@@ -104,7 +104,7 @@ class WeightedSum(SuperpositionModel):
         Us = np.zeros_like(Ws)
         # Determine non-centreline deficit ratio
         # Local deficit
-        us = usc * np.exp(-1 / (2 * (sigma_sqr + 1e-30)) * cw**2)
+        us = usc * np.exp(-1 / (2 * (np.where(sigma_sqr != 0, sigma_sqr, 1))) * cw**2)
         us[usc == 0] = 0.0
 
         # Set lower deficit limit below which deficits are linearly added
