@@ -191,11 +191,9 @@ class EngineeringWindFarmModel(WindFarmModel):
 
     def _calc_deficit_convection(self, dw_ijlk, **kwargs):
         """Calculate wake convection deficit (and blockage)"""
-        deficit, deficit_centre, uc, sigma_sqr = self.wake_deficitModel.calc_deficit_convection(dw_ijlk=dw_ijlk, **kwargs)
+        deficit_centre, uc, sigma_sqr = self.wake_deficitModel.calc_deficit_convection(dw_ijlk=dw_ijlk, **kwargs)
         deficit_centre, blockage = self._add_blockage(deficit_centre, dw_ijlk, **kwargs)
-        deficit, blockage = self._add_blockage(deficit, dw_ijlk, **kwargs)
-        # This works:
-        # deficit, blockage = self._calc_deficit(dw_ijlk=dw_ijlk, **kwargs)
+        deficit, blockage = self._calc_deficit(dw_ijlk=dw_ijlk, **kwargs)
         return deficit, deficit_centre, uc, sigma_sqr, blockage
 
     def _calc_added_turbulence(self, **kwargs):

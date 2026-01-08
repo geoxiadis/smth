@@ -169,8 +169,6 @@ class ConvectionDeficitModel(WakeDeficitModel):
 :wq
         Returns
         -------
-        deficit_ijlk : array_like
-            Wind speed deficit caused by the i'th turbine at j'th downstream location, without accounting for crosswind distance (ie cw = 0)
         deficit_centre_ijlk : array_like
             Wind speed centerline deficit caused by the i'th turbine at j'th downstream location, without accounting for crosswind distance (ie cw = 0)
         uc_ijlk : array_like
