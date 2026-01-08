@@ -166,7 +166,7 @@ class ConvectionDeficitModel(WakeDeficitModel):
         args4deficit
 
         See documentation of EngineeringWindFarmModel for a list of available input arguments
-:wq
+
         Returns
         -------
         deficit_centre_ijlk : array_like
