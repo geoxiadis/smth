@@ -51,7 +51,7 @@ class ISONoiseModel:
         self.freqs = freqs
         self.freqs_init = freqs_init 
 
-    def ground_eff(self, ground_distance_ijlk, distance_ijlk, ground_type):
+    def ground_eff(self, ground_distance_ijlk, distance_ijlk, rec_h, ground_type):
         """_summary_
 
         Parameters
