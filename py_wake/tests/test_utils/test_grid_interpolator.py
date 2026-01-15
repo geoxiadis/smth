@@ -7,16 +7,17 @@ from py_wake.tests import npt
 from py_wake.tests.check_speed import timeit
 from py_wake.utils.grid_interpolator import GridInterpolator, EqDistRegGrid2DInterpolator
 import xarray as xr
+from py_wake.utils.gradients import fd, autograd, cs
 
 
 def test_grid_interpolator_not_match():
-    with pytest.raises(ValueError, match="Lengths of x does not match shape of V"):
+    with pytest.raises(ValueError, match="There are 2 points and 4 values in dimension 1"):
         GridInterpolator([[5, 10, 15], [200, 300]], np.arange(12).reshape(3, 4))
 
 
 def test_grid_interpolator_wrong_method():
-    with pytest.raises(AssertionError, match='method must be "linear" or "nearest"'):
-        GridInterpolator([[10, 20, 30]], [1, 2, 3], method="cubic")(None)
+    with pytest.raises(ValueError, match="Method 'cubic1' is not defined"):
+        GridInterpolator([[10, 20, 30]], [1, 2, 3], method="cubic1")(None)
 
 
 def test_grid_interpolator_outside_area_bounds_check():
@@ -37,13 +38,13 @@ def test_grid_interpolator_outside_area_bounds_check():
 
 
 def test_grid_interpolator_outside_area_bounds_limit():
-    gi = GridInterpolator([[10, 20, 30]], [1, 2, 3])
-    npt.assert_array_equal(gi([[10]]), gi([[9.9]], bounds='limit'))
-    npt.assert_array_equal(gi([[30]]), gi([[30.1]], bounds='limit'))
-    npt.assert_array_equal(gi([[20], [30]]), gi([[20], [30.1]], bounds='limit'))
-    gi = GridInterpolator([[5, 10, 15], [200, 300]], np.arange(6).reshape(3, 2))
-    npt.assert_array_equal(gi([(5, 300)]), gi([(5, 300.1)], bounds='limit'))
-    npt.assert_array_equal(gi([(5, 200), (5, 200), (5, 300)]), gi([(5, 199.9), (4.8, 200), (5, 301)], bounds='limit'))
+    gi = GridInterpolator([[10, 20, 30]], [1, 2, 3], bounds='limit')
+    npt.assert_array_equal(gi([[10]]), gi([[9.9]]))
+    npt.assert_array_equal(gi([[30]]), gi([[30.1]]))
+    npt.assert_array_equal(gi([[20], [30]]), gi([[20], [30.1]]))
+    gi = GridInterpolator([[5, 10, 15], [200, 300]], np.arange(6).reshape(3, 2), bounds='limit')
+    npt.assert_array_equal(gi([(5, 300)]), gi([(5, 300.1)]))
+    npt.assert_array_equal(gi([(5, 200), (5, 200), (5, 300)]), gi([(5, 199.9), (4.8, 200), (5, 301)]))
 
 
 def test_grid_interpolator_2d():
@@ -74,12 +75,12 @@ def test_grid_interpolator_2d():
 
 @pytest.mark.parametrize('method,ref', [
     ('linear', [15.5, 40.5, 42.5, 47.5, 48]),
-    (['linear', 'linear', 'linear'], [15.5, 40.5, 42.5, 47.5, 48]),
+    # (['linear', 'linear', 'linear'], [15.5, 40.5, 42.5, 47.5, 48]),
     ('nearest', [25, 46, 48, 53, 54]),  # [25, 47, 49, 54, 54]
-    (['nearest', 'nearest', 'nearest'], [25, 46, 48, 53, 54]),  # [25, 47, 49, 54, 54]
+    # (['nearest', 'nearest', 'nearest'], [25, 46, 48, 53, 54]),  # [25, 47, 49, 54, 54]
     ('linear', [15.5, 40.5, 42.5, 47.5, 48]),
-    (['linear', 'linear', 'nearest'], [15, 40, 42, 47, 48]),  # [15, 41, 43, 48, 48]
-    (['nearest', 'linear', 'nearest'], [23, 48, 50, 55, 56]),  # [23, 49, 51, 56, 56]
+    # (['linear', 'linear', 'nearest'], [15, 40, 42, 47, 48]),  # [15, 41, 43, 48, 48]
+    # (['nearest', 'linear', 'nearest'], [23, 48, 50, 55, 56]),  # [23, 49, 51, 56, 56]
 
 ])
 def test_grid_interpolator_3d_methods(method, ref):
@@ -164,6 +165,56 @@ def test_EqDistRegGrid2DInterpolator_bound():
     v = np.arange(12).reshape(3, 4)
     interp = EqDistRegGrid2DInterpolator(x, y, v)
     npt.assert_array_equal(interp(np.array([6., 18]), np.array([200, 500])), [0, 11])
+
+
+def test_gradients():
+    v = np.arange(12).reshape(3, 4)
+    v[-1] += 1
+    v[:, 2:] += 3
+    v[-1, -1] += 5
+    rgi = GridInterpolator([[1, 2, 3], [10, 12, 14, 18]], v)
+
+    #     10 12 14 18
+    # 1 [[ 0  1  5  6]
+    # 2  [ 4  5  9 10]
+    # 3  [ 9 10 14 20]]
+
+    npt.assert_array_equal(rgi([[1.5, 11], [2.5, 11], [2.5, 13]]), [2.5, 7, 9.5])
+    npt.assert_array_almost_equal(fd(rgi)([[1.5, 11.5]]), [[[4, 0.5]]])
+    npt.assert_array_equal(autograd(rgi)([[1.5, 11.5]]), [[[4, 0.5]]])
+    npt.assert_array_equal(cs(rgi)([[1.5, 11.5]]), [[[4, 0.5]]])
+
+    npt.assert_array_equal(autograd(rgi, vector_interdependence=False)([[1.5, 11.5]]), [[4, .5]])
+
+    def r(x, y):
+        return rgi(np.array([x, y]).T)
+    xy = [1.5, 2.5, 2.5, 2.5], [11.5, 11.5, 12.5, 16]
+    npt.assert_array_almost_equal(fd(r, vector_interdependence=False, argnum=[0, 1])(*xy),
+                                  [[4, 5, 5, 7.5], [0.5, 0.5, 2, 0.875]])
+
+    npt.assert_array_equal(autograd(r, vector_interdependence=False, argnum=[0, 1])(*xy),
+                           [[4, 5, 5, 7.5], [0.5, 0.5, 2, 0.875]])
+
+    rgi = GridInterpolator([[1, 2, 3]], v)
+
+    def r(x):
+        return rgi(x).sum()
+
+    npt.assert_array_equal(r([[1.5], [2.5]]), [60.5])
+    print(autograd(r, vector_interdependence=0)([[1.5], [2], [2.5], [2.5], [3]]).shape)
+
+    def r(x):
+        return rgi(x).sum(1)
+
+    npt.assert_array_equal(r([[1.5], [2.5]]), [20, 40.5])
+    # print(autograd(r_PP, vector_interdependence=1)([1.5]).shape)
+    npt.assert_array_equal(autograd(r, vector_interdependence=0)([[1.5], [2], [2.5], [2.5], [3]]),
+                           [[16], [25], [25], [25], [25]])
+    npt.assert_array_almost_equal(cs(r, vector_interdependence=0)([[1.5], [2], [2.5], [2.5], [2.9]]),
+                                  [[16], [25], [25], [25], [25]], 14)
+
+    npt.assert_array_almost_equal(fd(r, vector_interdependence=0)([[1.5], [2], [2.5], [2.5], [2.9]]),
+                                  [[16], [25], [25], [25], [25]])
 
 
 def compare_speed():

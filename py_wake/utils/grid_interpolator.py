@@ -3,15 +3,93 @@ from numpy import newaxis as na
 from numpy import atleast_1d
 from py_wake.utils import gradients
 from autograd.numpy.numpy_boxes import ArrayBox
-from scipy.interpolate._rgi import RegularGridInterpolator
+from scipy.interpolate._rgi import RegularGridInterpolator as RGI
+from py_wake.utils.gradients import set_gradient_function
+from autograd.core import primitive, defvjp
+from autograd.numpy.numpy_vjps import unbroadcast_f
 
 
-class GridInterpolator(RegularGridInterpolator):
-    def __init__(self, x, V, method='linear', bounds='check'):
-        RegularGridInterpolator.__init__(self, x, V)
+class AutogradRGI(RGI):
+    def __init__(self, *args, **kwargs):
+        RGI.__init__(self, *args, **kwargs)
 
-    def __call__(self, xp, deg=False):
-        return RegularGridInterpolator.__call__(self, xp)
+    def evaluate_autograd(self, *xp_lst, method=None):
+        if not hasattr(self, 'pf'):
+            self.pf = primitive(self.evaluate)
+
+            defvjp(self.pf, *[lambda ans, *x, df=df, **kwargs:
+                   unbroadcast_f(np.transpose(x).squeeze(), lambda g:
+                                 (df(np.transpose(x), **kwargs) * g).T) for df in self.get_gradient_functions()])
+        return self.pf(*xp_lst, method=method)
+
+    def get_gradient_functions(self):
+        if not hasattr('self', 'RGI_gradient_lst'):
+            self.RGI_gradient_lst = []
+            for i in range(len(self.grid)):
+                grid = [g for g in self.grid]
+                dims = [j for j in np.arange(len(self.values.shape)) if i != j]
+                values = np.repeat(np.diff(self.values, 1, i) / np.expand_dims(np.diff(grid[i]), dims), 2, i)
+                grid[i] = np.repeat(self.grid[i], 2)[1:-1]
+                for e in np.arange(10):
+                    idx = np.where(np.diff(grid[i]) == 0)[0]
+                    if len(idx) == 0:
+                        break
+                    grid[i][idx] -= np.finfo(np.float).eps * 10**e
+
+                self.RGI_gradient_lst.append(RGI(grid, values))
+        return self.RGI_gradient_lst
+
+    def evaluate(self, *xp_lst, method=None):
+
+        xp = np.transpose(xp_lst)
+        if all([np.isrealobj(v) for v in [xp]]):
+            return RGI.__call__(self, xp, method=method)
+        else:
+            # return self.PPInterpolator(xp)
+            yp = RGI.__call__(self, np.real(xp), method=method)
+            res = yp + np.sum([(x.imag.T * df(xp).T).T for x, df in zip(xp_lst, self.get_gradient_functions())], 0) * 1j
+            from py_wake.tests import npt
+
+            npt.assert_array_almost_equal(res, self.PPInterpolator(xp))
+            return res
+
+    def __call__(self, xp, method=None):
+        assert len(np.shape(xp)) == 2, f"xp must have shape (n_point, n_interp_dims), but has {np.shape(xp)}"
+        if isinstance(xp, ArrayBox):
+            return self.evaluate_autograd(*list(np.transpose(xp)), method=method)
+        else:
+            return self.evaluate(*list(np.transpose(xp)), method=method)
+
+
+class GridInterpolator(AutogradRGI):
+
+    def __init__(self, x, V, method='linear', bounds='check', deg=False):
+        self.bounds = bounds
+        self.deg = deg
+        AutogradRGI.__init__(self, x, V, method=method)
+
+    @property
+    def PPInterpolator(self):
+        if not hasattr(self, '_PPInterpolator'):
+            self._PPInterpolator = PPGridInterpolator(list(self.grid), self.values, method=self.method)
+        return self._PPInterpolator
+
+    def __call__(self, xp, method=None, deg=False):
+
+        if self.bounds == 'limit':
+            eps = np.finfo(np.float).eps
+            xp = np.maximum(np.minimum(xp, [g[-1] - eps for g in self.grid]), [g[0] + eps for g in self.grid])
+        # ref = PPGridInterpolator(list(self.grid), self.values)(xp, bounds=bounds, method=method, deg=deg)
+        # print(np.abs(RGI.__call__(self, xp) - ref).max())
+        try:
+            res = AutogradRGI.__call__(self, xp, method=method)
+            if deg or self.deg:
+                res = gradients.mod(res, 360)
+            return res
+        except ValueError as e:
+            if str(e).startswith('One of the requested xi is out'):
+                self.PPInterpolator(xp)
+            raise
 
 
 class PPGridInterpolator(object):

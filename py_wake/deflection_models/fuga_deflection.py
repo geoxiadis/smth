@@ -9,6 +9,8 @@ from py_wake.deflection_models.deflection_model import DeflectionModel
 from py_wake.tests.test_files import tfp
 from py_wake.utils.fuga_utils import FugaUtils
 from py_wake.utils.grid_interpolator import GridInterpolator
+from py_wake.utils import gradients
+from py_wake.utils.gradients import autograd
 
 
 class FugaDeflection(FugaUtils, DeflectionModel):
@@ -52,7 +54,7 @@ class FugaDeflection(FugaUtils, DeflectionModel):
 
         WS_hub_ilk = WS_ilk
 
-        theta_ilk = np.deg2rad(yaw_ilk)
+        theta_ilk = gradients.deg2rad(yaw_ilk)
         cos_ilk, sin_ilk = np.cos(theta_ilk), np.sin(theta_ilk)
 
         F_ilk = ct_ilk * (WS_eff_ilk)**2 / (WS_ilk * WS_hub_ilk)
@@ -71,7 +73,7 @@ class FugaDeflection(FugaUtils, DeflectionModel):
 
             def get_err(deflected_hcw_ijlk, dw_ijlk):
                 dw_ijlk = np.broadcast_to(dw_ijlk, deflected_hcw_ijlk.shape)
-                fL, fT = self.fLT(np.array([dw_ijlk.flatten(), deflected_hcw_ijlk.flatten()]).T).T
+                fL, fT = self.fLT.PPInterpolator(np.array([dw_ijlk.flatten(), deflected_hcw_ijlk.flatten()]).T).T
                 lambda_ijlk = F_ilk[:, na, :, :] * (fL.reshape(dw_ijlk.shape) * cos_ilk[:, na, :, :] +
                                                     fT.reshape(dw_ijlk.shape) * sin_ilk[:, na, :, :])
 
@@ -81,15 +83,18 @@ class FugaDeflection(FugaUtils, DeflectionModel):
             D = D_src_il.max()
             # Newton Raphson
             complex = np.iscomplexobj(hcw_ijlk) or np.iscomplexobj(dw_ijlk)
+            complex = 1
             for i in range(8):
+                # err = get_err(deflected_hcw_ijlk, dw_ijlk)
+                # derr = autograd(get_err, vector_interdependence=0)(deflected_hcw_ijlk, dw_ijlk)._value
                 if complex:
                     err = get_err(deflected_hcw_ijlk, dw_ijlk)
-                    derr = (get_err(deflected_hcw_ijlk + .1) - err) / .1
-                else:
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", ComplexWarning)
-                        cs_err = get_err(deflected_hcw_ijlk + 1e-20j, dw_ijlk)
-                    err, derr = np.real(cs_err), np.imag(cs_err) / 1e-20
+                    derr = (get_err(deflected_hcw_ijlk + .1, dw_ijlk) - err) / .1
+                # else:
+                #     with warnings.catch_warnings():
+                #         warnings.simplefilter("ignore", ComplexWarning)
+                #         cs_err = get_err(deflected_hcw_ijlk + 1e-20j, dw_ijlk)
+                #     err, derr = np.real(cs_err), np.imag(cs_err) / 1e-20
 
                 step = -np.clip(err / derr, -D, D)  # limit step to 100m
                 if np.allclose(step, 0, atol=1e-6):
