@@ -127,7 +127,8 @@ class FugaMultiLUTDeficit(XRLUTDeficitModel):
         self.x, self.y = da.x.values, da.y.values
         self._args4model = {k + "_ilk" for k in ['zeta0', 'zi'] if k in da.dims}
 
-        method = [['linear', 'nearest'][d in ['d_h', 'variables']] for d in da.dims]
+        # method = [['linear', 'nearest'][d in ['d_h', 'variables']] for d in da.dims]
+        method = 'linear'
         XRLUTDeficitModel.__init__(self, da, get_input=self.get_input, method=method, bounds=bounds,
                                    rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                    use_effective_ws=False, use_effective_ti=use_effective_ti)

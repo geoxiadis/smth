@@ -13,7 +13,7 @@ from py_wake.tests import npt
 from py_wake.deflection_models.fuga_deflection import FugaDeflection
 from scipy.interpolate import InterpolatedUnivariateSpline
 from py_wake.utils import fuga_utils
-from py_wake.utils.gradients import fd, autograd
+from py_wake.utils.gradients import fd, autograd, cs
 from py_wake.examples.data.hornsrev1 import V80
 
 
@@ -107,4 +107,6 @@ def test_fuga_deflection_time_series_gradient_evaluation():
         plt.show()
     daep_autograd = autograd(dPdyaw)(yaw)
     daep_fd = fd(dPdyaw)(yaw)
+    daep_cs = cs(dPdyaw)(yaw)
     npt.assert_allclose(daep_autograd, daep_fd, atol=0.002)
+    npt.assert_array_almost_equal(daep_autograd, daep_cs, 10)

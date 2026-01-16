@@ -25,8 +25,8 @@ def test_GCL_ex80():
     sim_res = timeit(wfm.__call__, line_profile=0, profile_funcs=[get_dU], verbose=0)(x, y, ws=np.arange(10, 15))[0]
 
     # test that the result is equal to previuos runs (no evidens that  these number are correct)
-    aep_ref = 1055.956615887197
+    aep_ref = 1055.9566158871962
     npt.assert_almost_equal(sim_res.aep_ilk(normalize_probabilities=True).sum(), aep_ref, 5)
 
     sim_res = wfm(x, y, ws=np.arange(3, 10))
-    npt.assert_array_almost_equal(sim_res.aep_ilk(normalize_probabilities=True).sum(), 261.6143039016946, 5)
+    npt.assert_array_almost_equal(sim_res.aep_ilk(normalize_probabilities=True).sum(), 261.6143, 5)
