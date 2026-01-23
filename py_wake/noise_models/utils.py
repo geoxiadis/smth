@@ -283,7 +283,7 @@ def interpolate_directivity(ds, mode, freq, ws, yaw, lat_deg, lon_deg):
 
     return result[:, :, None, None, :]
 
-def ground_eff(freqs, freqs_init, ground_distance_ijlk, src_h, rec_h, ground_type):
+def iso_ground_eff(freqs, freqs_init, ground_distance_ijlk, src_h, rec_h, ground_type):
     """_summary_
     Parameters
     ----------
@@ -429,7 +429,7 @@ def iso_transmission_loss(freqs_init, freqs, dx_ijlk, dy_ijlk, dh_ijlk,
     # The atmospheric absorption term
     atm_abs_ijlkf = -1 * atmab_alpha(freqs, T0=Temp, RH0=RHum, p_s=patm) * distance_ijlk[:, :, na]  
     # ground effect term
-    ground_eff_ijlkf = -1 * ground_eff(freqs, freqs_init, ground_distance_ijlk, src_h, rec_h, ground_type)
+    ground_eff_ijlkf = -1 * iso_ground_eff(freqs, freqs_init, ground_distance_ijlk, src_h, rec_h, ground_type)
     # # The geometrical spreading (divergence)
     # Area of sphere: 4pi R^2
     # 10*log_10(4pi) ~ 11
