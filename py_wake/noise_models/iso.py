@@ -133,6 +133,7 @@ class ISONoiseModel:
         ip = GridInterpolator([freqs_init], Agr_fijlk)
         Agr_ijlkf = np.moveaxis(ip(np.array([self.freqs]).T), 0, -1)
 
+        # TODO: move geometric spreading out in to transmission loss! Should be -ve
         # Area of sphere: 4pi R^2
         # 10*log_10(4pi) ~ 11
         # 10 * log_10(R^2) = 20 * log_10(R) =
@@ -179,7 +180,7 @@ class ISONoiseModel:
                        0.1068 * np.exp(-3352.0 / T) / (F_rN + F2 / F_rN)))  # sound absorption coefficient in nepers normalised by distance and atmospheric pressure
         #
         alpha_ps = alpha * p_s  # sound absorption coefficient in nepers normalised by distance
-        #
+        # TODO: remove distance_ij out of the function
         ISO_alpha = alpha_ps[na, na] * 20.0 / np.log(10.0) * distance_ij[:, :, na]  # sound absorption coefficient in dB
         return ISO_alpha
 
@@ -192,7 +193,8 @@ class ISONoiseModel:
                                                   dst_xyh_jlk=[rec_x, rec_y, rec_h])
         ground_distance_ijlk = np.sqrt(dx_ijlk**2 + dy_ijlk**2)
         distance_ijlk = np.sqrt(dx_ijlk**2 + dy_ijlk**2 + dh_ijlk**2)
-
+        
+        # TODO: multiply the distance here and exmpand the dimentsions
         atm_abs_ijlkf = self.atmab(distance_ijlk, T0=Temp, RH0=RHum, p_s=patm)  # The atmospheric absorption term
         ground_eff_ijlkf = self.ground_eff(ground_distance_ijlk, distance_ijlk, rec_h, ground_type)
 
@@ -277,7 +279,8 @@ def main():
         # sim_res = wfm(x, y, wd=[270, 271], ws=[9, 12], mode=[1], yaw=[0, 10])
         # different wind situations for the turbines
         sim_res = wfm(x, y, wd=[270], ws=[10], mode=[0], yaw=[-20])
-
+        # print("sim_res ds:", wfm.windTurbines.ds)
+        # exit()
         rec_x = np.array([x[0], x[-1]])
         rec_y = np.array([1000, 1000])
         rec_h = 2

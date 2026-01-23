@@ -7,6 +7,8 @@ from numpy import newaxis as na
 from py_wake import np
 from py_wake.flow_map import FlowBox, FlowMap, Grid, HorizontalGrid
 from py_wake.noise_models.iso import ISONoiseModel
+from py_wake.noise_models.utils import (sound_power_level_interp, 
+                                        interpolate_directivity)
 from py_wake.site._site import LocalWind, Site
 from py_wake.utils import weibull, xarray_utils  # register ilk function @UnusedImport
 from py_wake.utils.functions import arg2ilk
@@ -801,9 +803,13 @@ class SimulationResult(xr.Dataset):
         # print("wt_kwargs in noise_model--windfarm.py:")
         # print(wt_kwargs)
         # exit()
-
-        freqs, sound_power_level = self.windFarmModel.windTurbines.sound_power_level(ws_eff_i, **wt_kwargs)
         wt = self.windFarmModel.windTurbines
+        # print(wt.ds)
+        # exit()
+        # freqs, sound_power_level = self.windFarmModel.windTurbines.sound_power_level(ws_eff_i, **wt_kwargs)
+        freqs, sound_power_level = sound_power_level_interp(wt.ds, ws_eff_i, **wt_kwargs)
+        # exit()
+        
         # sound_power_level: shape (n_modes, n_freqs, n_wsp, n_yaw)
         sound_power_level = sound_power_level[:, :, 0, 0]  # select first wind speed and yaw
         # print("In noise_model--windfarm.py:")
@@ -824,8 +830,6 @@ class SimulationResult(xr.Dataset):
         )
 
     def _create_directional_correction(self, wt):
-        if not hasattr(wt, "interpolate_directivity"):
-            return None
 
         def delta_swl_correction(rec_x, rec_y, rec_h, freqs, **_):
             """directivity correction to be applied to the sound power level
@@ -885,25 +889,12 @@ class SimulationResult(xr.Dataset):
 
             lat_flat = lat_deg.ravel()  # Shape: (n_src * n_rec,)
             lon_flat = lon_deg.ravel()  # Shape: (n_src * n_rec,)
-            
-            # this interpolator from turbine_noise.py
-            # print("Calling spherical_interpolate_delta_swl")
-            # print("mode_vals shape:", mode_vals.shape)
-            # print("freqs shape:", freqs.shape)
-            # print("ws_vals shape:", ws_vals.shape)
-            # print("yaw_deg shape:", yaw_deg.shape)
-            # print("lat_flat shape:", lat_flat.shape)
-            # print("lon_flat shape:", lon_flat.shape)
-            # print("mode_vals", mode_vals)
-            # print("freqs", freqs)
-            # print("ws_vals", ws_vals)
-            # print("yaw_deg", yaw_deg)
-            # print("lat_flat", lat_flat)
-            # print("lon_flat", lon_flat)
 
 
-            delta_swl_result = wt.interpolate_directivity(
-               mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
+            delta_swl_result = interpolate_directivity(
+               wt.ds, mode_vals, 
+               freqs, ws_vals, yaw_deg, 
+               lat_flat, lon_flat
             )
             
             # delta_swl_result = wt.fast_spherical_interpolate_directivity(
