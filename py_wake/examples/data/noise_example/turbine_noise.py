@@ -23,26 +23,10 @@ class TurbineNoise(WindTurbine):
         ds = xr.load_dataset(
             os.path.join(os.path.dirname(__file__), "turbine_noise.nc")
         )
-        # self.ds = ds
         
-        # TODO: remove the yaw dimension from power permanently
-        if "yaw" in ds["P"].dims:
-            ds2 = ds.copy()
-            ds2 = ds2.assign(
-                              power=ds["P"].isel(yaw=1),
-                              ct=ds["Ct"].isel(yaw=1),
-                            )
-        else:
-            ds2 = ds.copy()    
-            ds2 = ds2.assign(
-                              power=ds["P"],
-                              ct=ds["Ct"],
-                            )
-
-        self.ds = ds2    
-
+        self.ds = ds
         # Power and Ct functions
-        power_ct = PowerCtXr(ds2, "kW")   
+        power_ct = PowerCtXr(ds, "kW")   
 
         WindTurbine.__init__(
             self,
