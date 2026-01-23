@@ -133,18 +133,19 @@ class ISONoiseModel:
         ip = GridInterpolator([freqs_init], Agr_fijlk)
         Agr_ijlkf = np.moveaxis(ip(np.array([self.freqs]).T), 0, -1)
 
-        # TODO: move geometric spreading out in to transmission loss! Should be -ve
-        # Area of sphere: 4pi R^2
-        # 10*log_10(4pi) ~ 11
-        # 10 * log_10(R^2) = 20 * log_10(R) =
-        # reference area = 1.0 m^2
-        Adiv_ijlk = 20.0 * np.log10(distance_ijlk / 1.0) + 11.0  # The geometrical spreading (divergence)
+        # # TODO: move geometric spreading out in to transmission loss! Should be -ve
+        # # Area of sphere: 4pi R^2
+        # # 10*log_10(4pi) ~ 11
+        # # 10 * log_10(R^2) = 20 * log_10(R) =
+        # # reference area = 1.0 m^2
+        # Adiv_ijlk = 20.0 * np.log10(distance_ijlk / 1.0) + 11.0  # The geometrical spreading (divergence)
 
-        ISO_ground_ijlkf = - Adiv_ijlk[:, :, :, :, na] - Agr_ijlkf
+        # ISO_ground_ijlkf = - Adiv_ijlk[:, :, :, :, na] - Agr_ijlkf
 
-        return ISO_ground_ijlkf
+        # return ISO_ground_ijlkf
+        return Agr_ijlkf
 
-    def atmab(self, distance_ij, T0, RH0, p_s):
+    def atmab_alpha(self, T0, RH0, p_s):
         """ Atmospheric absorption
 
         Source: H. E. Bass, L. C. Sutherland, A. J. Zuckerwar, D. T. Blackstock, D. M. Hester;
@@ -181,7 +182,9 @@ class ISONoiseModel:
         #
         alpha_ps = alpha * p_s  # sound absorption coefficient in nepers normalised by distance
         # TODO: remove distance_ij out of the function
-        ISO_alpha = alpha_ps[na, na] * 20.0 / np.log(10.0) * distance_ij[:, :, na]  # sound absorption coefficient in dB
+        # ISO_alpha = alpha_ps[na, na] * 20.0 / np.log(10.0) * distance_ij[:, :, na]  # sound absorption coefficient in dB
+        ISO_alpha = alpha_ps[na, na] * 20.0 / np.log(10.0)
+
         return ISO_alpha
 
     def transmission_loss(self, rec_x, rec_y, rec_h, ground_type, patm, Temp, RHum):
@@ -195,10 +198,20 @@ class ISONoiseModel:
         distance_ijlk = np.sqrt(dx_ijlk**2 + dy_ijlk**2 + dh_ijlk**2)
         
         # TODO: multiply the distance here and exmpand the dimentsions
-        atm_abs_ijlkf = self.atmab(distance_ijlk, T0=Temp, RH0=RHum, p_s=patm)  # The atmospheric absorption term
-        ground_eff_ijlkf = self.ground_eff(ground_distance_ijlk, distance_ijlk, rec_h, ground_type)
-
-        return ground_eff_ijlkf - atm_abs_ijlkf  # Delta_SPL
+        # The atmospheric absorption term
+        atm_abs_ijlkf = -1 * self.atmab_alpha(T0=Temp, RH0=RHum, p_s=patm) * distance_ijlk[:, :, na]  
+        # ground effect term
+        ground_eff_ijlkf = -1 * self.ground_eff(ground_distance_ijlk, distance_ijlk, rec_h, ground_type)
+        # # The geometrical spreading (divergence)
+        # Area of sphere: 4pi R^2
+        # 10*log_10(4pi) ~ 11
+        # 10 * log_10(R^2) = 20 * log_10(R) =
+        # reference area = 1.0 m^2
+        geom_div_ijlk = -1 * (20.0 * np.log10(distance_ijlk / 1.0) + 11.0)  
+        #  total transmission loss in sound pressure level
+        delta_spl_ijlkf = ground_eff_ijlkf + atm_abs_ijlkf + geom_div_ijlk[:, :, :, :, na]
+        
+        return delta_spl_ijlkf  # Delta_SPL
 
     def __call__(self, rec_x, rec_y, rec_h, patm, Temp, RHum, ground_type, **kwargs):
         """Calculate the sound pressure level at a list of reveicers
