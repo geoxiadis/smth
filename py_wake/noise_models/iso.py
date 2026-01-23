@@ -2,6 +2,7 @@ import numpy as np
 from py_wake.site.distance import StraightDistance
 from numpy import newaxis as na
 from py_wake.utils.grid_interpolator import GridInterpolator
+from py_wake.noise_models.utils import iso_transmission_loss
 import warnings
 
 
@@ -51,168 +52,6 @@ class ISONoiseModel:
         self.freqs = freqs
         self.freqs_init = freqs_init 
 
-    def ground_eff(self, ground_distance_ijlk, distance_ijlk, rec_h, ground_type):
-        """_summary_
-
-        Parameters
-        ----------
-        ground_distance_ijlk : _type_
-            _description_
-        distance_ijlk : _type_
-            _description_
-        ground_type : _type_
-            _description_
-
-        Returns
-        -------
-        _type_
-            _description_
-        """
-        freqs_init = self.freqs_init
-        # Ground effects ISO
-
-        src_h_ilk = np.expand_dims(self.src_h, tuple(range(len(np.shape(self.src_h)), 3))) + .0
-        src_h_ijlk = src_h_ilk[:, na]
-
-        rec_h_ijlk = rec_h[na, :, na, na]
-
-        hei_check_ijlk = 30.0 * (src_h_ijlk + rec_h_ijlk)
-
-        q_ijlk = np.where(ground_distance_ijlk <= hei_check_ijlk, 0, 1 - hei_check_ijlk / ground_distance_ijlk)
-
-        Gs = Gr = Gm = ground_type
-
-        # for f=63Hz Am =-3*q, for other frequencies Am = -3 * q * (1-Gm)
-        fak = np.where(freqs_init == 63.0, 1, (1 - Gm))
-        Am_fijlk = -3.0 * q_ijlk[na] * fak[:, na, na, na, na]
-
-        # 125 Hz
-        a_source_ijlk = 1.5 + 3.0 * np.exp(-0.12 * (src_h_ijlk - 5.0)**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0)) + \
-            5.7 * np.exp(-0.09 * src_h_ijlk**2) * \
-            (1.0 - np.exp(-2.8 * (10.0**(-6.0)) * (ground_distance_ijlk**2)))
-        a_rec_ijlk = 1.5 + 3.0 * np.exp(-0.12 * (rec_h_ijlk - 5.0)**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0)) + \
-            5.7 * np.exp(-0.09 * rec_h_ijlk**2) * (1.0 - np.exp(-2.8 * (10.0**(-6.0)) * (ground_distance_ijlk**2)))
-
-        # 250 Hz
-        b_source_ijlk = 1.5 + 8.6 * np.exp(-0.09 * src_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
-        b_rec_ijlk = 1.5 + 8.6 * np.exp(-0.09 * rec_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
-
-        # 500 Hz
-        c_source_ijlk = 1.5 + 14.0 * np.exp(-0.46 * src_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
-        c_rec_ijlk = 1.5 + 14.0 * np.exp(-0.46 * rec_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
-
-        # 1000 Hz
-        d_source_ijlk = 1.5 + 5.0 * np.exp(-0.9 * src_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
-        d_rec_ijlk = 1.5 + 5.0 * np.exp(-0.9 * rec_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
-
-        zeros = np.zeros_like(ground_distance_ijlk)
-        As_fijlk = np.array([zeros - 1.5,  # 63Hz
-                             -1.5 + Gs * a_source_ijlk,  # 125Hz
-                             -1.5 + Gs * b_source_ijlk,  # 250Hz
-                             -1.5 + Gs * c_source_ijlk,  # 500Hz
-                             -1.5 + Gs * d_source_ijlk,  # 1000Hz
-                             zeros - 1.5 * (1.0 - Gs),  # 2000Hz
-                             zeros - 1.5 * (1.0 - Gs),  # 4000Hz
-                             zeros - 1.5 * (1.0 - Gs)  # 8000Hz
-                             ])
-
-        Ar_fijlk = np.array([zeros - 1.5,  # 63 Hz
-                             -1.5 + Gr * a_rec_ijlk,  # 125 Hz
-                             -1.5 + Gr * b_rec_ijlk,  # 250 Hz
-                             -1.5 + Gr * c_rec_ijlk,  # 500 Hz
-                             -1.5 + Gr * d_rec_ijlk,  # 1000 Hz
-                             zeros - 1.5 * (1.0 - Gr),  # 2000 Hz
-                             zeros - 1.5 * (1.0 - Gr),  # 4000 Hz
-                             zeros - 1.5 * (1.0 - Gr)  # 8000 Hz
-                             ])
-
-        # sum up As+Ar+Am
-        Agr_fijlk = np.sum([As_fijlk, Ar_fijlk, Am_fijlk], 0)
-
-        # Interpolation to other frequencies are actually not following the standard completely.
-        ip = GridInterpolator([freqs_init], Agr_fijlk)
-        Agr_ijlkf = np.moveaxis(ip(np.array([self.freqs]).T), 0, -1)
-
-        # # TODO: move geometric spreading out in to transmission loss! Should be -ve
-        # # Area of sphere: 4pi R^2
-        # # 10*log_10(4pi) ~ 11
-        # # 10 * log_10(R^2) = 20 * log_10(R) =
-        # # reference area = 1.0 m^2
-        # Adiv_ijlk = 20.0 * np.log10(distance_ijlk / 1.0) + 11.0  # The geometrical spreading (divergence)
-
-        # ISO_ground_ijlkf = - Adiv_ijlk[:, :, :, :, na] - Agr_ijlkf
-
-        # return ISO_ground_ijlkf
-        return Agr_ijlkf
-
-    def atmab_alpha(self, T0, RH0, p_s):
-        """ Atmospheric absorption
-
-        Source: H. E. Bass, L. C. Sutherland, A. J. Zuckerwar, D. T. Blackstock, D. M. Hester;
-        Atmospheric absorption of sound: Further developments. J. Acoust. Soc. Am. 1 January 1995; 97 (1): 680–683. https://doi.org/10.1121/1.412989
-        Note that an erratum was published to correct eq. 3
-
-        # inputs
-        distance_ij : distance between source and observer in meter
-        T0 : atmospheric temperature in deg C
-        RH0 : relative humidity in pct
-        p_s : atmospheric pressure in atm
-        """
-        T_0 = 293.15  # reference temperature in K
-        T_01 = 273.16  # triple point isotherm temperature in K
-        T = T0 + 273.15  # convert temperature from deg to K
-        p_s0 = 1.0  # reference atmospheric pressure in atm
-        #
-        log10psatps0 = -6.8346 * (T_01 / T)**1.261 + 4.6151
-        psatps0 = 10**log10psatps0  # saturation pressure of water vapor normalised by reference atmospheric pressure
-        #
-        h = RH0 * p_s0 / p_s * psatps0  # absolute humidity in pct
-        #
-        F = self.freqs / p_s  # frequency normalised by atmospheric pressure
-        F2 = F**2
-        #
-        # relaxation frequency of oxygen normalised by atmospheric pressure
-        F_rO = 1.0 / p_s0 * (24.0 + 4.04e4 * h * (0.02 + h) / (0.391 + h))
-        F_rN = 1.0 / p_s0 * (T_0 / T)**(0.5) * (9.0 + 2.8e2 * h *
-                                                np.exp(-4.17 * ((T_0 / T)**(1.0 / 3.0) - 1.0)))  # relaxation frequency of nitrogen normalised by atmospheric pressure
-        #
-        alpha = F2 * (1.84e-11 * (T / T_0)**(0.5) * p_s0 + (T / T_0)**(-5.0 / 2.0) *
-                      (1.275e-2 * np.exp(-2239.1 / T) / (F_rO + F2 / F_rO) +
-                       0.1068 * np.exp(-3352.0 / T) / (F_rN + F2 / F_rN)))  # sound absorption coefficient in nepers normalised by distance and atmospheric pressure
-        #
-        alpha_ps = alpha * p_s  # sound absorption coefficient in nepers normalised by distance
-        # TODO: remove distance_ij out of the function
-        # ISO_alpha = alpha_ps[na, na] * 20.0 / np.log(10.0) * distance_ij[:, :, na]  # sound absorption coefficient in dB
-        ISO_alpha = alpha_ps[na, na] * 20.0 / np.log(10.0)
-
-        return ISO_alpha
-
-    def transmission_loss(self, rec_x, rec_y, rec_h, ground_type, patm, Temp, RHum):
-        patm /= 101325.0  # convert unit of atmospheric pressure from pascal to atmosphere
-
-        # transmission loss = ground effects + atmospheric absorption
-        rec_h = np.zeros_like(rec_x) + rec_h
-        dx_ijlk, dy_ijlk, dh_ijlk = self.distance(self.src_x, self.src_y, self.src_h, wd_l=np.array([270]),
-                                                  dst_xyh_jlk=[rec_x, rec_y, rec_h])
-        ground_distance_ijlk = np.sqrt(dx_ijlk**2 + dy_ijlk**2)
-        distance_ijlk = np.sqrt(dx_ijlk**2 + dy_ijlk**2 + dh_ijlk**2)
-        
-        # TODO: multiply the distance here and exmpand the dimentsions
-        # The atmospheric absorption term
-        atm_abs_ijlkf = -1 * self.atmab_alpha(T0=Temp, RH0=RHum, p_s=patm) * distance_ijlk[:, :, na]  
-        # ground effect term
-        ground_eff_ijlkf = -1 * self.ground_eff(ground_distance_ijlk, distance_ijlk, rec_h, ground_type)
-        # # The geometrical spreading (divergence)
-        # Area of sphere: 4pi R^2
-        # 10*log_10(4pi) ~ 11
-        # 10 * log_10(R^2) = 20 * log_10(R) =
-        # reference area = 1.0 m^2
-        geom_div_ijlk = -1 * (20.0 * np.log10(distance_ijlk / 1.0) + 11.0)  
-        #  total transmission loss in sound pressure level
-        delta_spl_ijlkf = ground_eff_ijlkf + atm_abs_ijlkf + geom_div_ijlk[:, :, :, :, na]
-        
-        return delta_spl_ijlkf  # Delta_SPL
-
     def __call__(self, rec_x, rec_y, rec_h, patm, Temp, RHum, ground_type, **kwargs):
         """Calculate the sound pressure level at a list of reveicers
 
@@ -242,19 +81,33 @@ class ISONoiseModel:
         spl : array_like
             Sound pressure level of freqs, dim=(n_receiver, n_freq)
         """
+        # frequencies from the supplied WT dataset
+        freqs = self.freqs
+        # octave band center frequencies for ground effect calculation
+        freqs_init = self.freqs_init
+        # source heights
+        src_h = self.src_h
+        # compute distances between sources and receivers
+        rec_h = np.zeros_like(rec_x) + rec_h
+        dx_ijlk, dy_ijlk, dh_ijlk = self.distance(self.src_x, self.src_y, self.src_h, wd_l=np.array([270]),
+                                                  dst_xyh_jlk=[rec_x, rec_y, rec_h])
+        # compute the loss in sound pressure level from source to receivers
+        Delta_SPL_ijlkf = iso_transmission_loss(freqs_init, freqs, 
+                                                dx_ijlk, dy_ijlk, dh_ijlk, 
+                                                src_h, rec_h, ground_type, 
+                                                patm, Temp, RHum)
 
-        Delta_SPL_ijlkf = self.transmission_loss(rec_x, rec_y, rec_h, ground_type, patm, Temp, RHum)
-
-        print("IN ISONoiseModel __call__:")
-        print("Delta_SPL_ijlkf.shape:", Delta_SPL_ijlkf.shape)
+        # print("IN ISONoiseModel __call__:")
+        # print("Delta_SPL_ijlkf.shape:", Delta_SPL_ijlkf.shape)
         # exit()
 
         sound_power_ijlkf = np.expand_dims(self.sound_power_level,
                                            tuple(range(1, 6 - len(np.shape(self.sound_power_level)))))
 
-        print("sound_power_ijlkf.shape:", sound_power_ijlkf.shape)
+        # print("sound_power_ijlkf.shape:", sound_power_ijlkf.shape)
         # exit()
-    
+        
+        # apply directional correction if available
         if self.delta_swl_correction is not None:
             correction = self.delta_swl_correction(rec_x, rec_y, rec_h, self.freqs, **kwargs)
             sound_power_ijlkf = sound_power_ijlkf + correction
