@@ -41,10 +41,6 @@ class ISONoiseModel:
         
         self.sound_power_level = sound_power_level
         self.delta_swl_correction = delta_swl_correction
-
-        # print("SPL in ISONoiseModel:")
-        # print("sound_power_level.shape:", sound_power_level.shape)
-        # print("delta_swl_correction.shape:", delta_swl_correction.shape)
         
         freqs_init = np.array([63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 
                                4000.0, 8000.0])
@@ -215,15 +211,9 @@ class ISONoiseModel:
                                                  src_h, rec_h, ground_type, 
                                                  patm, Temp, RHum)
 
-        # print("IN ISONoiseModel __call__:")
-        # print("Delta_SPL_ijlkf.shape:", Delta_SPL_ijlkf.shape)
-        # exit()
 
         sound_power_ijlkf = np.expand_dims(self.sound_power_level,
                                            tuple(range(1, 6 - len(np.shape(self.sound_power_level)))))
-
-        # print("sound_power_ijlkf.shape:", sound_power_ijlkf.shape)
-        # exit()
         
         # apply directional correction if available
         if self.delta_swl_correction is not None:
@@ -234,8 +224,6 @@ class ISONoiseModel:
         spl_jlkf = 10.0 * np.log10(np.sum(10.0**((sound_power_ijlkf + Delta_SPL_ijlkf) / 10.0), axis=0))
         total_spl_jlk = 10.0 * np.log10(np.sum(10.0**(spl_jlkf / 10.0), axis=-1))
         
-        # print(spl_jlkf.shape)
-        # exit()
         
         return total_spl_jlk, spl_jlkf
 
@@ -263,8 +251,7 @@ def main():
         # sim_res = wfm(x, y, wd=[270, 271], ws=[9, 12], mode=[1], yaw=[0, 10])
         # different wind situations for the turbines
         sim_res = wfm(x, y, wd=[270], ws=[10], mode=[0], yaw=[-20])
-        # print("sim_res ds:", wfm.windTurbines.ds)
-        # exit()
+
         rec_x = np.array([x[0], x[-1]])
         rec_y = np.array([1000, 1000])
         rec_h = 2
@@ -300,8 +287,9 @@ def main():
         setup_plot(xlabel='Frequency [Hz]', ylabel='Sound pressure level [dB]', ax=ax2)
         ax2.legend()
         plt.tight_layout()
-        plt.savefig("iso_noise_model_receivers.png", dpi=150)
-        plt.close()
+        # plt.show()
+        # plt.savefig("iso_noise_model_receivers.png", dpi=150)
+        # plt.close()
 
         fig, ax3 = plt.subplots(1, 1, figsize=(8, 6))
         total_spl_map = noise_map['Total sound pressure level']
@@ -321,7 +309,7 @@ def main():
 
         plt.tight_layout()
         # plt.show()
-        fig.savefig("iso_noise_model_map.png", dpi=150)
+        # fig.savefig("iso_noise_model_map.png", dpi=150)
 
 
 main()

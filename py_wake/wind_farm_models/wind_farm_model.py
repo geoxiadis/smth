@@ -800,25 +800,14 @@ class SimulationResult(xr.Dataset):
             for k, v in self.wt_kwargs.items()
             if v is not None
         }
-        # print("wt_kwargs in noise_model--windfarm.py:")
-        # print(wt_kwargs)
-        # exit()
+
         wt = self.windFarmModel.windTurbines
-        # print(wt.ds)
-        # exit()
-        # freqs, sound_power_level = self.windFarmModel.windTurbines.sound_power_level(ws_eff_i, **wt_kwargs)
         freqs, sound_power_level = sound_power_level_interp(wt.ds, ws_eff_i, **wt_kwargs)
-        # exit()
-        
         # sound_power_level: shape (n_modes, n_freqs, n_wsp, n_yaw)
         sound_power_level = sound_power_level[:, :, 0, 0]  # select first wind speed and yaw
-        # print("In noise_model--windfarm.py:")
-        # print("sound_power_level.shape:", sound_power_level.shape)
-        # exit()
-
+ 
         delta_swl_correction = self._create_directional_correction(wt)
-        # delta_swl_correction= np.zeros_like(delta_swl_correction) 
-
+ 
         return noiseModel(
             src_x=self.x.values,
             src_y=self.y.values,
@@ -853,8 +842,6 @@ class SimulationResult(xr.Dataset):
             rec_x, rec_y = np.atleast_1d(rec_x), np.atleast_1d(rec_y)
             rec_h = np.atleast_1d(rec_h) if not np.isscalar(rec_h) else np.full_like(rec_x, rec_h)
 
-            # print("rec_x shape:", rec_x.shape)
-            # print("rec_y shape:", rec_y.shape)
             n_src, n_rec = len(self.x.values), len(rec_x)
 
             def get_array(k, d=0):
@@ -934,28 +921,13 @@ class SimulationResult(xr.Dataset):
             relative_humidity,
             ground_type=ground_type,
         )
-        
-        # print("SPL shapes:")
-        # print("spl_jlk.shape:", spl_jlk.shape)
-        # print("spl_jlkf.shape:", spl_jlkf.shape)
-        # print("Grid shape:", X.shape)
-        # exit()
 
         grid_shape = X.shape
         wd_size = max(1, len(np.atleast_1d(self.wd.values)))
         ws_size = max(1, len(np.atleast_1d(self.ws.values)))
 
-        # print("Reshaping SPL arrays:")
-        # print("grid_shape + (wd_size, ws_size):", grid_shape + (wd_size, ws_size))
-        # print("wd_size:", wd_size)
-        # print("ws_size:", ws_size)
-        # print("ws.values:", self.ws.values)
-
         spl_total = spl_jlk.reshape(grid_shape + (wd_size, ws_size))
         spl_freq = spl_jlkf.reshape(grid_shape + (wd_size, ws_size, len(nm.freqs)))
-        # print(grid_shape + (wd_size, ws_size) )
-        # print(spl_jlk.shape) 
-        # exit() 
         
         coords = {
             "x": X[0],

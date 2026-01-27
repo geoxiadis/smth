@@ -212,7 +212,7 @@ def interpolate_directivity(ds, mode, freq, ws, yaw, lat_deg, lon_deg):
     # generate the latitude and longitude regular grid
     gridded_lat, gridded_lon = np.meshgrid(grid_lat_ax, grid_lon_ax, indexing='ij')
         
-    print(f" {n_obs} data points --> {n_grid_lat*n_grid_lon} regular grid")
+    # print(f" {n_obs} data points --> {n_grid_lat*n_grid_lon} regular grid")
 
     # interpolate the values on the regular grid
     grid_obs_vals_flat = griddata(points=(obs_lat_deg, obs_lon_deg),
