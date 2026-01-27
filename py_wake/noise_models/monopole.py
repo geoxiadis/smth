@@ -210,20 +210,13 @@ class MonopoleNoiseModel:
         dx_ijlk, dy_ijlk, dh_ijlk = self.distance(self.src_x, self.src_y, self.src_h, wd_l=np.array([270]),
                                                   dst_xyh_jlk=[rec_x, rec_y, rec_h])
         # compute the loss in sound pressure level from source to receivers
-        Delta_SPL_ijlkf = self.iso_transmission_loss(freqs_init, freqs, 
-                                                     dx_ijlk, dy_ijlk, dh_ijlk, 
-                                                     src_h, rec_h, ground_type, 
-                                                     patm, Temp, RHum)
-
-        # print("IN ISONoiseModel __call__:")
-        # print("Delta_SPL_ijlkf.shape:", Delta_SPL_ijlkf.shape)
-        # exit()
+        Delta_SPL_ijlkf = self.transmission_loss(freqs_init, freqs, 
+                                                 dx_ijlk, dy_ijlk, dh_ijlk, 
+                                                 src_h, rec_h, ground_type, 
+                                                 patm, Temp, RHum)
 
         sound_power_ijlkf = np.expand_dims(self.sound_power_level,
                                            tuple(range(1, 6 - len(np.shape(self.sound_power_level)))))
-
-        # print("sound_power_ijlkf.shape:", sound_power_ijlkf.shape)
-        # exit()
         
         # apply directional correction if available
         if self.delta_swl_correction is not None:
@@ -233,9 +226,6 @@ class MonopoleNoiseModel:
         # Do not integrate over different frequencies but make a map for diff. freq. 
         spl_jlkf = 10.0 * np.log10(np.sum(10.0**((sound_power_ijlkf + Delta_SPL_ijlkf) / 10.0), axis=0))
         total_spl_jlk = 10.0 * np.log10(np.sum(10.0**(spl_jlkf / 10.0), axis=-1))
-        
-        # print(spl_jlkf.shape)
-        # exit()
         
         return total_spl_jlk, spl_jlkf
 
@@ -300,8 +290,9 @@ def main():
         setup_plot(xlabel='Frequency [Hz]', ylabel='Sound pressure level [dB]', ax=ax2)
         ax2.legend()
         plt.tight_layout()
-        plt.savefig("iso_noise_model_receivers.png", dpi=150)
-        plt.close()
+        plt.show()
+        # plt.savefig("iso_noise_model_receivers.png", dpi=150)
+        # plt.close()
 
         fig, ax3 = plt.subplots(1, 1, figsize=(8, 6))
         total_spl_map = noise_map['Total sound pressure level']
@@ -320,8 +311,8 @@ def main():
         cbar.set_label('Total SPL [dB]')
 
         plt.tight_layout()
-        # plt.show()
-        fig.savefig("iso_noise_model_map.png", dpi=150)
+        plt.show()
+        # fig.savefig("iso_noise_model_map.png", dpi=150)
 
 
 main()
