@@ -12,63 +12,65 @@ def sph2cart(lat_rad, lon_rad):
     c = np.cos(lat_rad)
     return np.stack((c * np.cos(lon_rad), c * np.sin(lon_rad), np.sin(lat_rad)), -1)
 
+
 def sound_power_level_interp(ds=None, ws=None, mode=None, freq=None, yaw=None, **_):
-        """
-        Docstring for sound_power_level
-        
-        :param ws: Description
-        :param mode: Description
-        :param freq: Description
-        :param yaw: Description
-        :param _: Description
-        """
-                    
-        ws = np.atleast_1d(ds.ws.values if ws is None else ws)
-        mode = np.atleast_1d(ds.mode.values if mode is None else 
-                             np.zeros_like(ws) + mode)
-        freqs = np.atleast_1d(ds.freq.values if freq is None else freq)
-        yaws = np.atleast_1d(ds.yaw.values if yaw is None else yaw)
-    
-        mode_grid, freq_grid, ws_grid, yaw_grid = np.meshgrid(
-            mode, freqs, ws, yaws, indexing="ij"
+    """
+    Docstring for sound_power_level
+
+    :param ws: Description
+    :param mode: Description
+    :param freq: Description
+    :param yaw: Description
+    :param _: Description
+    """
+
+    ws = np.atleast_1d(ds.ws.values if ws is None else ws)
+    mode = np.atleast_1d(ds.mode.values if mode is None else
+                         np.zeros_like(ws) + mode)
+    freqs = np.atleast_1d(ds.freq.values if freq is None else freq)
+    yaws = np.atleast_1d(ds.yaw.values if yaw is None else yaw)
+
+    mode_grid, freq_grid, ws_grid, yaw_grid = np.meshgrid(
+        mode, freqs, ws, yaws, indexing="ij"
+    )
+
+    points = np.stack(
+        [mode_grid.ravel(), freq_grid.ravel(), ws_grid.ravel(), yaw_grid.ravel()],
+        axis=-1,
+    )
+
+    # TODO:--------remove yaw in Power from data set? and remove this lines--------
+    if "yaw" in ds["P"].dims:
+        ds2 = ds.copy()
+        ds2 = ds2.assign(
+            power=ds["P"].isel(yaw=1),
+            ct=ds["Ct"].isel(yaw=1),
         )
-    
-        points = np.stack(
-            [mode_grid.ravel(), freq_grid.ravel(), ws_grid.ravel(), yaw_grid.ravel()],
-            axis=-1,
-        )
-        
-        # TODO:--------remove yaw in Power from data set? and remove this lines--------
-        if "yaw" in ds["P"].dims:
-            ds2 = ds.copy()
-            ds2 = ds2.assign(
-                              power=ds["P"].isel(yaw=1),
-                              ct=ds["Ct"].isel(yaw=1),
-                            )
-        else:
-            ds2 = ds.copy()    
-            ds2 = ds2.assign(
-                              power=ds["P"],
-                              ct=ds["Ct"],
-                            )        
-        
-        ip = GridInterpolator(
-            [ds.mode.values, ds.freq.values, ds.ws.values, ds.yaw.values],
-            ds.swl.values,
-            method=["linear", "linear", "linear", "linear"]
+    else:
+        ds2 = ds.copy()
+        ds2 = ds2.assign(
+            power=ds["P"],
+            ct=ds["Ct"],
         )
 
-        swl = ip(points).reshape(len(mode), len(freqs), len(ws), len(yaws))
-        
-        # print("In sound_power_level:")
-        # print("mode:", mode)
-        # print("freqs:", freqs)
-        # print("ws:", ws)
-        # print("yaws:", yaws)
-        # print("swl shape:", swl.shape)
-        # exit()
-        # which wind speeds and yaw to consider? why is frederik considering only first ws?
-        return freqs, swl       
+    ip = GridInterpolator(
+        [ds.mode.values, ds.freq.values, ds.ws.values, ds.yaw.values],
+        ds.swl.values,
+        method=["linear", "linear", "linear", "linear"]
+    )
+
+    swl = ip(points).reshape(len(mode), len(freqs), len(ws), len(yaws))
+
+    # print("In sound_power_level:")
+    # print("mode:", mode)
+    # print("freqs:", freqs)
+    # print("ws:", ws)
+    # print("yaws:", yaws)
+    # print("swl shape:", swl.shape)
+    # exit()
+    # which wind speeds and yaw to consider? why is frederik considering only first ws?
+    return freqs, swl
+
 
 def fast_spherical_interpolate_directivity(
     ds,
@@ -92,28 +94,30 @@ def fast_spherical_interpolate_directivity(
     n_obs = lat_deg.size
     n_freq = freq.size
     n_data_obs = ds.sizes["obs"]
-    
+
     # cartesian vectors of all the observer positions
     obs_xyz_data = sph2cart(
         np.radians(ds["lat"].values), np.radians(ds["lon"].values)
     )  # (D,3)
-    
+
     # provides the vectors in cartesian coordiantes to the target
-    obs_xyz_target = sph2cart(np.radians(lat_deg), np.radians(lon_deg))  # (O,3)
-    
+    obs_xyz_target = sph2cart(np.radians(
+        lat_deg), np.radians(lon_deg))  # (O,3)
+
     # dot product of the target with all observers, we get the angle between
     # the two directions signifying how aligned the two directions are
-    dist = np.arccos(np.clip(obs_xyz_target @ obs_xyz_data.T, -1.0, 1.0))  # (O,D)
-    
+    dist = np.arccos(
+        np.clip(obs_xyz_target @ obs_xyz_data.T, -1.0, 1.0))  # (O,D)
+
     # TODO: what is happening here?
     # doing this to get the relevant observers to our target
-    # are these a weighing function? the further a meas. observer is from  
+    # are these a weighing function? the further a meas. observer is from
     # the target observer, i.e. the larger the angle and smaller
     # the weight
     w = np.where(dist < max_dist, 1.0 / (dist + 1e-10) ** power, 0.0)
     w_sum = w.sum(axis=1, keepdims=True)
     w = np.divide(w, w_sum, out=np.zeros_like(w), where=w_sum != 0)  # (O,D)
-    
+
     # build the grid interpolator
     delta_swl_interpolator = GridInterpolator(
         [
@@ -127,7 +131,7 @@ def fast_spherical_interpolate_directivity(
         # method="linear",
         method=["linear", "linear", "linear", "linear", "linear"],
     )
-    
+
     # our relevant meas. observers are those that are < 90 degrees angle
     # from the target
     relevant_obs_mask = (dist < max_dist).any(axis=0)  # Shape: (n_data_obs,)
@@ -135,13 +139,13 @@ def fast_spherical_interpolate_directivity(
     n_relevant = len(relevant_obs_indices)
     if n_relevant == 0:
         return np.zeros((n_cases, n_obs, 1, 1, n_freq))
-    
+
     # get the weights for the relevant observers
     w_relevant = w[:, relevant_obs_indices]  # Shape: (n_obs, n_relevant)
     case_grid, freq_grid, obs_grid = np.meshgrid(
         np.arange(n_cases), freq, relevant_obs_indices, indexing="ij"
     )
-            
+
     pts = np.column_stack(
         [
             mode[case_grid.ravel()],
@@ -155,18 +159,21 @@ def fast_spherical_interpolate_directivity(
     interp_vals = interp_result.reshape(n_cases, n_freq, n_relevant)
     result = np.einsum(
         "cfr,or->cof", interp_vals, w_relevant
-    )  # Apply weights: (cases, freq, relevant) @ (obs, relevant).T -> (cases, obs, freq)
-    
+        # Apply weights: (cases, freq, relevant) @ (obs, relevant).T -> (cases, obs, freq)
+    )
+
     print("spherical_interpolate_delta_swl result shape:")
     print(result.shape)
-    print(f"result[:, :, None, None, :]  = {result[:, :, None, None, :].shape}")
+    print(
+        f"result[:, :, None, None, :]  = {result[:, :, None, None, :].shape}")
     # exit()
     return result[:, :, None, None, :]  # (n_cases, n_obs, 1, 1, n_freq)
+
 
 def interpolate_directivity(ds, mode, freq, ws, yaw, lat_deg, lon_deg):
     """
     Docstring for interpolate_directivity
-    
+
     :param ds: Description
     :param mode: Description
     :param freq: Description
@@ -175,7 +182,7 @@ def interpolate_directivity(ds, mode, freq, ws, yaw, lat_deg, lon_deg):
     :param lat_deg: Description
     :param lon_deg: Description
     """
-    #----------step 1: ------------
+    # ----------step 1: ------------
     # hawc2 directivity data from netcdf
     # radians to degrees of observed lat. and lon.
     obs_lat_deg = np.rad2deg(ds["lat"].values)
@@ -187,13 +194,13 @@ def interpolate_directivity(ds, mode, freq, ws, yaw, lat_deg, lon_deg):
 
     # we reshape the values to (obs, mode, freq, ws, yaw)
     # for vectorized interpolation
-    obs_vals_transposed = obs_vals.transpose(2, 0, 1, 3 ,4)
+    obs_vals_transposed = obs_vals.transpose(2, 0, 1, 3, 4)
 
-    # Flatten all non-spatial dimensions into one "feature vector" 
-    # per observer. We do this by stacking the mode, freq, ws, yaw 
+    # Flatten all non-spatial dimensions into one "feature vector"
+    # per observer. We do this by stacking the mode, freq, ws, yaw
     # dimensions into a single dimension.
     n_obs = obs_vals_transposed.shape[0]
-    other_dims = obs_vals_transposed.shape[1:] # (mode, freq, ws, yaw)
+    other_dims = obs_vals_transposed.shape[1:]  # (mode, freq, ws, yaw)
     n_features = np.prod(other_dims)
     obs_vals_flat = obs_vals_transposed.reshape(n_obs, n_features)
 
@@ -204,14 +211,15 @@ def interpolate_directivity(ds, mode, freq, ws, yaw, lat_deg, lon_deg):
     # 10 deg resolution
     # n_grid_lat = 19
     # n_grid_lon = 36
-        
+
     # lat/lon gridding spaces for smooth interpolation
     grid_lat_ax = np.linspace(-90, 90, n_grid_lat)
     grid_lon_ax = np.linspace(-180, 180, n_grid_lon)
-        
+
     # generate the latitude and longitude regular grid
-    gridded_lat, gridded_lon = np.meshgrid(grid_lat_ax, grid_lon_ax, indexing='ij')
-        
+    gridded_lat, gridded_lon = np.meshgrid(
+        grid_lat_ax, grid_lon_ax, indexing='ij')
+
     # print(f" {n_obs} data points --> {n_grid_lat*n_grid_lon} regular grid")
 
     # interpolate the values on the regular grid
@@ -235,20 +243,20 @@ def interpolate_directivity(ds, mode, freq, ws, yaw, lat_deg, lon_deg):
     # Dim 4: WS
     # Dim 5: Yaw
     coords = [
-        grid_lat_ax,    
+        grid_lat_ax,
         grid_lon_ax,
-        ds['mode'].values,   
-        ds['freq'].values,   
-        ds['ws'].values,     
-        ds['yaw'].values     
+        ds['mode'].values,
+        ds['freq'].values,
+        ds['ws'].values,
+        ds['yaw'].values
     ]
     # we have a interpolator mapped on a regular lat/lon grid
     interp = RegularGridInterpolator(coords,
-                             grid_obs_vals_ND,
-                             method='linear',
-                             bounds_error=False, 
-                             fill_value=0
-                             )
+                                     grid_obs_vals_ND,
+                                     method='linear',
+                                     bounds_error=False,
+                                     fill_value=0
+                                     )
 
     # ----------step 3: Query points-----------
     freq_inp = np.atleast_1d(freq)
@@ -265,15 +273,15 @@ def interpolate_directivity(ds, mode, freq, ws, yaw, lat_deg, lon_deg):
     freq_b = freq_inp[np.newaxis, np.newaxis, :, np.newaxis, np.newaxis]
     ws_b = ws_inp[np.newaxis, np.newaxis, np.newaxis, :, np.newaxis]
     yaw_b = yaw_inp[np.newaxis, np.newaxis, np.newaxis, np.newaxis, :]
-    
+
     query_points = np.stack(np.broadcast_arrays(lat_b, lon_b, mode_b,
                                                 freq_b, ws_b, yaw_b),
-                                                axis=-1)
+                            axis=-1)
     n_query_points = np.prod(query_points.shape[:-1])
-    # print(f"Total query points: {n_query_points}")  
+    # print(f"Total query points: {n_query_points}")
     # print(f"query_points.shape: {query_points.shape}")
     result = interp(query_points)
-        
+
     # print(f"result.shape = {result.shape}")
     result = result.transpose(3, 0, 1, 4, 2)
     result = result[:, :, 0, 0, :]
@@ -282,6 +290,7 @@ def interpolate_directivity(ds, mode, freq, ws, yaw, lat_deg, lon_deg):
     # print(f"result[:, :, None, None, :]  = {result[:, :, None, None, :].shape}")
 
     return result[:, :, None, None, :]
+
 
 def atmab_alpha(freqs, T0, RH0, p_s):
     """ Atmospheric absorption
@@ -300,7 +309,8 @@ def atmab_alpha(freqs, T0, RH0, p_s):
     p_s0 = 1.0  # reference atmospheric pressure in atm
     #
     log10psatps0 = -6.8346 * (T_01 / T)**1.261 + 4.6151
-    psatps0 = 10**log10psatps0  # saturation pressure of water vapor normalised by reference atmospheric pressure
+    # saturation pressure of water vapor normalised by reference atmospheric pressure
+    psatps0 = 10**log10psatps0
     #
     h = RH0 * p_s0 / p_s * psatps0  # absolute humidity in pct
     #
@@ -310,11 +320,13 @@ def atmab_alpha(freqs, T0, RH0, p_s):
     # relaxation frequency of oxygen normalised by atmospheric pressure
     F_rO = 1.0 / p_s0 * (24.0 + 4.04e4 * h * (0.02 + h) / (0.391 + h))
     F_rN = 1.0 / p_s0 * (T_0 / T)**(0.5) * (9.0 + 2.8e2 * h *
-                                            np.exp(-4.17 * ((T_0 / T)**(1.0 / 3.0) - 1.0)))  # relaxation frequency of nitrogen normalised by atmospheric pressure
+                                            # relaxation frequency of nitrogen normalised by atmospheric pressure
+                                            np.exp(-4.17 * ((T_0 / T)**(1.0 / 3.0) - 1.0)))
     #
     alpha = F2 * (1.84e-11 * (T / T_0)**(0.5) * p_s0 + (T / T_0)**(-5.0 / 2.0) *
                   (1.275e-2 * np.exp(-2239.1 / T) / (F_rO + F2 / F_rO) +
-                   0.1068 * np.exp(-3352.0 / T) / (F_rN + F2 / F_rN)))  # sound absorption coefficient in nepers normalised by distance and atmospheric pressure
+                   # sound absorption coefficient in nepers normalised by distance and atmospheric pressure
+                   0.1068 * np.exp(-3352.0 / T) / (F_rN + F2 / F_rN)))
     #
     alpha_ps = alpha * p_s  # sound absorption coefficient in nepers normalised by distance
     # TODO: remove distance_ij out of the function

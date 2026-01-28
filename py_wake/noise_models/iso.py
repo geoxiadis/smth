@@ -38,11 +38,11 @@ class ISONoiseModel:
         self.src_z = elevation_function(src_x, src_y)
         self.n_src = len(src_x)
         self.distance = StraightDistance()
-        
         self.sound_power_level = sound_power_level
         self.delta_swl_correction = delta_swl_correction
-        
-        freqs_init = np.array([63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 
+
+        freqs_init = np.array([63.0, 125.0, 250.0, 500.0,
+                               1000.0, 2000.0,
                                4000.0, 8000.0])
 
         self.freqs = freqs
@@ -65,11 +65,13 @@ class ISONoiseModel:
         """
         # freqs_init = self.freqs_init
         # Ground effects ISO
-        src_h_ilk = np.expand_dims(src_h, tuple(range(len(np.shape(src_h)), 3))) + .0
+        src_h_ilk = np.expand_dims(src_h, tuple(
+            range(len(np.shape(src_h)), 3))) + .0
         src_h_ijlk = src_h_ilk[:, na]
         rec_h_ijlk = rec_h[na, :, na, na]
         hei_check_ijlk = 30.0 * (src_h_ijlk + rec_h_ijlk)
-        q_ijlk = np.where(ground_distance_ijlk <= hei_check_ijlk, 0, 1 - hei_check_ijlk / ground_distance_ijlk)
+        q_ijlk = np.where(ground_distance_ijlk <= hei_check_ijlk,
+                          0, 1 - hei_check_ijlk / ground_distance_ijlk)
         Gs = Gr = Gm = ground_type
         # for f=63Hz Am =-3*q, for other frequencies Am = -3 * q * (1-Gm)
         fak = np.where(freqs_init == 63.0, 1, (1 - Gm))
@@ -79,16 +81,29 @@ class ISONoiseModel:
             5.7 * np.exp(-0.09 * src_h_ijlk**2) * \
             (1.0 - np.exp(-2.8 * (10.0**(-6.0)) * (ground_distance_ijlk**2)))
         a_rec_ijlk = 1.5 + 3.0 * np.exp(-0.12 * (rec_h_ijlk - 5.0)**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0)) + \
-            5.7 * np.exp(-0.09 * rec_h_ijlk**2) * (1.0 - np.exp(-2.8 * (10.0**(-6.0)) * (ground_distance_ijlk**2)))
+            5.7 * np.exp(-0.09 * rec_h_ijlk**2) * (1.0 -
+                                                   np.exp(-2.8 * (10.0**(-6.0)) * (ground_distance_ijlk**2)))
         # 250 Hz
-        b_source_ijlk = 1.5 + 8.6 * np.exp(-0.09 * src_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
-        b_rec_ijlk = 1.5 + 8.6 * np.exp(-0.09 * rec_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
+        b_source_ijlk = 1.5 + 8.6 * \
+            np.exp(-0.09 * src_h_ijlk**2) * \
+            (1.0 - np.exp(-ground_distance_ijlk / 50.0))
+        b_rec_ijlk = 1.5 + 8.6 * \
+            np.exp(-0.09 * rec_h_ijlk**2) * \
+            (1.0 - np.exp(-ground_distance_ijlk / 50.0))
         # 500 Hz
-        c_source_ijlk = 1.5 + 14.0 * np.exp(-0.46 * src_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
-        c_rec_ijlk = 1.5 + 14.0 * np.exp(-0.46 * rec_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
+        c_source_ijlk = 1.5 + 14.0 * \
+            np.exp(-0.46 * src_h_ijlk**2) * \
+            (1.0 - np.exp(-ground_distance_ijlk / 50.0))
+        c_rec_ijlk = 1.5 + 14.0 * \
+            np.exp(-0.46 * rec_h_ijlk**2) * \
+            (1.0 - np.exp(-ground_distance_ijlk / 50.0))
         # 1000 Hz
-        d_source_ijlk = 1.5 + 5.0 * np.exp(-0.9 * src_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
-        d_rec_ijlk = 1.5 + 5.0 * np.exp(-0.9 * rec_h_ijlk**2) * (1.0 - np.exp(-ground_distance_ijlk / 50.0))
+        d_source_ijlk = 1.5 + 5.0 * \
+            np.exp(-0.9 * src_h_ijlk**2) * \
+            (1.0 - np.exp(-ground_distance_ijlk / 50.0))
+        d_rec_ijlk = 1.5 + 5.0 * \
+            np.exp(-0.9 * rec_h_ijlk**2) * \
+            (1.0 - np.exp(-ground_distance_ijlk / 50.0))
         zeros = np.zeros_like(ground_distance_ijlk)
         As_fijlk = np.array([zeros - 1.5,  # 63Hz
                              -1.5 + Gs * a_source_ijlk,  # 125Hz
@@ -127,7 +142,7 @@ class ISONoiseModel:
                           src_h, rec_h, ground_type, patm, Temp, RHum):
         """
         Docstring for transmission_loss
-        
+
         :param self: Description
         :param freqs_init: Description
         :param freqs: Description
@@ -142,28 +157,33 @@ class ISONoiseModel:
         :param RHum: Description
         """
         # convert atmospheric pressure from Pa to atm
-        patm /= 101325.0 
+        patm /= 101325.0
         # transmission loss = ground effects + atmospheric absorption
         # rec_h = np.zeros_like(rec_x) + rec_h
         # dx_ijlk, dy_ijlk, dh_ijlk = self.distance(self.src_x, self.src_y, self.src_h, wd_l=np.array([270]),
         #                                           dst_xyh_jlk=[rec_x, rec_y, rec_h])
         ground_distance_ijlk = np.sqrt(dx_ijlk**2 + dy_ijlk**2)
         distance_ijlk = np.sqrt(dx_ijlk**2 + dy_ijlk**2 + dh_ijlk**2)
-        
+
         # TODO: multiply the distance here and exmpand the dimentsions
         # The atmospheric absorption term
-        atm_abs_ijlkf = -1 * atmab_alpha(freqs, T0=Temp, RH0=RHum, p_s=patm) * distance_ijlk[:, :, na]  
+        atm_abs_ijlkf = -1 * \
+            atmab_alpha(freqs, T0=Temp, RH0=RHum, p_s=patm) * \
+            distance_ijlk[:, :, na]
         # ground effect term
-        ground_eff_ijlkf = -1 * self.iso_ground_eff(freqs, freqs_init, ground_distance_ijlk, src_h, rec_h, ground_type)
+        ground_eff_ijlkf = -1 * \
+            self.iso_ground_eff(
+                freqs, freqs_init, ground_distance_ijlk, src_h, rec_h, ground_type)
         # # The geometrical spreading (divergence)
         # Area of sphere: 4pi R^2
         # 10*log_10(4pi) ~ 11
         # 10 * log_10(R^2) = 20 * log_10(R) =
         # reference area = 1.0 m^2
-        geom_div_ijlk = -1 * (20.0 * np.log10(distance_ijlk / 1.0) + 11.0)  
+        geom_div_ijlk = -1 * (20.0 * np.log10(distance_ijlk / 1.0) + 11.0)
         #  total transmission loss in sound pressure level
-        delta_spl_ijlkf = ground_eff_ijlkf + atm_abs_ijlkf + geom_div_ijlk[:, :, :, :, na]
-        
+        delta_spl_ijlkf = ground_eff_ijlkf + \
+            atm_abs_ijlkf + geom_div_ijlk[:, :, :, :, na]
+
         return delta_spl_ijlkf  # Delta_SPL
 
     def __call__(self, rec_x, rec_y, rec_h, patm, Temp, RHum, ground_type, **kwargs):
@@ -206,25 +226,27 @@ class ISONoiseModel:
         dx_ijlk, dy_ijlk, dh_ijlk = self.distance(self.src_x, self.src_y, self.src_h, wd_l=np.array([270]),
                                                   dst_xyh_jlk=[rec_x, rec_y, rec_h])
         # compute the loss in sound pressure level from source to receivers
-        Delta_SPL_ijlkf = self.transmission_loss(freqs_init, freqs, 
-                                                 dx_ijlk, dy_ijlk, dh_ijlk, 
-                                                 src_h, rec_h, ground_type, 
+        Delta_SPL_ijlkf = self.transmission_loss(freqs_init, freqs,
+                                                 dx_ijlk, dy_ijlk, dh_ijlk,
+                                                 src_h, rec_h, ground_type,
                                                  patm, Temp, RHum)
-
 
         sound_power_ijlkf = np.expand_dims(self.sound_power_level,
                                            tuple(range(1, 6 - len(np.shape(self.sound_power_level)))))
-        
+
         # apply directional correction if available
         if self.delta_swl_correction is not None:
-            correction = self.delta_swl_correction(rec_x, rec_y, rec_h, self.freqs, **kwargs)
+            correction = self.delta_swl_correction(
+                rec_x, rec_y, rec_h, self.freqs, **kwargs)
             sound_power_ijlkf = sound_power_ijlkf + correction
 
-        # Do not integrate over different frequencies but make a map for diff. freq. 
-        spl_jlkf = 10.0 * np.log10(np.sum(10.0**((sound_power_ijlkf + Delta_SPL_ijlkf) / 10.0), axis=0))
-        total_spl_jlk = 10.0 * np.log10(np.sum(10.0**(spl_jlkf / 10.0), axis=-1))
-        
-        
+        # Do not integrate over different frequencies but make a map for diff. freq.
+        spl_jlkf = 10.0 * \
+            np.log10(
+                np.sum(10.0**((sound_power_ijlkf + Delta_SPL_ijlkf) / 10.0), axis=0))
+        total_spl_jlk = 10.0 * \
+            np.log10(np.sum(10.0**(spl_jlkf / 10.0), axis=-1))
+
         return total_spl_jlk, spl_jlkf
 
 
@@ -242,7 +264,8 @@ def main():
         wt = TurbineNoise()
         site = UniformSite()
         with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', 'The .* model is not representative of the setup used in the literature')
+            warnings.filterwarnings(
+                'ignore', 'The .* model is not representative of the setup used in the literature')
         wfm = ZongGaussian(site, wt, turbulenceModel=CrespoHernandez())
 
         # coordiantes with a row with 4 turbines
@@ -255,7 +278,7 @@ def main():
         rec_x = np.array([x[0], x[-1]])
         rec_y = np.array([1000, 1000])
         rec_h = 2
-        
+
         # get the noise map for the wind speed and direction from the situations
         # specified above
 
@@ -284,7 +307,8 @@ def main():
 
         ax2.plot(nm.freqs, spl_jlkf[0, 0, 0], 'b-', label='Receiver 1')
         ax2.plot(nm.freqs, spl_jlkf[1, 0, 0], 'r-', label='Receiver 2')
-        setup_plot(xlabel='Frequency [Hz]', ylabel='Sound pressure level [dB]', ax=ax2)
+        setup_plot(xlabel='Frequency [Hz]',
+                   ylabel='Sound pressure level [dB]', ax=ax2)
         ax2.legend()
         plt.tight_layout()
         # plt.show()
@@ -296,7 +320,8 @@ def main():
         if len(total_spl_map.shape) > 2:
             total_spl_map = total_spl_map.squeeze()
 
-        im = ax3.contourf(noise_map.x, noise_map.y, total_spl_map, levels=20, cmap='viridis')
+        im = ax3.contourf(noise_map.x, noise_map.y,
+                          total_spl_map, levels=20, cmap='viridis')
         ax3.plot(x, y, 'wo', markersize=8, label='Turbines')
         ax3.plot(rec_x, rec_y, 'ro', markersize=8, label='Receivers')
         ax3.set_xlabel('x [m]')
