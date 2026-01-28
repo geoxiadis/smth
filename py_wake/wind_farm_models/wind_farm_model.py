@@ -7,10 +7,11 @@ from numpy import newaxis as na
 from py_wake import np
 from py_wake.flow_map import FlowBox, FlowMap, Grid, HorizontalGrid
 from py_wake.noise_models.iso import ISONoiseModel
-from py_wake.noise_models.utils import (sound_power_level_interp, 
+from py_wake.noise_models.utils import (sound_power_level_interp,
                                         interpolate_directivity)
 from py_wake.site._site import LocalWind, Site
-from py_wake.utils import weibull, xarray_utils  # register ilk function @UnusedImport
+# register ilk function @UnusedImport
+from py_wake.utils import weibull, xarray_utils
 from py_wake.utils.functions import arg2ilk
 from py_wake.utils.gradients import autograd
 from py_wake.utils.model_utils import check_model, fix_shape
@@ -45,13 +46,15 @@ class WindFarmModel(ABC):
                 if self.turbulenceModel:
                     wt_kwargs["TI_eff"] = TI_eff_ilk
                 elif optional is False:
-                    raise KeyError("Argument, TI_eff, needed to calculate power and ct requires a TurbulenceModel")
+                    raise KeyError(
+                        "Argument, TI_eff, needed to calculate power and ct requires a TurbulenceModel")
             elif name in ["dw_ijlk", "cw_ijlk", "hcw_ijlk"]:
                 pass
             elif optional:
                 pass
             else:
-                raise KeyError("Argument, %s, required to calculate power and ct not found" % name)
+                raise KeyError(
+                    "Argument, %s, required to calculate power and ct not found" % name)
 
         for opt, lst in zip([False, True], self.windTurbines.function_inputs):
             for k in lst:
@@ -74,13 +77,15 @@ class WindFarmModel(ABC):
             h = np.r_[h, [np.mean(wf.windTurbines.hub_height(wf.windTurbines.types()))
                           for wf in self.externalWindFarms]]
         wd, ws = self.site.get_defaults(wd, ws, time)
-        I, L, K, = len(x), len(np.atleast_1d(wd)), (1, len(np.atleast_1d(ws)))[time is False]
+        I, L, K, = len(x), len(np.atleast_1d(wd)), (1,
+                                                    len(np.atleast_1d(ws)))[time is False]
         if len([k for k in kwargs if 'yaw' in k.lower() and k != 'yaw' and not k.startswith('yawc_')]):
             raise ValueError(
                 'Custom *yaw*-keyword arguments not allowed to avoid confusion with the default "yaw" keyword'
             )
         kwargs.update(dict(x=x, y=y, h=h))
-        kwargs_ilk = {k + "_ilk": arg2ilk(k, v, I, L, K) for k, v in kwargs.items()}
+        kwargs_ilk = {k + "_ilk": arg2ilk(k, v, I, L, K)
+                      for k, v in kwargs.items()}
 
         return self.calc_wt_interaction(
             h_i=h,
@@ -404,7 +409,8 @@ class WindFarmModel(ABC):
         if time is False:
             return np.sum(
                 [
-                    np.array(aep) / self.site.wd_bin_size(args["wd"]) * wd_bin_size
+                    np.array(aep) /
+                    self.site.wd_bin_size(args["wd"]) * wd_bin_size
                     for args, aep in zip(kwargs_lst, map_func(aep_function, kwargs_lst))
                 ],
                 0,
@@ -473,11 +479,14 @@ class WindFarmModel(ABC):
                 kwargs.update({n: v for n, v in zip(wrt_arg, args)})
                 return self.aep(**kwargs)
 
-            f = gradient_method(wrap_aep, True, tuple(range(len(wrt_arg))), **gradient_method_kwargs)
+            f = gradient_method(wrap_aep, True, tuple(
+                range(len(wrt_arg))), **gradient_method_kwargs)
             return np.array(f(*[kwargs.pop(n) for n in wrt_arg], **kwargs))
         else:
-            argnum = [["x", "y", "h", "type", "wd", "ws"].index(a) for a in atleast_1d(wrt_arg)]
-            f = gradient_method(self.aep, True, argnum, **gradient_method_kwargs)
+            argnum = [["x", "y", "h", "type", "wd", "ws"].index(
+                a) for a in atleast_1d(wrt_arg)]
+            f = gradient_method(self.aep, True, argnum,
+                                **gradient_method_kwargs)
             return f
 
     def _aep_gradients_kwargs(self, kwargs):
@@ -507,8 +516,10 @@ class SimulationResult(xr.Dataset):
 
         coords = {k: (dep, v, {'Description': d}) for k, dep, v, d in [
             ('wt', 'wt', np.arange(n_wt, dtype=int), 'Wind turbine number'),
-            ('wd', ('wd', 'time')['time' in lw], lw.wd, 'Ambient reference wind direction [deg]'),
-            ('ws', ('ws', 'time')['time' in lw], lw.ws, 'Ambient reference wind speed [m/s]'),
+            ('wd', ('wd', 'time')['time' in lw], lw.wd,
+             'Ambient reference wind direction [deg]'),
+            ('ws', ('ws', 'time')['time' in lw], lw.ws,
+             'Ambient reference wind speed [m/s]'),
             ('type', 'wt', np.zeros((n_wt,), dtype=int) + type_i, 'Wind turbine type')]}
         if 'time' in lw:
             coords['time'] = ('time', lw.time)
@@ -540,14 +551,18 @@ class SimulationResult(xr.Dataset):
             if k.endswith("_ilk"):
                 v = kwargs[k]
                 if k in {"x_ilk", "y_ilk"}:
-                    dims = ["wt"] + [d for d, s in zip(ilk_dims[1:], np.shape(v)[1:]) if s > 1]
-                    v = v.squeeze(tuple([i for i, d in enumerate(v.shape[1:], 1) if d == 1]))
+                    dims = ["wt"] + [d for d,
+                                     s in zip(ilk_dims[1:], np.shape(v)[1:]) if s > 1]
+                    v = v.squeeze(
+                        tuple([i for i, d in enumerate(v.shape[1:], 1) if d == 1]))
                 else:
                     dims = [d for d, s in zip(ilk_dims, np.shape(v)) if s != 1]
-                    v = v.squeeze(tuple([i for i, d in enumerate(v.shape) if d == 1]))
+                    v = v.squeeze(
+                        tuple([i for i, d in enumerate(v.shape) if d == 1]))
                 v = np.broadcast_to(v, [len(coords[k][1]) for k in dims])
                 n = k.replace("_ilk", "")
-                data_vars[n] = (dims, v, {"Description": description.get(n, "")})
+                data_vars[n] = (
+                    dims, v, {"Description": description.get(n, "")})
 
         for n in localWind:
             if n[-4:] == "_ilk":
@@ -558,7 +573,8 @@ class SimulationResult(xr.Dataset):
             elif n in ["ws_lower", "ws_upper"]:
                 if "time" not in lw:
                     v = localWind[n]
-                    dims = [n for n, d in zip(("wt", "wd", "ws"), v.shape) if d > 1 or d == 0]
+                    dims = [n for n, d in zip(
+                        ("wt", "wd", "ws"), v.shape) if d > 1 or d == 0]
                     data_vars[n[:-4]] = (dims, v.squeeze())
             else:
                 data_vars[n] = localWind[n]
@@ -567,9 +583,11 @@ class SimulationResult(xr.Dataset):
 
         # for backward compatibility
         for k in ["WD", "WS", "TI", "P", "WS_eff", "TI_eff"]:
-            setattr(self.__class__, "%s_ilk" % k, property(lambda self, k=k: self[k].ilk()))
+            setattr(self.__class__, "%s_ilk" %
+                    k, property(lambda self, k=k: self[k].ilk()))
         setattr(self.__class__, "ct_ilk", property(lambda self: self.CT.ilk()))
-        setattr(self.__class__, "power_ilk", property(lambda self: self.Power.ilk()))
+        setattr(self.__class__, "power_ilk", property(
+            lambda self: self.Power.ilk()))
 
     def aep_ilk(self, normalize_probabilities=False, with_wake_loss=True):
         """Anual Energy Production of all turbines (i), wind directions (l) and wind speeds (k) in  in GWh
@@ -611,19 +629,23 @@ class SimulationResult(xr.Dataset):
         if with_wake_loss:
             power_ilk = self.Power.ilk()
         else:
-            power_ilk = self.windFarmModel.windTurbines.power(self.WS.ilk(self.Power.ilk().shape), **self.wt_kwargs)
+            power_ilk = self.windFarmModel.windTurbines.power(
+                self.WS.ilk(self.Power.ilk().shape), **self.wt_kwargs)
 
         if linear_power_segments:
             s = "The linear_power_segments method "
             assert all([n in self for n in ["Weibull_A", "Weibull_k", "Sector_frequency"]]), (
                 s + "requires a site with weibull information"
             )
-            assert normalize_probabilities is False, s + "cannot be combined with normalize_probabilities"
+            assert normalize_probabilities is False, s + \
+                "cannot be combined with normalize_probabilities"
             assert np.all(self.Power.isel(ws=0) == 0) and np.all(self.Power.isel(ws=-1) == 0), (
-                s + "requires first wind speed to have no power (just below cut-in)"
+                s +
+                "requires first wind speed to have no power (just below cut-in)"
             )
             assert np.all(self.Power.isel(ws=-1) == 0), (
-                s + "requires last wind speed to have no power (just above cut-out)"
+                s +
+                "requires last wind speed to have no power (just above cut-out)"
             )
             weighted_power = weibull.WeightedPower(
                 self.ws.values,
@@ -680,7 +702,8 @@ class SimulationResult(xr.Dataset):
             for m in np.unique(m_lst):
                 i = np.where(m_lst == m)[0]
                 if "TI_eff" in kwargs:
-                    kwargs_ik["TI_eff"] = ((p_wd_ilk * TI_eff_ilk**m).sum(1)) ** (1 / m)
+                    kwargs_ik["TI_eff"] = (
+                        (p_wd_ilk * TI_eff_ilk**m).sum(1)) ** (1 / m)
                 loads.extend(wt.loads(ws_ik, run_only=i, **kwargs_ik))
                 i_lst.extend(i)
             loads = [loads[i] for i in np.argsort(i_lst)]  # reorder
@@ -702,7 +725,8 @@ class SimulationResult(xr.Dataset):
                 ds["P"] = self.P
             t_flowcase = ds.P * lifetime_years * 365 * 24 * 3600
             f = ds.DEL.mean()  # factor used to reduce numerical errors in power
-            ds["LDEL"] = ((t_flowcase * (ds.DEL / f) ** ds.m).sum("ws") / n_eq_lifetime) ** (1 / ds.m) * f
+            ds["LDEL"] = ((t_flowcase * (ds.DEL / f) **
+                          ds.m).sum("ws") / n_eq_lifetime) ** (1 / ds.m) * f
             ds.LDEL.attrs["description"] = "Lifetime (%d years) equivalent loads, n_eq_L=%d" % (
                 lifetime_years,
                 n_eq_lifetime,
@@ -779,11 +803,13 @@ class SimulationResult(xr.Dataset):
                     "duration" in self
                 ), "Simulation must contain a dataarray 'duration' with length of time steps in seconds"
                 t_flowcase = self.duration
-                ds["LDEL"] = ((t_flowcase * (ds.DEL / f) ** ds.m).sum(("time")) / n_eq_lifetime) ** (1 / ds.m) * f
+                ds["LDEL"] = ((t_flowcase * (ds.DEL / f) **
+                              ds.m).sum(("time")) / n_eq_lifetime) ** (1 / ds.m) * f
             else:
                 ds["P"] = self.P
                 t_flowcase = ds.P * 3600 * 24 * 365 * lifetime_years
-                ds["LDEL"] = ((t_flowcase * (ds.DEL / f) ** ds.m).sum(("wd", "ws")) / n_eq_lifetime) ** (1 / ds.m) * f
+                ds["LDEL"] = ((t_flowcase * (ds.DEL / f) **
+                              ds.m).sum(("wd", "ws")) / n_eq_lifetime) ** (1 / ds.m) * f
             ds.LDEL.attrs["description"] = "Lifetime (%d years) equivalent loads, n_eq_L=%d" % (
                 lifetime_years,
                 n_eq_lifetime,
@@ -802,12 +828,14 @@ class SimulationResult(xr.Dataset):
         }
 
         wt = self.windFarmModel.windTurbines
-        freqs, sound_power_level = sound_power_level_interp(wt.ds, ws_eff_i, **wt_kwargs)
+        freqs, sound_power_level = sound_power_level_interp(
+            wt.ds, ws_eff_i, **wt_kwargs)
         # sound_power_level: shape (n_modes, n_freqs, n_wsp, n_yaw)
-        sound_power_level = sound_power_level[:, :, 0, 0]  # select first wind speed and yaw
- 
+        # select first wind speed and yaw
+        sound_power_level = sound_power_level[:, :, 0, 0]
+
         delta_swl_correction = self._create_directional_correction(wt)
- 
+
         return noiseModel(
             src_x=self.x.values,
             src_y=self.y.values,
@@ -840,7 +868,8 @@ class SimulationResult(xr.Dataset):
                 _description_
             """
             rec_x, rec_y = np.atleast_1d(rec_x), np.atleast_1d(rec_y)
-            rec_h = np.atleast_1d(rec_h) if not np.isscalar(rec_h) else np.full_like(rec_x, rec_h)
+            rec_h = np.atleast_1d(rec_h) if not np.isscalar(
+                rec_h) else np.full_like(rec_x, rec_h)
 
             n_src, n_rec = len(self.x.values), len(rec_x)
 
@@ -856,7 +885,8 @@ class SimulationResult(xr.Dataset):
             mode_vals = get_param_array("mode")
 
             # Compute directional vectors and coordinates
-            rotor_azimuth = -np.radians(90 + (wd_deg + yaw_deg))  # TODO: check if this is correct
+            # TODO: check if this is correct
+            rotor_azimuth = -np.radians(90 + (wd_deg + yaw_deg))
             cos_az, sin_az = (
                 np.cos(rotor_azimuth)[:, None],
                 np.sin(rotor_azimuth)[:, None],
@@ -877,22 +907,23 @@ class SimulationResult(xr.Dataset):
             lat_flat = lat_deg.ravel()  # Shape: (n_src * n_rec,)
             lon_flat = lon_deg.ravel()  # Shape: (n_src * n_rec,)
 
-
             delta_swl_result = interpolate_directivity(
-               wt.ds, mode_vals, 
-               freqs, ws_vals, yaw_deg, 
-               lat_flat, lon_flat
+                wt.ds, mode_vals,
+                freqs, ws_vals, yaw_deg,
+                lat_flat, lon_flat
             )
-            
+
             # delta_swl_result = wt.fast_spherical_interpolate_directivity(
             #         mode_vals, freqs, ws_vals, yaw_deg, lat_flat, lon_flat
             #     )
 
             src_indices = np.arange(n_src)[:, None]  # Shape: (n_src, 1)
-            obs_indices = np.arange(n_rec)[None, :] + src_indices * n_rec  # Shape: (n_src, n_rec)
-            
+            # Shape: (n_src, n_rec)
+            obs_indices = np.arange(n_rec)[None, :] + src_indices * n_rec
+
             # include yaw dependency which is currently absent in delta_swl_result
-            result = delta_swl_result[src_indices, obs_indices]  # Shape: (n_src, n_rec, 1, 1, n_freq)
+            # Shape: (n_src, n_rec, 1, 1, n_freq)
+            result = delta_swl_result[src_indices, obs_indices]
 
             return result
 
@@ -927,8 +958,9 @@ class SimulationResult(xr.Dataset):
         ws_size = max(1, len(np.atleast_1d(self.ws.values)))
 
         spl_total = spl_jlk.reshape(grid_shape + (wd_size, ws_size))
-        spl_freq = spl_jlkf.reshape(grid_shape + (wd_size, ws_size, len(nm.freqs)))
-        
+        spl_freq = spl_jlkf.reshape(
+            grid_shape + (wd_size, ws_size, len(nm.freqs)))
+
         coords = {
             "x": X[0],
             "y": Y[:, 0],
@@ -972,7 +1004,8 @@ class SimulationResult(xr.Dataset):
                 d_i=self.windFarmModel.windTurbines.diameter(self.type),
             )
         else:
-            raise NotImplementedError("The grid must be instance of Grid or None")
+            raise NotImplementedError(
+                "The grid must be instance of Grid or None")
         return grid + (plane,)
 
     @property
@@ -988,12 +1021,14 @@ class SimulationResult(xr.Dataset):
                             ['dw_ijlk', 'hcw_ijlk', 'cw_ijlk'],
                             self.windFarmModel.site.distance(self.x.ilk(), self.y.ilk(), self.h.ilk(),
                                                              WD_ilk=self.WD.ilk(), wd_l=self.wd.values))}
-                        wt_kwargs.update({k: v for k, v in dist.items() if k in lst})
+                        wt_kwargs.update(
+                            {k: v for k, v in dist.items() if k in lst})
                         if k == "cw_ijlk":  # pragma: no cover
                             raise NotImplementedError()
                     elif not opt:  # pragma: no cover
                         # should never come here
-                        raise KeyError(f"Argument, {k}, required to calculate power and ct not found")
+                        raise KeyError(
+                            f"Argument, {k}, required to calculate power and ct not found")
         return wt_kwargs
 
     def aep_map(self, grid=None, wd=None, ws=None, type=0, normalize_probabilities=False, memory_GB=1, n_cpu=1):  # @ReservedAssignment
@@ -1002,9 +1037,11 @@ class SimulationResult(xr.Dataset):
         sim_res = self.sel(wd=wd, ws=ws)
         for k in self.__slots__:
             setattr(sim_res, k, getattr(self, k))
-        aep_j = self.windFarmModel._aep_map(x_j[:, na], y_j[:, na], h_j[:, na], type, sim_res, n_cpu, memory_GB)
+        aep_j = self.windFarmModel._aep_map(
+            x_j[:, na], y_j[:, na], h_j[:, na], type, sim_res, n_cpu, memory_GB)
         if normalize_probabilities:
-            lw_j = self.windFarmModel.site.local_wind(x=x_j, y=y_j, h=h_j, wd=wd, ws=ws)
+            lw_j = self.windFarmModel.site.local_wind(
+                x=x_j, y=y_j, h=h_j, wd=wd, ws=ws)
             aep_j /= lw_j.P_ilk.sum((1, 2))
 
         if plane[0] == "XY":
@@ -1063,7 +1100,8 @@ class SimulationResult(xr.Dataset):
         X, Y, x_j, y_j, h_j, plane = self._get_grid(grid)
         wd, ws, sim_res = self._get_flow_map_args(wd, ws, time)
         lw_j, WS_eff_jlk, TI_eff_jlk = self.windFarmModel._flow_map(
-            x_j[:, na], y_j[:, na], h_j[:, na], self.localWind, wd, ws, sim_res, D_dst=D_dst,
+            x_j[:, na], y_j[:, na], h_j[:,
+                                        na], self.localWind, wd, ws, sim_res, D_dst=D_dst,
             memory_GB=memory_GB, n_cpu=n_cpu, verbose=verbose)
         return FlowMap(sim_res, X, Y, lw_j, WS_eff_jlk, TI_eff_jlk, plane=plane)
 
@@ -1086,11 +1124,13 @@ class SimulationResult(xr.Dataset):
         if wd is None:
             wd = self.wd
         else:
-            assert np.all(np.isin(wd, self.wd)), "All wd=%s not in simulation result" % wd
+            assert np.all(np.isin(wd, self.wd)
+                          ), "All wd=%s not in simulation result" % wd
         if ws is None:
             ws = self.ws
         else:
-            assert np.all(np.isin(ws, self.ws)), "All ws=%s not in simulation result (ws=%s)" % (ws, self.ws)
+            assert np.all(np.isin(
+                ws, self.ws)), "All ws=%s not in simulation result (ws=%s)" % (ws, self.ws)
         return np.atleast_1d(wd), np.atleast_1d(ws)
 
     def save(self, filename):
@@ -1173,7 +1213,8 @@ def main():
         x, y = site.initial_position.T
         windTurbines = IEA37_WindTurbines()
         with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', 'The .* model is not representative of the setup used in the literature')
+            warnings.filterwarnings(
+                'ignore', 'The .* model is not representative of the setup used in the literature')
             wind_farm_model = IEA37SimpleBastankhahGaussian(site, windTurbines)
         simulation_result = wind_farm_model(x, y)
         fm = simulation_result.flow_map(wd=30)
