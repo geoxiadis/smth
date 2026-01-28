@@ -7,6 +7,7 @@ from py_wake.examples.data.swt_dd_142_4100_noise.swt_dd_142_4100 import SWT_DD_1
 from py_wake.examples.data.noise_example.turbine_noise import TurbineNoise
 from py_wake.site._site import UniformSite
 from py_wake.utils.layouts import rectangle
+from py_wake.site.distance import StraightDistance
 import warnings
 
 
@@ -22,11 +23,11 @@ def test_iso_noise_model():
     source_y = [0, 500]
 
     freqs = np.array([63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0])
-
+    freqs_init = freqs.copy()
     # If the source and receiver are placed in complex
     # terrain then the height of the terrain should be added to these heights.
-    z_hub = 100  # source height
-    z_rec = 2  # receiver height
+    z_hub = np.array([100])  # source height
+    z_rec = np.array([2])  # receiver height
 
     ground_type = 1  # Ranging from 0 to 1 (hard to soft ground)
 
@@ -34,7 +35,12 @@ def test_iso_noise_model():
                                   [89.2, 93.2, 96.2, 97.6, 100., 101.3, 95.7, 83.1]])
     iso = ISONoiseModel(src_x=source_x, src_y=source_y, src_h=z_hub, freqs=freqs, sound_power_level=sound_power_level)
     patm = 101325.0  # atmospheric pressure in pascal
-    Delta_SPL = iso.transmission_loss(rec_x, rec_y, z_rec, ground_type, patm, Temp, RHum)
+    distance = StraightDistance()
+    dx_ijlk, dy_ijlk, dh_ijlk = distance(source_x, source_y, z_hub, wd_l=np.array([270]),
+                                         dst_xyh_jlk=[rec_x, rec_y, z_rec])    
+    Delta_SPL = iso.transmission_loss(freqs_init, freqs, dx_ijlk, dy_ijlk, dh_ijlk, 
+                                      z_hub, z_rec, 
+                                      ground_type, patm, Temp, RHum)
     delta_SPL_ref = [[[-74.18868997998351, -82.6237111823142, -85.106899362965, -84.78075941279131, -87.47936788035022,
                        -95.0531580482448, -119.90461076531315, -216.18076560019855],
                       [-77.78341234414849, -86.43781608834009, -89.6588031834609, -91.0544347291193, -96.14098255652445,
