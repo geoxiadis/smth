@@ -311,7 +311,7 @@ def main():
                    ylabel='Sound pressure level [dB]', ax=ax2)
         ax2.legend()
         plt.tight_layout()
-        # plt.show()
+        plt.show()
         # plt.savefig("iso_noise_model_receivers.png", dpi=150)
         # plt.close()
 
@@ -333,7 +333,7 @@ def main():
         cbar.set_label('Total SPL [dB]')
 
         plt.tight_layout()
-        # plt.show()
+        plt.show()
         # fig.savefig("iso_noise_model_map.png", dpi=150)
 
 

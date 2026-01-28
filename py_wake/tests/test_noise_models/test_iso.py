@@ -8,6 +8,7 @@ from py_wake.examples.data.noise_example.turbine_noise import TurbineNoise
 from py_wake.site._site import UniformSite
 from py_wake.utils.layouts import rectangle
 from py_wake.site.distance import StraightDistance
+from py_wake.flow_map import XYGrid
 import warnings
 
 
@@ -61,7 +62,7 @@ def test_iso_noise_model():
 
 def test_iso_noise_map():
     """Test noise map functionality"""
-    wt = SWT_DD_142_4100()
+    wt = TurbineNoise() #SWT_DD_142_4100()
     with warnings.catch_warnings():
         warnings.filterwarnings('ignore', 'The BastankhahGaussian model is not representative of the setup')
         wfm = BastankhahGaussian(UniformSite(), wt)
@@ -73,7 +74,9 @@ def test_iso_noise_map():
     total_spl_jlk, spl_jlkf = nm(rec_x=[1000, 2000], rec_y=[500, 500], rec_h=2,
                                  patm=101325.0, Temp=20, RHum=80, ground_type=0.5)
 
-    nmap = sim_res.noise_map()
+    nmap = sim_res.noise_map(grid=XYGrid(x=np.linspace(-500, 3500, 50),
+                             y=np.linspace(-500, 1500, 50),
+                             h=2))
 
     assert not np.any(np.isnan(total_spl_jlk))
     assert not np.any(np.isnan(spl_jlkf))
