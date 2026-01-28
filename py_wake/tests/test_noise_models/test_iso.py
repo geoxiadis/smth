@@ -23,7 +23,8 @@ def test_iso_noise_model():
     source_x = [0, 0]  # source xy-position
     source_y = [0, 500]
 
-    freqs = np.array([63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0])
+    freqs = np.array([63.0, 125.0, 250.0, 500.0,
+                     1000.0, 2000.0, 4000.0, 8000.0])
     freqs_init = freqs.copy()
     # If the source and receiver are placed in complex
     # terrain then the height of the terrain should be added to these heights.
@@ -34,13 +35,14 @@ def test_iso_noise_model():
 
     sound_power_level = np.array([[89.4, 93.6, 97.2, 98.6, 101., 102.3, 96.7, 84.1],
                                   [89.2, 93.2, 96.2, 97.6, 100., 101.3, 95.7, 83.1]])
-    iso = ISONoiseModel(src_x=source_x, src_y=source_y, src_h=z_hub, freqs=freqs, sound_power_level=sound_power_level)
+    iso = ISONoiseModel(src_x=source_x, src_y=source_y, src_h=z_hub,
+                        freqs=freqs, sound_power_level=sound_power_level)
     patm = 101325.0  # atmospheric pressure in pascal
     distance = StraightDistance()
     dx_ijlk, dy_ijlk, dh_ijlk = distance(source_x, source_y, z_hub, wd_l=np.array([270]),
-                                         dst_xyh_jlk=[rec_x, rec_y, z_rec])    
-    Delta_SPL = iso.transmission_loss(freqs_init, freqs, dx_ijlk, dy_ijlk, dh_ijlk, 
-                                      z_hub, z_rec, 
+                                         dst_xyh_jlk=[rec_x, rec_y, z_rec])
+    Delta_SPL = iso.transmission_loss(freqs_init, freqs, dx_ijlk, dy_ijlk, dh_ijlk,
+                                      z_hub, z_rec,
                                       ground_type, patm, Temp, RHum)
     delta_SPL_ref = [[[-74.18868997998351, -82.6237111823142, -85.106899362965, -84.78075941279131, -87.47936788035022,
                        -95.0531580482448, -119.90461076531315, -216.18076560019855],
@@ -55,16 +57,18 @@ def test_iso_noise_model():
                       [-79.70589475152278, -89.3092674680563, -93.29138286495427, -96.46309784962982, -104.01291072740128,
                          -119.40308086820056, -169.44754252350324, -363.32306335554176]]]
     npt.assert_array_almost_equal(delta_SPL_ref, Delta_SPL[:, :, 0, 0], 8)
-    total_spl, spl = iso(rec_x, rec_y, z_rec, ground_type=ground_type, patm=patm, Temp=Temp, RHum=RHum)
+    total_spl, spl = iso(
+        rec_x, rec_y, z_rec, ground_type=ground_type, patm=patm, Temp=Temp, RHum=RHum)
     npt.assert_array_almost_equal([23.068816073636583, 18.034141554900494, 15.043308370722233],
                                   total_spl[:, 0, 0])
 
 
 def test_iso_noise_map():
     """Test noise map functionality"""
-    wt = TurbineNoise() #SWT_DD_142_4100()
+    wt = TurbineNoise()  # SWT_DD_142_4100()
     with warnings.catch_warnings():
-        warnings.filterwarnings('ignore', 'The BastankhahGaussian model is not representative of the setup')
+        warnings.filterwarnings(
+            'ignore', 'The BastankhahGaussian model is not representative of the setup')
         wfm = BastankhahGaussian(UniformSite(), wt)
     x, y = rectangle(3, 3, 5 * wt.diameter())
 
@@ -104,22 +108,29 @@ def test_iso_delta_swl_correction():
 
 def test_iso_edge_cases():
     """Test various edge cases for complete coverage"""
-    freqs = np.array([63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0])
+    freqs = np.array([63.0, 125.0, 250.0, 500.0,
+                     1000.0, 2000.0, 4000.0, 8000.0])
 
     iso = ISONoiseModel(src_x=[0], src_y=[0], src_h=100, freqs=freqs,
                         sound_power_level=np.array([[85.0, 90.0, 95.0, 92.0, 88.0, 85.0, 80.0, 75.0]]))
 
-    total_spl_hard, _ = iso([1000], [0], rec_h=2, patm=101325.0, Temp=20, RHum=80, ground_type=0.0)
-    total_spl_soft, _ = iso([1000], [0], rec_h=2, patm=101325.0, Temp=20, RHum=80, ground_type=1.0)
+    total_spl_hard, _ = iso([1000], [0], rec_h=2,
+                            patm=101325.0, Temp=20, RHum=80, ground_type=0.0)
+    total_spl_soft, _ = iso([1000], [0], rec_h=2,
+                            patm=101325.0, Temp=20, RHum=80, ground_type=1.0)
 
     iso_low = ISONoiseModel(src_x=[0], src_y=[0], src_h=10, freqs=freqs,
                             sound_power_level=np.array([[85.0, 90.0, 95.0, 92.0, 88.0, 85.0, 80.0, 75.0]]))
 
-    total_spl_close, _ = iso_low([100], [0], rec_h=2, patm=101325.0, Temp=20, RHum=80, ground_type=1.0)
-    total_spl_far, _ = iso_low([2000], [0], rec_h=2, patm=101325.0, Temp=20, RHum=80, ground_type=1.0)
+    total_spl_close, _ = iso_low(
+        [100], [0], rec_h=2, patm=101325.0, Temp=20, RHum=80, ground_type=1.0)
+    total_spl_far, _ = iso_low(
+        [2000], [0], rec_h=2, patm=101325.0, Temp=20, RHum=80, ground_type=1.0)
 
-    total_spl_cold, _ = iso([1000], [0], rec_h=2, patm=101325.0, Temp=-10, RHum=50, ground_type=0.5)
-    total_spl_hot, _ = iso([1000], [0], rec_h=2, patm=101325.0, Temp=40, RHum=50, ground_type=0.5)
+    total_spl_cold, _ = iso([1000], [0], rec_h=2,
+                            patm=101325.0, Temp=-10, RHum=50, ground_type=0.5)
+    total_spl_hot, _ = iso([1000], [0], rec_h=2,
+                           patm=101325.0, Temp=40, RHum=50, ground_type=0.5)
 
     assert not np.any(np.isnan(total_spl_hard))
     assert not np.any(np.isnan(total_spl_soft))
