@@ -5,6 +5,8 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 from osgeo import gdal
+gdal.DontUseExceptions()
+
 import datetime as dt                   # Used to add today's date to the WTG file
 import xml.etree.ElementTree as ET      # Used to write the wtg file
 
@@ -37,6 +39,21 @@ logger.setLevel('INFO')
 # Keep a reference to the original implementation once
 if not hasattr(FlowMap, "_orig_plot_wake_map"):
     FlowMap._orig_plot_wake_map = FlowMap.plot_wake_map
+
+def _resolve_ti(TI, i, j):
+    if TI is None:
+        return float("nan")
+    # scalar
+    if getattr(TI, "ndim", 0) == 0:
+        return float(TI)
+    # 1D over wd
+    if TI.ndim == 1:
+        return float(TI[i])
+    # 2D over wd,ws
+    if TI.ndim == 2:
+        return float(TI[i, j])
+    raise ValueError("WakeBlaster: TI has unsupported dimensions; expected scalar, 1D(wd) or 2D(wd,ws).")
+
 
 
 def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=None, **kwargs):
@@ -512,6 +529,10 @@ class WakeBlaster(PropagateDownwind):
         """
         self.num_wt = len(x)
         self.flow_cases = self.create_flowcases()
+        
+        # derive dimensions from actual flow_cases (robust across sites)
+        self.num_wd = int(self.flow_cases["WindDirection"].nunique())
+        self.num_ws = int(self.flow_cases["WindSpeed_avg"].nunique())
 
         design_id = f"{self.windTurbines.name()}_{self.windTurbines.hub_height()}"
         wtg_filename = f"{design_id}.wtg"
@@ -525,7 +546,7 @@ class WakeBlaster(PropagateDownwind):
         layout = pd.DataFrame({
             "Easting": x,
             "Northing": y,
-            "ID": range(self.num_wt),
+            "ID": range(0, self.num_wt + 0),
             "DesignID": design_id
         })
         turbines = [
@@ -581,38 +602,81 @@ class WakeBlaster(PropagateDownwind):
         if return_simulationResult:
             return self.parse_results(turbine_res, x, y)
         return None
+   
 
     def create_flowcases(self) -> pd.DataFrame:
-        """
-        Generate flow cases DataFrame from site wind statistics.
-        """
         HOURS_PER_YEAR = 8766
-        records = []
         ds = self.site.ds
-        for i, (wd, freq) in enumerate(zip(ds.coords["wd"].values[:-1],
-                                           ds["Sector_frequency"].values[:-1])):
-            WS_POI = ds["ws"].values
-            g = []
-            for si, _ in enumerate(WS_POI):
-                if si > 0:
-                    g.append(
-                        weibull.cdf(WS_POI[si], ds["Weibull_A"][i].values, ds["Weibull_k"][i].values) -
-                        weibull.cdf(WS_POI[si - 1], ds["Weibull_A"][i].values, ds["Weibull_k"][i].values)
-                    )
-                else:
-                    g.append(
-                        weibull.cdf(WS_POI[si], ds["Weibull_A"][i].values, ds["Weibull_k"][i].values) -
-                        weibull.cdf(0, ds["Weibull_A"][i].values, ds["Weibull_k"][i].values)
-                    )
-
-            for cnt, ws in enumerate(WS_POI):
-                records.append([ws, wd, freq * g[cnt] * HOURS_PER_YEAR])
-        flow_cases = pd.DataFrame(records, columns=["WindSpeed_avg", "WindDirection", "weighting"])
-        flow_cases['WindSpeed_std'] = ds['TI'].values * flow_cases['WindSpeed_avg']
-        flow_cases.reset_index(drop=True, inplace=True)
-        logger.debug("Flow cases shape: %s", flow_cases.shape)
+    
+        # wd handling (avoid unconditional [:-1])
+        wd_vals = ds.coords["wd"].values
+        drop_last_wd = len(wd_vals) > 1 and (wd_vals[-1] == 360 or wd_vals[-1] == wd_vals[0] + 360)
+        wd_idx = slice(None, -1) if drop_last_wd else slice(None)
+    
+        ws_vals = ds["ws"].values
+        records = []
+    
+        has_weibull = all(k in ds.variables for k in ["Sector_frequency", "Weibull_A", "Weibull_k"])
+        has_prob = "P" in ds.variables
+    
+        if has_weibull:
+            sector_freq = ds["Sector_frequency"].values[wd_idx]
+            A = ds["Weibull_A"].values[wd_idx]
+            k = ds["Weibull_k"].values[wd_idx]
+    
+            # TI can be scalar/1D/2D; we'll resolve per record
+            TI = ds["TI"].values if "TI" in ds.variables else None
+    
+            for i, wd in enumerate(wd_vals[wd_idx]):
+                # Weibull bin probabilities along ws
+                g = []
+                for si in range(len(ws_vals)):
+                    lo = 0 if si == 0 else ws_vals[si - 1]
+                    hi = ws_vals[si]
+                    g.append(weibull.cdf(hi, A[i], k[i]) - weibull.cdf(lo, A[i], k[i]))
+    
+                for j, ws in enumerate(ws_vals):
+                    p = sector_freq[i] * g[j]
+                    weighting = p * HOURS_PER_YEAR
+    
+                    ti_val = _resolve_ti(TI, i, j)  # helper (see below)
+                    records.append([ws, wd, weighting, ti_val])
+    
+        elif has_prob:
+            P = ds["P"].values
+            TI = ds["TI"].values if "TI" in ds.variables else None
+    
+            # Expect P dims align with wd,ws in most UniformSite cases
+            # Handle wd slicing consistently
+            if P.ndim == 2:
+                P2 = P[wd_idx, :]
+                for i, wd in enumerate(wd_vals[wd_idx]):
+                    for j, ws in enumerate(ws_vals):
+                        weighting = float(P2[i, j]) * HOURS_PER_YEAR
+                        ti_val = _resolve_ti(TI, i, j)
+                        records.append([ws, wd, weighting, ti_val])
+            else:
+                raise ValueError("WakeBlaster create_flowcases: 'P' must be 2D over ('wd','ws') for this site.")
+    
+            # Optional: normalize if needed
+            # total_p = P2.sum()
+            # if abs(total_p - 1.0) > 1e-6: P2 = P2 / total_p
+    
+        else:
+            raise ValueError(
+                "WakeBlaster create_flowcases: Unsupported site dataset. "
+                "Expected either Weibull fields (Sector_frequency, Weibull_A, Weibull_k) "
+                "or probability table field 'P' with coords wd/ws."
+            )
+    
+        flow_cases = pd.DataFrame(records, columns=["WindSpeed_avg", "WindDirection", "weighting", "TI"])
+        # Fallback TI if missing
+        if flow_cases["TI"].isna().all():
+            flow_cases["TI"] = 0.1  # or a class default
+        flow_cases["WindSpeed_std"] = flow_cases["TI"] * flow_cases["WindSpeed_avg"]
+        flow_cases = flow_cases.drop(columns=["TI"]).reset_index(drop=True)
         return flow_cases
-
+    
     def wait_for_results(self, sim_id: str) -> None:
         """
         Poll simulation until completion or timeout (12h).
@@ -655,9 +719,9 @@ class WakeBlaster(PropagateDownwind):
         SimulationResult
             Parsed results including WS_eff_ilk, TI_eff_ilk, power_ilk, ct_ilk, and P_ilk.
         """
-        num_wt = len(x)
-        num_wd = len(self.site.ds.wd) - 1
-        num_ws = len(self.site.ds.ws)
+        num_wt = self.num_wt
+        num_wd = self.num_wd
+        num_ws = self.num_ws
 
         flow_cases = self.flow_cases.copy()
         flow_cases = flow_cases.rename(columns={
@@ -702,14 +766,14 @@ class WakeBlaster(PropagateDownwind):
 
         ct_ilk = np.zeros((num_wt, num_wd, num_ws))
         ds = self.site.ds
-        wd_array = ds.coords["wd"].values[:-1]
-        ws_array = ds.coords["ws"].values
+        wd_array = np.sort(self.flow_cases["WindDirection"].unique())
+        ws_array = np.sort(self.flow_cases["WindSpeed_avg"].unique())
 
         local_wind = self.site.local_wind(
             x=x, y=y,
             h=[self.windTurbines.hub_height()] * num_wt,
-            wd=self.site.ds.coords['wd'].values[:-1],
-            ws=self.site.ds.coords['ws'].values
+            wd=wd_array,
+            ws=ws_array
         )
 
         return WakeBlasterResult(
