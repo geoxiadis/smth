@@ -159,7 +159,7 @@ class All2AllIterative(EngineeringWindFarmModel):
                         warnings.filterwarnings('ignore', 'invalid value encountered in divide')
                         unstable = ((ac / sc < 0.1) &  # change in ct < 10% of step sum
                                     (sc / mc > 2.8))  # step sum > 2.5 x max step, e.g. up-down-up
-                    self.unstable |= np.any(unstable, 0)
+                    self.unstable = np.any(unstable, 0)
                     # for unstable turbines, ct can only go down (typically shut-down)
                     ct_ilk = np.where(self.unstable, np.minimum(self.ct_ilk_lst[-1], ct_ilk), ct_ilk)
                 self.ct_ilk_lst.append(ct_ilk)
