@@ -205,3 +205,19 @@ def test_convergence():
 #     if 0:
 #         sim_res.flow_map().plot_wake_map()
 #         plt.show()
+
+
+def test_propagate_downwind_in_blockage_free_case_matches_all2all():
+    N = 6    # turbines per side (N x N grid)
+    sep = 3  # turbine separation [D]
+    site = Hornsrev1Site()
+    wt = V80()
+    x, y = [v.flatten() for v in np.meshgrid(np.arange(N) * sep * wt.diameter(), np.arange(N) * sep * wt.diameter())]
+    wfm = All2AllIterative(site, windTurbines=wt,
+                           wake_deficitModel=TurboGaussianDeficit(),
+                           superpositionModel=LinearSum(),
+                           solver=FixedPointSolver(step_func=FixedStep()))
+    sim_res_default = wfm(x, y)
+    sim_res_ws_eff0 = wfm(x, y, WS_eff=0)
+    import numpy
+    numpy.testing.assert_allclose(sim_res_default['WS_eff'].values, sim_res_ws_eff0['WS_eff'].values, atol=1e-6)
