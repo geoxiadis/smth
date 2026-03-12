@@ -1,5 +1,7 @@
 import json
 import os
+from pathlib import Path
+
 import pandas as pd
 import numpy as np
 import xarray as xr
@@ -10,6 +12,7 @@ gdal.DontUseExceptions()
 import datetime as dt                   # Used to add today's date to the WTG file
 import xml.etree.ElementTree as ET      # Used to write the wtg file
 
+import uuid
 
 from py_wake.deficit_models.deficit_model import WakeDeficitModel
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind
@@ -31,7 +34,8 @@ import time
 import h5py
 from typing import Any, Dict, Optional, Sequence
 from py_wake.wind_turbines import WindTurbines
-from py_wake.site import Site
+from py_wake.site import Site, UniformSite
+from py_wake.site._site import LocalWind
 
 logger = logging.getLogger("__main__")
 logger.setLevel('INFO')
@@ -54,7 +58,16 @@ def _resolve_ti(TI, i, j):
         return float(TI[i, j])
     raise ValueError("WakeBlaster: TI has unsupported dimensions; expected scalar, 1D(wd) or 2D(wd,ws).")
 
-
+def _resolve_flowmap_ti(TI, wd_idx=0, point_idx=0):
+    if TI is None:
+        return 0.1
+    if getattr(TI, "ndim", 0) == 0:
+        return float(TI)
+    if TI.ndim == 1:
+        return float(TI[wd_idx])
+    if TI.ndim == 2:
+        return float(TI[point_idx, wd_idx])
+    raise ValueError("Unsupported TI dimensions for flow_map")
 
 def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=None, **kwargs):
     """
@@ -406,65 +419,92 @@ class WakeBlasterResult(SimulationResult):
     ) -> FlowMap:
         """
         Generate a flow map for given wind direction and speed.
-
-        Parameters
-        ----------
-        wd : float
-            Wind direction for the flow map.
-        ws : float
-            Wind speed for the flow map.
-        grid_file : Optional[str], default None
-            Path to an existing Surfer grid file. If None, triggers simulation.
-        height : float, default 70.0
-            Height at which to compute the flow plane.
-
-        Returns
-        -------
-        FlowMap
-            Object containing grid and wake-loss data for plotting.
         """
-
+    
         # normalize list/array inputs to scalars
         wd = float(np.atleast_1d(wd)[0])
         ws = float(np.atleast_1d(ws)[0])
-
+    
         # 1) Run simulation if no grid file provided
         if grid_file is None:
             grid_file = self.windFarmModel.calculate_flow_plane(ws, wd, height)
             logging.debug("Generated flow plane file: %s", grid_file)
-
+    
         # 2) Load Surfer grid data
         grid_data = load_surfer_grid(grid_file)
-        x_coords = np.array(grid_data["x"])        # (nx,)
-        y_coords = np.array(grid_data["y"])        # (ny,)
-        wake_loss = np.array(grid_data["wake_loss"])  # (ny, nx)
-
+        x_coords = np.array(grid_data["x"])               # (nx,)
+        y_coords = np.array(grid_data["y"])               # (ny,)
+        wake_loss = np.array(grid_data["wake_loss"])      # (ny, nx)
+    
+        # Replace Surfer no-data placeholder if present
+        placeholder = 1.71041e38
+        wake_loss = np.where(wake_loss == placeholder, 1.0, wake_loss)
+    
         # 3) Construct meshgrid
-        X, Y = np.meshgrid(x_coords, y_coords)      # (ny, nx)
-
+        X, Y = np.meshgrid(x_coords, y_coords)            # (ny, nx)
+    
         # 4) Compute effective wind speed and turbulence
-        WS_eff_jlk = (ws * wake_loss)[..., np.newaxis]
-        ambient_TI = (
-            float(self.windFarmModel.site.ds["TI"].values)
-            if "TI" in self.windFarmModel.site.ds
-            else 0.1
-        )
-        TI_eff_jlk = np.full_like(WS_eff_jlk, ambient_TI)
-
-        # 5) Compute local wind at grid points
+        WS_eff_jlk = (ws * wake_loss)[..., np.newaxis]    # (ny, nx, 1)
+    
+        ds = self.windFarmModel.site.ds
+        ambient_TI = 0.1
+        if "TI" in ds:
+            TI_da = ds["TI"]
+    
+            # pick requested wind direction if available
+            if "wd" in TI_da.dims:
+                wd_vals = TI_da["wd"].values
+                wd_idx = int(np.argmin(np.abs(wd_vals - wd)))
+                TI_da = TI_da.isel(wd=wd_idx)
+    
+            # if point-based site, pick one representative point
+            if "i" in TI_da.dims:
+                TI_da = TI_da.isel(i=0)
+    
+            ambient_TI = float(np.asarray(TI_da).squeeze())
+    
+        TI_eff_jlk = np.full_like(WS_eff_jlk, ambient_TI, dtype=float)
+    
+        # 5) Create a PyWake-compatible localWind for the grid
+        # Use a simple uniform helper site for the plotting container only.
+        # The actual wake field still comes from the WakeBlaster Surfer grid.
         num_pts = X.size
         Xf = X.ravel()
         Yf = Y.ravel()
-        hf = np.full(num_pts, height)
-        localWind = self.windFarmModel.site.local_wind(
-            x=Xf, y=Yf, h=hf,
-            wd=np.array([wd]), ws=np.array([ws])
-        )
+        hf = np.full(num_pts, height, dtype=float)
+        
+        ds = self.windFarmModel.site.ds
+        ambient_TI = 0.1
+        if "TI" in ds:
+            TI_da = ds["TI"]
+            if "wd" in TI_da.dims:
+                wd_vals = TI_da["wd"].values
+                wd_idx = int(np.argmin(np.abs(wd_vals - wd)))
+                TI_da = TI_da.isel(wd=wd_idx)
+            if "i" in TI_da.dims:
+                TI_da = TI_da.isel(i=0)
+            ambient_TI = float(np.asarray(TI_da).squeeze())
+        
+        helper_site = UniformSite(p_wd=[1.0], ti=ambient_TI)
+        
+        localWind = helper_site.local_wind(
+            x=Xf,
+            y=Yf,
+            h=hf,
+            wd=np.array([wd], dtype=float),
+            ws=np.array([ws], dtype=float)
+        )    
+        npts = X.size
 
+        localWind["WS"] = (("i", "wd", "ws"), np.full((npts, 1, 1), ws, dtype=float))
+        localWind["WD"] = (("i", "wd", "ws"), np.full((npts, 1, 1), wd, dtype=float))
+        localWind["TI"] = (("i", "wd", "ws"), np.full((npts, 1, 1), ambient_TI, dtype=float))
+        localWind["P"]  = (("i", "wd", "ws"), np.ones((npts, 1, 1), dtype=float))
+    
         # 6) Preserve turbine coordinates in result
         self["x"] = ("wt", np.array(self.localWind.x.data))
         self["y"] = ("wt", np.array(self.localWind.y.data))
-
+    
         # 7) Create FlowMap
         plane = ["XY"]
         fm = FlowMap(
@@ -473,13 +513,12 @@ class WakeBlasterResult(SimulationResult):
             plane=plane,
             **kwargs
         )
-
+    
         # 8) Store grid file path for custom plotting
         fm.attrs["_grid_file"] = grid_file
         logging.info("Flow map generated for ws=%.1f, wd=%.1f", ws, wd)
-
+    
         return fm
-
 
 class WakeBlaster(PropagateDownwind):
     """
@@ -496,7 +535,9 @@ class WakeBlaster(PropagateDownwind):
         ct2a: Any = ct2a_madsen,
         superpositionModel: Any = SquaredSum(),
         deflectionModel: Optional[Any] = None,
-        turbulenceModel: Optional[Any] = None
+        turbulenceModel: Optional[Any] = None,
+        wtg_filename: Optional[str] = None,
+        auto_export_wtg: bool = True,
     ) -> None:
         super().__init__(
             site,
@@ -512,6 +553,9 @@ class WakeBlaster(PropagateDownwind):
         self.wakeblasterconfig = wakeblasterconfig
         self.num_wd = len(site.ds.wd) - 1
         self.num_ws = len(site.ds.ws)
+
+        self.wtg_filename = wtg_filename
+        self.auto_export_wtg = auto_export_wtg
 
         set_client_id("PyWake")
         api_key = wakeblasterconfig.api['key']
@@ -529,20 +573,40 @@ class WakeBlaster(PropagateDownwind):
         """
         self.num_wt = len(x)
         self.flow_cases = self.create_flowcases()
+        run_id = uuid.uuid4().hex[:12]
+        self.site_name = site_name = f"PyWake_farm_{run_id}"
+        
         
         # derive dimensions from actual flow_cases (robust across sites)
         self.num_wd = int(self.flow_cases["WindDirection"].nunique())
         self.num_ws = int(self.flow_cases["WindSpeed_avg"].nunique())
 
-        design_id = f"{self.windTurbines.name()}_{self.windTurbines.hub_height()}"
-        wtg_filename = f"{design_id}.wtg"
-
-        if not os.path.exists(wtg_filename):
+        if self.wtg_filename:
+            wtg_filename = self.wtg_filename
+            design_id = Path(wtg_filename).stem
+            if not os.path.exists(wtg_filename):
+                raise FileNotFoundError(f"Configured WTG file not found: {wtg_filename}")
+            logger.info("Using provided WTG file %s", wtg_filename)
+        else:
+            design_id = f"{self.windTurbines.name()}_{self.windTurbines.hub_height()}"
+            wtg_filename = f"{design_id}.wtg"
+            if not os.path.exists(wtg_filename):
+                logger.info("WTG file %s not found; exporting...", wtg_filename)
+                export_wtg_file(wtg_filename, self.windTurbines)
+            else:
+                logger.info("WTG file %s found.", wtg_filename)
+                
+        if os.path.exists(wtg_filename):
+            logger.info("WTG file %s found.", wtg_filename)
+        else:
+            if self.wtg_filename is not None:
+                raise FileNotFoundError(f"Configured WTG file not found: {wtg_filename}")
+            if not self.auto_export_wtg:
+                raise FileNotFoundError(
+                    f"WTG file {wtg_filename} not found and auto_export_wtg is False."
+                )
             logger.info("WTG file %s not found; exporting...", wtg_filename)
             export_wtg_file(wtg_filename, self.windTurbines)
-        else:
-            logger.info("WTG file %s found.", wtg_filename)
-
         layout = pd.DataFrame({
             "Easting": x,
             "Northing": y,
@@ -577,7 +641,7 @@ class WakeBlaster(PropagateDownwind):
 
         self.depends.load_turbine_design(design_id, wtg_filename)
         self.depends.set_farm(
-            "PyWake_farm",
+            site_name,
             et.WindFarm(
                 farm_def,
                 wind_resource_grid=wind_resource_grid,
@@ -587,7 +651,7 @@ class WakeBlaster(PropagateDownwind):
         )
 
         sim = et.WakeBlasterNewSimulation(
-            "PyWake_farm",
+            site_name,
             "0",
             self.flow_cases,
             self.wakeblasterconfig.simulation_config
@@ -620,28 +684,43 @@ class WakeBlaster(PropagateDownwind):
         has_prob = "P" in ds.variables
     
         if has_weibull:
-            sector_freq = ds["Sector_frequency"].values[wd_idx]
-            A = ds["Weibull_A"].values[wd_idx]
-            k = ds["Weibull_k"].values[wd_idx]
-    
-            # TI can be scalar/1D/2D; we'll resolve per record
-            TI = ds["TI"].values if "TI" in ds.variables else None
-    
+            sf = ds["Sector_frequency"].isel(wd=wd_idx)
+            A = ds["Weibull_A"].isel(wd=wd_idx)
+            k = ds["Weibull_k"].isel(wd=wd_idx)
+        
+            # point-based RSF: choose one representative point
+            if "i" in sf.dims:
+                sf = sf.isel(i=0)
+            if "i" in A.dims:
+                A = A.isel(i=0)
+            if "i" in k.dims:
+                k = k.isel(i=0)
+        
+            TI = ds["TI"] if "TI" in ds.variables else None
+            if TI is not None:
+                if "wd" in TI.dims:
+                    TI = TI.isel(wd=wd_idx)
+                if "i" in TI.dims:
+                    TI = TI.isel(i=0)
+                TI = TI.values
+        
+            sf = np.asarray(sf.values, dtype=float)
+            A = np.asarray(A.values, dtype=float)
+            k = np.asarray(k.values, dtype=float)
+        
             for i, wd in enumerate(wd_vals[wd_idx]):
-                # Weibull bin probabilities along ws
                 g = []
                 for si in range(len(ws_vals)):
                     lo = 0 if si == 0 else ws_vals[si - 1]
                     hi = ws_vals[si]
-                    g.append(weibull.cdf(hi, A[i], k[i]) - weibull.cdf(lo, A[i], k[i]))
-    
+                    gij = weibull.cdf(hi, A[i], k[i]) - weibull.cdf(lo, A[i], k[i])
+                    g.append(float(gij))
+        
                 for j, ws in enumerate(ws_vals):
-                    p = sector_freq[i] * g[j]
-                    weighting = p * HOURS_PER_YEAR
-    
-                    ti_val = _resolve_ti(TI, i, j)  # helper (see below)
-                    records.append([ws, wd, weighting, ti_val])
-    
+                    p = float(sf[i]) * float(g[j])
+                    weighting = float(p * HOURS_PER_YEAR)
+                    ti_val = _resolve_ti(TI, i, j)
+                    records.append([float(ws), float(wd), weighting, float(ti_val)]) 
         elif has_prob:
             P = ds["P"].values
             TI = ds["TI"].values if "TI" in ds.variables else None
@@ -811,6 +890,7 @@ class WakeBlaster(PropagateDownwind):
         str
             Path to the downloaded Surfer grid file containing the flow plane output.
         """
+        site_name = self.site_name
 
         # Prepare single-case DataFrame
         flow_case = pd.DataFrame({
@@ -835,7 +915,7 @@ class WakeBlaster(PropagateDownwind):
 
         # Start simulation
         simulation = et.WakeBlasterNewSimulation(
-            "PyWake_farm",
+            site_name,
             "0",
             flow_case,
             config
