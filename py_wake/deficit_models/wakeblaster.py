@@ -458,6 +458,7 @@ class WakeBlasterResult(SimulationResult):
         WS_eff_ilk: np.ndarray,
         TI_eff_ilk: np.ndarray,
         power_ilk: np.ndarray,
+        unwaked_power_ilk: np.ndarray,
         ct_ilk: np.ndarray,
         **kwargs_ilk: Any
     ) -> None:
@@ -469,22 +470,51 @@ class WakeBlasterResult(SimulationResult):
             TI_eff_ilk=TI_eff_ilk,
             power_ilk=power_ilk,
             ct_ilk=ct_ilk,
+            unwaked_power_ilk=unwaked_power_ilk,
             **kwargs_ilk
         )
         self.windFarmModel = windFarmModel
         self.localWind = localWind
 
-    def aep(self):
+    def aep_ilk(self, with_wake_loss=True):
+        """
+        Compute AEP for each turbine, wind direction and wind speed.
+
+        Parameters
+        ----------
+        with_wake_loss : bool, default True
+            If True, use the wake-affected power; if False, use the unwaked power.
+
+        Returns
+        -------
+        np.ndarray
+            AEP for each turbine (i), wind direction (l) and wind speed (k) in GWh.
+        
+        """
+        if with_wake_loss:
+            power_ilk = self.power_ilk
+        else:
+            power_ilk = self.unwaked_power.ilk()
+
+        # power_ilk in W, P_ilk in hours -> Wh, then to GWh
+        aep_ilk = power_ilk * self.P_ilk * 1e-9
+        return aep_ilk
+
+    def aep(self, with_wake_loss=True):
         """
         Compute Annual Energy Production (AEP) in GWh.
+
+        Parameters
+        ----------
+        with_wake_loss : bool, default True
+            If True, calculate AEP using wake-affected power; if False, use unwaked power.
 
         Returns
         -------
         float
             Total AEP of the wind farm in GWh.
         """
-        # power_ilk in W, P_ilk in hours -> Wh, then to GWh
-        aep_ilk = self.power_ilk * self.P_ilk * 1e-9
+        aep_ilk = self.aep_ilk(with_wake_loss=with_wake_loss)
         total_aep = aep_ilk.sum()
         logging.info("Computed AEP: %.3f GWh", total_aep)
         return total_aep
@@ -885,7 +915,7 @@ class WakeBlaster(PropagateDownwind):
         self.wait_for_results(sim.id)
         _, turbine_res = sim.get_results(
             [],
-            ["power", "turbulence_intensity", "hub_wind_speed"]
+            ["power", "turbulence_intensity", "hub_wind_speed", "unwaked_power"]
         )
 
         if return_simulationResult:
@@ -1027,8 +1057,18 @@ class WakeBlaster(PropagateDownwind):
                         if not np.isfinite(ti_val) or ti_val <= 0:
                             ti_val = 0.1
                         records.append([float(ws_val), float(wd_val), weighting, float(ti_val)])
+
+            # If P is 1D over wd (happens in UniformSite with only one wind speed), expand to ws
+            elif P.ndim == 1 and P.shape[0] == len(wd_vals):
+                P2 = P[wd_idx]
+                for i, wd in enumerate(wd_vals[wd_idx]):
+                    for j, ws in enumerate(ws_vals):
+                        weighting = float(P2[i]) * HOURS_PER_YEAR
+                        ti_val = _resolve_ti(TI, i, j)
+                        records.append([ws, wd, weighting, ti_val])
+
             else:
-                raise ValueError("WakeBlaster create_flowcases: 'P' must be 2D over ('wd','ws') for this site.")
+                raise ValueError("WakeBlaster create_flowcases: 'P' must be 2D over ('wd','ws') or 1D over 'wd' for this site.")
         else:
             raise ValueError(
                 "WakeBlaster create_flowcases: Unsupported site dataset. "
@@ -1082,16 +1122,22 @@ class WakeBlaster(PropagateDownwind):
         num_ws = self.num_ws
 
         pwr = turbine_res['power'].copy()
+        unwaked_pwr = turbine_res['unwaked_power'].copy()
         P_ilk = self.flow_cases['weighting'].values.reshape(self.num_wd, self.num_ws)
         P_ilk = np.tile(P_ilk[np.newaxis, :, :], (num_wt, 1, 1))
 
         pwr.drop(columns=['index', 'flow_case_id'], inplace=True, errors='ignore')
+        unwaked_pwr.drop(columns=['index', 'flow_case_id'], inplace=True, errors='ignore')
         try:
             pwr.columns = pwr.columns.astype(int)
+            unwaked_pwr.columns = unwaked_pwr.columns.astype(int)
         except Exception as e:
             logger.error("An error occurred during conversion of the columns to int: %s", e)
+
         pwr = pwr.reindex(sorted(pwr.columns), axis=1)
+        unwaked_pwr = unwaked_pwr.reindex(sorted(unwaked_pwr.columns), axis=1)
         power_ilk = np.array(pwr).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
+        unwaked_power_ilk = np.array(unwaked_pwr).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
 
         hub_wind_speed = turbine_res['hub_wind_speed'].copy()
         for col in ['index', 'flow_case_id']:
@@ -1141,6 +1187,7 @@ class WakeBlaster(PropagateDownwind):
             WS_eff_ilk=WS_eff_ilk,
             TI_eff_ilk=TI_eff_ilk,
             power_ilk=power_ilk,
+            unwaked_power_ilk=unwaked_power_ilk,
             ct_ilk=ct_ilk,
             P_ilk=P_ilk
         )
