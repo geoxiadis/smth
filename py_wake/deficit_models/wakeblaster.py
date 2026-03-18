@@ -1064,8 +1064,8 @@ class WakeBlaster(PropagateDownwind):
                 for i, wd in enumerate(wd_vals[wd_idx]):
                     for j, ws in enumerate(ws_vals):
                         weighting = float(P2[i]) * HOURS_PER_YEAR
-                        ti_val = _resolve_ti(TI, i, j)
-                        records.append([ws, wd, weighting, ti_val])
+                        ti_val = _resolve_ti(TI_arr, i, j)
+                        records.append([float(ws), float(wd), weighting, float(ti_val)])
 
             else:
                 raise ValueError("WakeBlaster create_flowcases: 'P' must be 2D over ('wd','ws') or 1D over 'wd' for this site.")
