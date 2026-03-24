@@ -231,11 +231,11 @@ def _get_ws_tab_for_type(wind_turbines: Any, turbine_type: Optional[int] = None)
         if isinstance(pcf, PowerCtTabular):
             return np.asarray(pcf.ws_tab, dtype=float)
 
-    for attr in ("powerCtFunctions", "powerCtFunction_lst", "powerCtFunctionList"):
+    for attr in ("powerCtFunctions", "powerCtFunction_lst", "powerCtFunctionList", "powerCtFunction"):
         funcs = getattr(wind_turbines, attr, None)
         if funcs is not None and turbine_type is not None:
             try:
-                pcf = funcs[int(turbine_type)]
+                pcf = funcs.windTurbineFunction_lst[int(turbine_type)]
                 if isinstance(pcf, PowerCtTabular):
                     return np.asarray(pcf.ws_tab, dtype=float)
             except Exception:
