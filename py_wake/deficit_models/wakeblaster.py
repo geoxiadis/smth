@@ -1339,6 +1339,11 @@ class WakeBlaster(PropagateDownwind):
             result["TI"].attrs["Description"] = "Ambient input turbulence intensity"
         if "L" in result:
             result["L"].attrs["Description"] = "Monin-Obukhov length [m]"
+        if "time" in result.coords:
+            if self._explicit_time_series:
+                result.coords["time"].attrs["Description"] = "Explicit time values for each flow case"
+            else:
+                result.coords["time"].attrs["Description"] = "Flow case index (auto-generated time axis due to duplicate wd/ws cases)"
 
         return result
 
