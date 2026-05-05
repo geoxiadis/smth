@@ -666,6 +666,8 @@ class WakeBlaster(PropagateDownwind):
         self._last_site_name: Optional[str] = None
         self._last_type_i: Optional[np.ndarray] = None
         self._last_h_i: Optional[np.ndarray] = None
+        self._explicit_time_series: bool = False
+        self._time_values: Optional[np.ndarray] = None
 
         set_client_id("PyWake")
         api_key = wakeblasterconfig.api['key']
@@ -827,6 +829,7 @@ class WakeBlaster(PropagateDownwind):
         ws: Optional[Sequence[float]] = None,
         time: Optional[Sequence[Any]] = None,
         TI: Optional[Sequence[float]] = None,
+        L: Optional[Sequence[float]] = None,
         return_simulationResult: bool = True
     ) -> Optional[SimulationResult]:
         """
@@ -846,8 +849,10 @@ class WakeBlaster(PropagateDownwind):
         h_i = self._normalize_h_i(self.num_wt, type_i, h)
         self._last_type_i = type_i
         self._last_h_i = h_i
+        self._explicit_time_series = time is not None
+        self._time_values = None if time is None else np.asarray(np.atleast_1d(time))
 
-        self.flow_cases = self.create_flowcases(wd=wd, ws=ws, time=time, TI=TI)
+        self.flow_cases = self.create_flowcases(wd=wd, ws=ws, time=time, TI=TI, L=L)
 
         # derive dimensions from actual flow_cases (robust across sites)
         self.num_wd = int(self.flow_cases["WindDirection"].nunique())
@@ -928,6 +933,7 @@ class WakeBlaster(PropagateDownwind):
         ws: Optional[Sequence[float]] = None,
         time: Optional[Sequence[Any]] = None,
         TI: Optional[Sequence[float]] = None,
+        L: Optional[Sequence[float]] = None
     ) -> pd.DataFrame:
         HOURS_PER_YEAR = 8766
         ds = self.site.ds
@@ -940,6 +946,7 @@ class WakeBlaster(PropagateDownwind):
 
             wd_vals = np.asarray(np.atleast_1d(wd), dtype=float)
             ws_vals = np.asarray(np.atleast_1d(ws), dtype=float)
+            l_records = [] # store L values seperately if provided, to be added as a column later
 
             if time is not None:
                 time_vals = np.atleast_1d(time)
@@ -948,6 +955,9 @@ class WakeBlaster(PropagateDownwind):
                 ti_vals = None if TI is None else np.asarray(np.atleast_1d(TI), dtype=float)
                 if ti_vals is not None and ti_vals.size not in (1, len(wd_vals)):
                     raise ValueError("TI must be scalar or have the same length as wd/ws in time-series mode.")
+                l_vals = np.asarray(np.atleast_1d(L), dtype=float) if L is not None else None
+                if l_vals is not None and l_vals.size not in (1, len(wd_vals)):
+                    raise ValueError("L must be scalar or have the same length as wd/ws in time-series mode.")
 
                 for idx, (wd_val, ws_val) in enumerate(zip(wd_vals, ws_vals)):
                     if ti_vals is None:
@@ -956,16 +966,26 @@ class WakeBlaster(PropagateDownwind):
                         ti_val = float(ti_vals[0])
                     else:
                         ti_val = float(ti_vals[idx])
+                    if l_vals is not None:
+                        l_val = float(l_vals[0]) if l_vals.size == 1 else float(l_vals[idx])
                     if not np.isfinite(ti_val) or ti_val <= 0:
                         ti_val = 0.1
                     records.append([float(ws_val), float(wd_val), 1.0, float(ti_val)])
+                    if l_vals is not None:
+                        l_records.append(l_val)
             else:
                 ti_vals = None if TI is None else np.asarray(np.atleast_1d(TI), dtype=float)
                 if ti_vals is not None and ti_vals.size not in (1, len(wd_vals), len(ws_vals), len(wd_vals) * len(ws_vals)):
                     raise ValueError(
                         "TI must be scalar, len(wd), len(ws), or len(wd)*len(ws) for explicit wd/ws mode."
                     )
+                l_vals = np.asarray(np.atleast_1d(L), dtype=float) if L is not None else None
+                if l_vals is not None and l_vals.size not in (1, len(wd_vals), len(ws_vals), len(wd_vals) * len(ws_vals)):
+                    raise ValueError(
+                        "L must be scalar, len(wd), len(ws), or len(wd)*len(ws) for explicit wd/ws mode."
+                    )
                 flat_ti_idx = 0
+                flat_l_idx = 0
                 for i, wd_val in enumerate(wd_vals):
                     for j, ws_val in enumerate(ws_vals):
                         if ti_vals is None:
@@ -978,12 +998,26 @@ class WakeBlaster(PropagateDownwind):
                             ti_val = float(ti_vals[j])
                         else:
                             ti_val = float(ti_vals[flat_ti_idx])
+                        if l_vals is not None:
+                            if l_vals.size == 1:
+                                l_val = float(l_vals[0])
+                            elif l_vals.size == len(wd_vals):
+                                l_val = float(l_vals[i])
+                            elif l_vals.size == len(ws_vals):
+                                l_val = float(l_vals[j])
+                            else:
+                                l_val = float(l_vals[flat_l_idx])
                         flat_ti_idx += 1
+                        flat_l_idx += 1
                         if not np.isfinite(ti_val) or ti_val <= 0:
                             ti_val = 0.1
                         records.append([float(ws_val), float(wd_val), 1.0, float(ti_val)])
+                        if l_vals is not None:
+                            l_records.append(l_val)
 
             flow_cases = pd.DataFrame(records, columns=["WindSpeed_avg", "WindDirection", "weighting", "TI"])
+            if len(l_records):
+                flow_cases["MoninObukhovLength"] = l_records
             flow_cases["WindSpeed_std"] = flow_cases["TI"] * flow_cases["WindSpeed_avg"]
             flow_cases = flow_cases.drop(columns=["TI"]).reset_index(drop=True)
             flow_cases["flow_case_id"] = [
@@ -1121,49 +1155,130 @@ class WakeBlaster(PropagateDownwind):
         num_wd = self.num_wd
         num_ws = self.num_ws
 
-        pwr = turbine_res['power'].copy()
-        unwaked_pwr = turbine_res['unwaked_power'].copy()
-        P_ilk = self.flow_cases['weighting'].values.reshape(self.num_wd, self.num_ws)
-        P_ilk = np.tile(P_ilk[np.newaxis, :, :], (num_wt, 1, 1))
+        # Determine whether results must be interpreted as a true time/case series
+        # (explicit time input or duplicate wd/ws flow cases).
+        flow_cases = self.flow_cases.copy().reset_index(drop=True)
+        has_duplicate_wd_ws = flow_cases.duplicated(subset=["WindDirection", "WindSpeed_avg"]).any()
+        use_time_series = bool(self._explicit_time_series or has_duplicate_wd_ws)
+        if has_duplicate_wd_ws and not self._explicit_time_series:
+            msg = (
+                "WakeBlaster: duplicate wd/ws flow cases detected without explicit time axis; "
+                "switching result parsing to time-series mode."
+            )
+            print(msg)
+            logger.warning(msg)
 
-        pwr.drop(columns=['index', 'flow_case_id'], inplace=True, errors='ignore')
-        unwaked_pwr.drop(columns=['index', 'flow_case_id'], inplace=True, errors='ignore')
-        try:
-            pwr.columns = pwr.columns.astype(int)
-            unwaked_pwr.columns = unwaked_pwr.columns.astype(int)
-        except Exception as e:
-            logger.error("An error occurred during conversion of the columns to int: %s", e)
+        # Keep flow-case ordering stable by aligning result tables on flow_case_id when available.
+        ordered_ids = flow_cases["flow_case_id"].tolist() if "flow_case_id" in flow_cases.columns else None
 
-        pwr = pwr.reindex(sorted(pwr.columns), axis=1)
-        unwaked_pwr = unwaked_pwr.reindex(sorted(unwaked_pwr.columns), axis=1)
-        power_ilk = np.array(pwr).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
-        unwaked_power_ilk = np.array(unwaked_pwr).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
+        def _prepare_table(df: pd.DataFrame, label: str) -> pd.DataFrame:
+            tbl = df.copy()
+            drop_cols = [c for c in ["index"] if c in tbl.columns]
+            if drop_cols:
+                tbl = tbl.drop(columns=drop_cols)
+            if ordered_ids is not None and "flow_case_id" in tbl.columns:
+                tbl = tbl.set_index("flow_case_id").reindex(ordered_ids)
+                if tbl.isna().all(axis=1).any():
+                    raise ValueError(f"WakeBlaster parse_results: missing {label} rows after flow_case_id alignment")
+                tbl = tbl.reset_index(drop=True)
+            elif "flow_case_id" in tbl.columns:
+                tbl = tbl.drop(columns=["flow_case_id"])
+            try:
+                tbl.columns = tbl.columns.astype(int)
+            except Exception as e:
+                logger.error("An error occurred during conversion of the columns of %s: %s", label, e)
+            tbl = tbl.reindex(sorted(tbl.columns), axis=1)
+            return tbl
 
-        hub_wind_speed = turbine_res['hub_wind_speed'].copy()
-        for col in ['index', 'flow_case_id']:
-            if col in hub_wind_speed.columns:
-                hub_wind_speed = hub_wind_speed.drop(columns=[col])
-        try:
-            hub_wind_speed.columns = hub_wind_speed.columns.astype(int)
-        except Exception as e:
-            logger.error("An error occurred during conversion of the columns of hub_wind_speed: %s", e)
-        hub_wind_speed = hub_wind_speed.reindex(sorted(hub_wind_speed.columns), axis=1)
-        WS_eff_ilk = np.array(hub_wind_speed).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
+        pwr = _prepare_table(turbine_res['power'], 'power')
+        unwaked_pwr = _prepare_table(turbine_res['unwaked_power'], 'unwaked_power')
+        hub_wind_speed = _prepare_table(turbine_res['hub_wind_speed'], 'hub_wind_speed')
+        ti = _prepare_table(turbine_res['turbulence_intensity'], 'turbulence_intensity')
 
-        ti = turbine_res['turbulence_intensity'].copy()
-        for col in ['index', 'flow_case_id']:
-            if col in ti.columns:
-                ti = ti.drop(columns=[col])
-        try:
-            ti.columns = ti.columns.astype(int)
-        except Exception as e:
-            logger.error("An error occurred during conversion of the columns of turbulence_intensity: %s", e)
-        ti = ti.reindex(sorted(ti.columns), axis=1)
-        TI_eff_ilk = np.array(ti).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
+        if use_time_series:
+            n_case = len(flow_cases)
+            if len(pwr) != n_case:
+                raise ValueError(
+                    f"WakeBlaster parse_results: expected {n_case} result rows in time-series mode, got {len(pwr)}"
+                )
 
-        ct_ilk = np.zeros((num_wt, num_wd, num_ws))
-        wd_array = np.sort(self.flow_cases["WindDirection"].unique())
-        ws_array = np.sort(self.flow_cases["WindSpeed_avg"].unique())
+            # One row per flow case -> transpose to turbine-major and keep a singleton ws-axis.
+            power_ilk = np.asarray(pwr, dtype=float).T[:, :, np.newaxis]
+            unwaked_power_ilk = np.asarray(unwaked_pwr, dtype=float).T[:, :, np.newaxis]
+            WS_eff_ilk = np.asarray(hub_wind_speed, dtype=float).T[:, :, np.newaxis]
+            TI_eff_ilk = np.asarray(ti, dtype=float).T[:, :, np.newaxis]
+
+            weighting = np.asarray(flow_cases['weighting'], dtype=float)
+            P_ilk = np.tile(weighting[np.newaxis, :, np.newaxis], (num_wt, 1, 1))
+            ct_ilk = np.zeros((num_wt, n_case, 1))
+
+            wd_array = np.asarray(flow_cases['WindDirection'], dtype=float)
+            ws_array = np.asarray(flow_cases['WindSpeed_avg'], dtype=float)
+
+            if self._explicit_time_series and self._time_values is not None and len(self._time_values) == n_case:
+                time_array = np.asarray(self._time_values)
+            else:
+                # For auto-switched duplicates (or mismatched explicit time), use case index.
+                time_array = np.arange(n_case)
+
+            ti_input_ilk = None
+            if "WindSpeed_std" in flow_cases.columns:
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    ti_flow = np.asarray(flow_cases["WindSpeed_std"] / flow_cases["WindSpeed_avg"], dtype=float)
+                ti_flow = np.nan_to_num(ti_flow, nan=0.1, posinf=0.1, neginf=0.1)
+                ti_input_ilk = ti_flow[np.newaxis, :, np.newaxis]
+
+            L_input_ilk = None
+            if "MoninObukhovLength" in flow_cases.columns:
+                L_flow = np.asarray(flow_cases["MoninObukhovLength"], dtype=float)
+                if np.isfinite(L_flow).any():
+                    L_input_ilk = L_flow[np.newaxis, :, np.newaxis]
+        else:
+            P_ilk = flow_cases['weighting'].values.reshape(num_wd, num_ws)
+            P_ilk = np.tile(P_ilk[np.newaxis, :, :], (num_wt, 1, 1))
+
+            power_ilk = np.array(pwr).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
+            unwaked_power_ilk = np.array(unwaked_pwr).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
+            WS_eff_ilk = np.array(hub_wind_speed).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
+            TI_eff_ilk = np.array(ti).reshape(num_wd, num_ws, num_wt).transpose(2, 0, 1)
+
+            ct_ilk = np.zeros((num_wt, num_wd, num_ws))
+            wd_array = np.sort(flow_cases["WindDirection"].unique())
+            ws_array = np.sort(flow_cases["WindSpeed_avg"].unique())
+            if "WindSpeed_std" in flow_cases.columns:
+                ti_array = np.sort((flow_cases["WindSpeed_std"] / flow_cases["WindSpeed_avg"]).unique())
+            else:
+                ti_array = None
+
+            # Preserve flow-case TI/L in the result dataset on the (wd, ws) grid.
+            ti_input_ilk = None
+            if "WindSpeed_std" in flow_cases.columns:
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    ti_flow = flow_cases["WindSpeed_std"] / flow_cases["WindSpeed_avg"]
+                ti_grid = (
+                    flow_cases.assign(TI=ti_flow)
+                    .pivot_table(index="WindDirection", columns="WindSpeed_avg", values="TI", aggfunc="first")
+                    .reindex(index=wd_array, columns=ws_array)
+                )
+                ti_input = np.asarray(ti_grid.values, dtype=float)
+                if np.isfinite(ti_input).any():
+                    if ti_array is not None and len(ti_array) > 0:
+                        fallback_ti = float(np.asarray(ti_array, dtype=float).reshape(-1)[0])
+                    else:
+                        fallback_ti = 0.1
+                    ti_input = np.nan_to_num(ti_input, nan=fallback_ti, posinf=fallback_ti, neginf=fallback_ti)
+                    ti_input_ilk = ti_input[np.newaxis, :, :]
+
+            L_input_ilk = None
+            if "MoninObukhovLength" in flow_cases.columns:
+                L_grid = (
+                    flow_cases
+                    .pivot_table(index="WindDirection", columns="WindSpeed_avg", values="MoninObukhovLength", aggfunc="first")
+                    .reindex(index=wd_array, columns=ws_array)
+                )
+                L_input = np.asarray(L_grid.values, dtype=float)
+                if np.isfinite(L_input).any():
+                    L_input_ilk = L_input[np.newaxis, :, :]
 
         if type_i is None:
             type_i = self._last_type_i if self._last_type_i is not None else np.zeros(num_wt, dtype=int)
@@ -1173,14 +1288,36 @@ class WakeBlaster(PropagateDownwind):
             h_i = self._last_h_i if self._last_h_i is not None else self._default_h_i(type_i)
         h_i = np.asarray(h_i, dtype=float)
 
-        local_wind = self.site.local_wind(
-            x=x, y=y,
-            h=h_i,
-            wd=wd_array,
-            ws=ws_array
-        )
+        if use_time_series:
+            if ti_input_ilk is None:
+                local_ti = None
+            else:
+                local_ti = np.asarray(ti_input_ilk[0, :, 0], dtype=float)
+            local_wind = self.site.local_wind(
+                x=x,
+                y=y,
+                h=h_i,
+                wd=wd_array,
+                ws=ws_array,
+                time=time_array,
+                TI=local_ti
+            )
+        else:
+            local_wind = self.site.local_wind(
+                x=x, y=y,
+                h=h_i,
+                wd=wd_array,
+                ws=ws_array,
+                TI=ti_array
+            )
 
-        return WakeBlasterResult(
+        result_kwargs: Dict[str, Any] = {"P_ilk": P_ilk}
+        if ti_input_ilk is not None:
+            result_kwargs["TI_ilk"] = ti_input_ilk
+        if L_input_ilk is not None:
+            result_kwargs["L_ilk"] = L_input_ilk
+
+        result = WakeBlasterResult(
             self,
             localWind=local_wind,
             type_i=type_i,
@@ -1189,8 +1326,21 @@ class WakeBlaster(PropagateDownwind):
             power_ilk=power_ilk,
             unwaked_power_ilk=unwaked_power_ilk,
             ct_ilk=ct_ilk,
-            P_ilk=P_ilk
+            **result_kwargs
         )
+
+        # Add descriptions to result variables
+        result["Power"].attrs["Description"] = "Turbine power output [W]"
+        result["WS_eff"].attrs["Description"] = "Effective wind speed at hub height [m/s]"
+        result["TI_eff"].attrs["Description"] = "Effective turbulence intensity"
+        result["CT"].attrs["Description"] = "Thrust coefficient"
+        result["unwaked_power"].attrs["Description"] = "Turbine power output without wake interaction [W]"
+        if "TI" in result:
+            result["TI"].attrs["Description"] = "Ambient input turbulence intensity"
+        if "L" in result:
+            result["L"].attrs["Description"] = "Monin-Obukhov length [m]"
+
+        return result
 
     def calculate_flow_plane(
         self,
