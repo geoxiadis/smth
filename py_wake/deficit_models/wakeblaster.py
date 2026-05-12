@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from copy import deepcopy
 
 import pandas as pd
 import numpy as np
@@ -838,6 +839,11 @@ class WakeBlaster(PropagateDownwind):
         Non-breaking defaults:
         - if type and h are omitted, behaviour matches the existing single-design flow
         - if wd/ws are omitted, flow cases are created from the site climate as before
+
+        - If time is provided, wd and ws must also be provided and have the same length
+        - If time is omitted, but duplicate wd/ws pairs exist, the simulation result will contain the flow case numbers
+          as time coordinates, which can be used to map back to the original wd/ws pairs.
+        - TI and L can be included for stability effects, either as scalars or matching wd/ws
         """
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
@@ -910,11 +916,21 @@ class WakeBlaster(PropagateDownwind):
             )
         )
 
+        # Need to make sure that the right stability model is used when L is provided
+        # Build per-run config to avoid mutating the base configuration.
+        sim_cfg = deepcopy(self.wakeblasterconfig.simulation_config)
+        if L is not None:
+            wake_model_cfg = sim_cfg.setdefault("wake_model", {})
+            wake_model_cfg["type"] = "3D"
+            eddy_viscosity_cfg = wake_model_cfg.setdefault("eddy_viscosity", {})
+            eddy_viscosity_cfg["type"] = "CombinedProfile"
+            eddy_viscosity_cfg["stability_model"] = "BusingerDyer"
+
         sim = et.WakeBlasterNewSimulation(
             site_name,
             "0",
             self.flow_cases,
-            self.wakeblasterconfig.simulation_config
+            sim_cfg
         )
         logger.info("Simulation started (ID: %s)", sim.id)
         self.wait_for_results(sim.id)
