@@ -145,7 +145,7 @@ trigger_hub_test:
     - master
 
 # ===== build validation report. =====
-build_validation_report:
+.build_validation_report:
   stage: build
   needs: []
   image: texlive/texlive:latest
@@ -178,7 +178,7 @@ build_validation_report:
   - ci-ubuntu
 
 # ===== build documentation =====
-build_pages:  # "pages" is a job specifically for GitLab pages [1]
+.build_pages:  # "pages" is a job specifically for GitLab pages [1]
   stage: build
   #needs:
   #- build_validation_report
