@@ -178,7 +178,7 @@ trigger_hub_test:
   - ci-ubuntu
 
 # ===== build documentation =====
-.build_pages:  # "pages" is a job specifically for GitLab pages [1]
+build_pages:  # "pages" is a job specifically for GitLab pages [1]
   stage: build
   #needs:
   #- build_validation_report
@@ -207,7 +207,7 @@ trigger_hub_test:
 
 
 # ===== publish documentation =====
-pages:  # "pages" is a job specifically for GitLab pages [1]
+.pages:  # "pages" is a job specifically for GitLab pages [1]
   stage: deploy
   needs:
   - build_validation_report
