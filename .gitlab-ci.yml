@@ -144,11 +144,11 @@ trigger_hub_test:
   only:
     - master
 
-
-# ===== build documentation =====
-build_pages:  # "pages" is a job specifically for GitLab pages [1]
-  stage:  # build, test, deploy defined by default [2]
-    test
+# ===== build validation report. =====
+.build_validation_report:
+  stage: build
+  needs: []
+  image: texlive/texlive:latest
   before_script:
   - *install_pixi_linux
   script:  # use sphinx to build docs, move to public page
@@ -159,35 +159,65 @@ build_pages:  # "pages" is a job specifically for GitLab pages [1]
   - cd docs/validation_report
   - pixi run --environment docs --as-is python generate_validation_figures.py
   - cd report
-  - apt-get install -y texlive-latex-extra
   - pdflatex validation_report.tex
   - bibtex validation_report.aux
   - pdflatex validation_report.tex
   - pdflatex validation_report.tex
-  - cd ../../
   - pwd
-  - pixi run --environment docs --as-is sphinx-build . build
-  #- make latexpdf
-  - cd ../
-  artifacts:  # required for GitLab pages [1]
+  - ls -R docs/*
+  artifacts:
     paths:
-    - docs/build/html
+    - docs/validation_report/report/validation_report.pdf
+    when: always  # This job must fail if there are no artifacts to upload.
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: manual
-      allow_failure: true
+      # allow_failure: true
+  tags:
+  - ci-ubuntu
+
+# ===== build documentation =====
+build_pages:  # "pages" is a job specifically for GitLab pages [1]
+  stage: build
+  #needs:
+  #- build_validation_report
+  #dependencies:
+  #- build_validation_report
+  before_script:
+  - *install_pixi_linux
+  script:
+  - apt-get update
+  - apt-get -y install pandoc graphviz
+  - pixi install --environment docs  # --locked
+  - cd docs
+  - pwd
+  - pixi run --environment docs --as-is sphinx-build --builder html . build
+  - cd ..
+  - ls -R docs/*
+  artifacts:
+    paths:
+    - docs/build/html
+    when: always  # This job must fail if there are no artifacts to upload.
+  rules:
+    #- if: $CI_COMMIT_BRANCH == "master"
+    #- if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    #  when: manual
+      # allow_failure: true
   tags:  # only runners with this tag can do the job [3]
   - ci-ubuntu
 
 
 # ===== publish documentation =====
-pages:  # "pages" is a job specifically for GitLab pages [1]
-  stage:  # build, test, deploy defined by default [2]
-    deploy
-  dependencies: 
-    - build_pages
-  script:  # use sphinx to build docs, move to public page
+.pages:  # "pages" is a job specifically for GitLab pages [1]
+  stage: deploy
+  needs:
+  - build_validation_report
+  - build_pages
+  dependencies:
+  - build_validation_report
+  - build_pages
+  script:
   - mv docs/build/html public/
   artifacts:  # required for GitLab pages [1]
     paths:
@@ -197,9 +227,8 @@ pages:  # "pages" is a job specifically for GitLab pages [1]
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       when: manual
       allow_failure: true
-  tags:  # only runners with this tag can do the job [3]
+  tags:
   - ci-ubuntu
-
 
 
 pypi_linux:
