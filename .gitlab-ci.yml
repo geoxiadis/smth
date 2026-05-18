@@ -193,6 +193,7 @@ build_pages:  # "pages" is a job specifically for GitLab pages [1]
   - cd docs
   - pwd
   - pixi run --environment docs --as-is sphinx-build . build
+  - cd ..
   - ls -R docs/*
   artifacts:
     paths:
