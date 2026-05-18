@@ -190,6 +190,7 @@ build_pages:  # "pages" is a job specifically for GitLab pages [1]
   - apt-get update
   - apt-get -y install pandoc graphviz
   - pixi install --environment docs  # --locked
+  - cd docs
   - pwd
   - pixi run --environment docs --as-is sphinx-build . build
   - ls -R docs/*
