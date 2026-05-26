@@ -59,6 +59,32 @@ def _resolve_ti(TI, i, j):
     raise ValueError("WakeBlaster: TI has unsupported dimensions; expected scalar, 1D(wd) or 2D(wd,ws).")
 
 
+def _infer_ws_bin_edges(ws_vals: np.ndarray) -> np.ndarray:
+    """
+    Infer wind-speed bin edges from representative wind-speed values.
+
+    The incoming `ws_vals` are treated as bin representatives (typically bin centers),
+    and symmetric bin edges are reconstructed. This avoids truncating probability mass
+    when converting Weibull distributions to discrete flow cases.
+    """
+    ws_vals = np.asarray(ws_vals, dtype=float)
+    if ws_vals.ndim != 1 or len(ws_vals) == 0:
+        raise ValueError("WakeBlaster: ws_vals must be a non-empty 1D array")
+    if len(ws_vals) == 1:
+        width = 1.0
+        lo = max(0.0, ws_vals[0] - 0.5 * width)
+        hi = ws_vals[0] + 0.5 * width
+        return np.asarray([lo, hi], dtype=float)
+
+    d = np.diff(ws_vals)
+    if not np.all(d > 0):
+        raise ValueError("WakeBlaster: ws_vals must be strictly increasing")
+
+    edges = np.empty(len(ws_vals) + 1, dtype=float)
+    edges[1:-1] = 0.5 * (ws_vals[:-1] + ws_vals[1:])
+    edges[0] = max(0.0, ws_vals[0] - 0.5 * d[0])
+    edges[-1] = ws_vals[-1] + 0.5 * d[-1]
+    return edges
 
 def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=None, **kwargs):
     """
@@ -820,6 +846,84 @@ class WakeBlaster(PropagateDownwind):
             TI_da = TI_da.isel(ws=ws_idx)
         return float(np.asarray(TI_da).squeeze())
 
+
+    def _flowcase_reference_point(self) -> Tuple[float, float, float]:
+        x_arr = getattr(self, "_last_x", None)
+        y_arr = getattr(self, "_last_y", None)
+        h_arr = getattr(self, "_last_h_i", None)
+        if x_arr is not None and y_arr is not None and len(x_arr) and len(y_arr):
+            h_ref = float(h_arr[0]) if h_arr is not None and len(h_arr) else float(self.windTurbines.hub_height())
+            return float(x_arr[0]), float(y_arr[0]), h_ref
+
+        ds = self.site.ds
+        x_ref = 0.0
+        y_ref = 0.0
+        h_ref = float(self.windTurbines.hub_height())
+        if "x" in ds.coords:
+            x_ref = _scalarize(ds["x"].values)
+        if "y" in ds.coords:
+            y_ref = _scalarize(ds["y"].values)
+        if "h" in ds.coords:
+            h_ref = _scalarize(ds["h"].values)
+        return float(x_ref), float(y_ref), float(h_ref)
+
+    def _create_flowcases_from_local_wind(self) -> Optional[pd.DataFrame]:
+        ds = self.site.ds
+        if "wd" not in ds.coords or "ws" not in ds.coords:
+            return None
+
+        wd_vals = np.asarray(ds.coords["wd"].values, dtype=float)
+        if len(wd_vals) > 1 and (wd_vals[-1] == 360 or wd_vals[-1] == wd_vals[0] + 360):
+            wd_vals = wd_vals[:-1]
+        ws_vals = np.asarray(ds["ws"].values, dtype=float)
+
+        x_ref, y_ref, h_ref = self._flowcase_reference_point()
+        lw = self.site.local_wind(
+            x=np.array([x_ref], dtype=float),
+            y=np.array([y_ref], dtype=float),
+            h=np.array([h_ref], dtype=float),
+            wd=wd_vals,
+            ws=ws_vals,
+        )
+
+        P = np.asarray(lw.P)
+        if P.ndim == 3:
+            P = P[0]
+        elif P.ndim != 2:
+            raise ValueError(f"WakeBlaster: unexpected local_wind P dimensions {P.shape}")
+
+        TI_vals = None
+        if "TI" in lw:
+            TI_vals = np.asarray(lw.TI)
+            if TI_vals.ndim == 3:
+                TI_vals = TI_vals[0]
+            elif TI_vals.ndim == 2:
+                pass
+            elif TI_vals.ndim == 1:
+                TI_vals = np.repeat(TI_vals[:, None], len(ws_vals), axis=1)
+            elif TI_vals.ndim == 0:
+                TI_vals = np.full((len(wd_vals), len(ws_vals)), float(TI_vals))
+            else:
+                TI_vals = None
+
+        records = []
+        for i, wd_val in enumerate(wd_vals):
+            for j, ws_val in enumerate(ws_vals):
+                weighting = float(P[i, j]) * 8766.0
+                ti_val = float(TI_vals[i, j]) if TI_vals is not None else float("nan")
+                if not np.isfinite(ti_val) or ti_val <= 0:
+                    ti_val = 0.1
+                records.append([float(ws_val), float(wd_val), float(weighting), float(ti_val)])
+        flow_cases = pd.DataFrame(records, columns=["WindSpeed_avg", "WindDirection", "weighting", "TI"])
+        flow_cases["WindSpeed_std"] = flow_cases["TI"] * flow_cases["WindSpeed_avg"]
+        flow_cases = flow_cases.drop(columns=["TI"]).reset_index(drop=True)
+        flow_cases["flow_case_id"] = [
+            f"{idx:05d}WS{row.WindSpeed_avg}dir{row.WindDirection}"
+            for idx, row in flow_cases.iterrows()
+        ]
+        return flow_cases
+
+
     def __call__(
         self,
         x: Sequence[float],
@@ -1056,7 +1160,8 @@ class WakeBlaster(PropagateDownwind):
             sf = ds["Sector_frequency"].isel(wd=wd_idx)
             A = ds["Weibull_A"].isel(wd=wd_idx)
             k = ds["Weibull_k"].isel(wd=wd_idx)
-
+            
+            
             # point-based RSF: choose one representative point
             if "i" in sf.dims:
                 sf = sf.isel(i=0)
@@ -1079,11 +1184,13 @@ class WakeBlaster(PropagateDownwind):
             A = np.asarray(A.values, dtype=float)
             k = np.asarray(k.values, dtype=float)
 
+            ws_edges = _infer_ws_bin_edges(ws_vals)
+
             for i, wd_val in enumerate(wd_vals[wd_idx]):
                 g = []
-                for si in range(len(ws_vals)):
-                    lo = 0 if si == 0 else ws_vals[si - 1]
-                    hi = ws_vals[si]
+                for j in range(len(ws_vals)):
+                    lo = ws_edges[j]
+                    hi = ws_edges[j + 1]
                     gij = weibull.cdf(hi, A[i], k[i]) - weibull.cdf(lo, A[i], k[i])
                     g.append(float(gij))
 
@@ -1135,6 +1242,16 @@ class WakeBlaster(PropagateDownwind):
             f"{idx:05d}WS{row.WindSpeed_avg}dir{row.WindDirection}"
             for idx, row in flow_cases.iterrows()
         ]
+
+        weighting_sum = float(flow_cases["weighting"].sum())
+        logger.info("WakeBlaster flow case weighting sum = %.6f h", weighting_sum)
+        if not np.isclose(weighting_sum, HOURS_PER_YEAR, rtol=0.0, atol=5.0):
+            logger.warning(
+                "WakeBlaster: flow case weighting sum differs from HOURS_PER_YEAR "
+                "(%.6f vs %.6f h)",
+                weighting_sum,
+                float(HOURS_PER_YEAR),
+            )
         return flow_cases
 
     def wait_for_results(self, sim_id: str) -> None:
@@ -1181,7 +1298,6 @@ class WakeBlaster(PropagateDownwind):
                 "WakeBlaster: duplicate wd/ws flow cases detected without explicit time axis; "
                 "switching result parsing to time-series mode."
             )
-            print(msg)
             logger.warning(msg)
 
         # Keep flow-case ordering stable by aligning result tables on flow_case_id when available.
