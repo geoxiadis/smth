@@ -948,6 +948,8 @@ class WakeBlaster(PropagateDownwind):
         h_i = self._normalize_h_i(self.num_wt, type_i, h)
         self._last_type_i = type_i
         self._last_h_i = h_i
+        self._last_x = np.asarray(x, dtype=float)
+        self._last_y = np.asarray(y, dtype=float)
 
         # Normalize time to PyWake convention: False | True | array_like
         if time is False:
@@ -1123,7 +1125,7 @@ class WakeBlaster(PropagateDownwind):
                 l_vals = None if L is None else np.asarray(np.atleast_1d(L), dtype=float)
                 if l_vals is not None and l_vals.size not in (1, len(wd_vals)):
                     raise ValueError("L must be scalar or have the same length as wd/ws in time-series mode.")
-
+                weight = 1.0 / len(wd_vals)  # Equal weighting for time-series cases
                 for idx, (wd_val, ws_val) in enumerate(zip(wd_vals, ws_vals)):
                     if ti_vals is None:
                         ti_val = self._site_ti_value(wd_val, ws_val)
@@ -1135,11 +1137,12 @@ class WakeBlaster(PropagateDownwind):
                         l_val = float(l_vals[0]) if l_vals.size == 1 else float(l_vals[idx])
                     if not np.isfinite(ti_val) or ti_val <= 0:
                         ti_val = 0.1
-                    records.append([float(ws_val), float(wd_val), 1.0, float(ti_val)])
+                    records.append([float(ws_val), float(wd_val), weight, float(ti_val)])
                     if l_vals is not None:
                         l_records.append(l_val)
             else:
-                # time=False: Create flow cases as cartesian product of wd and ws 
+                # time=False: Create flow cases as cartesian product of wd and ws.
+                # Weights are derived from the site climate, matching PyWake's P_ilk behaviour
                 ti_vals = None if TI is None else np.asarray(np.atleast_1d(TI), dtype=float)
                 if ti_vals is not None and ti_vals.size not in (1, len(wd_vals), len(ws_vals), len(wd_vals) * len(ws_vals)):
                     raise ValueError(
@@ -1150,6 +1153,26 @@ class WakeBlaster(PropagateDownwind):
                     raise ValueError(
                         "L must be scalar, len(wd), len(ws), or len(wd)*len(ws) for explicit wd/ws mode."
                     )
+
+                # Query site probability at all turbine positions, matching PyWake's
+                # calc_wt_interaction which calls site.local_wind with every turbine's
+                # (x, y, h).  P_ilk has shape (n_wt, n_wd, n_ws); we average over
+                # turbines to get a single (n_wd, n_ws) weight matrix per flow case.
+                # For uniform sites this is identical to a single-point query.
+                _x = self._last_x if hasattr(self, '_last_x') else np.array([0.0])
+                _y = self._last_y if hasattr(self, '_last_y') else np.array([0.0])
+                _h = self._last_h_i if hasattr(self, '_last_h_i') else np.array([70.0])
+                try:
+                    lw_prob = self.site.local_wind(
+                        x=_x, y=_y, h=_h, wd=wd_vals, ws=ws_vals
+                    )
+                    # P_ilk shape: (n_wt, n_wd, n_ws) -> mean over turbines -> (n_wd, n_ws)
+                    P_lk = np.asarray(lw_prob.P_ilk, dtype=float).mean(axis=0)
+                except Exception:
+                    # Fallback: uniform weights if site query fails
+                    P_lk = np.ones((len(wd_vals), len(ws_vals)), dtype=float)
+                    P_lk /= P_lk.sum()
+
                 flat_ti_idx = 0
                 flat_l_idx = 0
                 for i, wd_val in enumerate(wd_vals):
@@ -1177,15 +1200,11 @@ class WakeBlaster(PropagateDownwind):
                         flat_l_idx += 1
                         if not np.isfinite(ti_val) or ti_val <= 0:
                             ti_val = 0.1
-                        records.append([float(ws_val), float(wd_val), 1.0, float(ti_val)])
+                        records.append([float(ws_val), float(wd_val), float(P_lk[i, j]), float(ti_val)])
                         if l_vals is not None:
                             l_records.append(l_val)
 
             flow_cases = pd.DataFrame(records, columns=["WindSpeed_avg", "WindDirection", "weighting", "TI"])
-            # Normalize weighting to sum to 1 across all flow cases
-            # Possibly this should use the weight from the site distribution (localWind)
-            # instead of uniform weighting
-            flow_cases["weighting"] = flow_cases["weighting"] / flow_cases["weighting"].sum()
             if len(l_records):
                 flow_cases["MoninObukhovLength"] = l_records
             flow_cases["WindSpeed_std"] = flow_cases["TI"] * flow_cases["WindSpeed_avg"]
