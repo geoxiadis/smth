@@ -5,6 +5,7 @@ from copy import deepcopy
 
 import pandas as pd
 import numpy as np
+from numpy import newaxis as na
 import xarray as xr
 import matplotlib.pyplot as plt
 from osgeo import gdal
@@ -505,7 +506,7 @@ class WakeBlasterResult(SimulationResult):
         self.windFarmModel = windFarmModel
         self.localWind = localWind
     
-    def aep_ilk(self, normalize_probabilities=False, with_wake_loss=True, hours_per_year=365*24):
+    def aep_ilk(self, normalize_probabilities=False, with_wake_loss=True):
         """
         Compute AEP for each turbine, wind direction and wind speed.
 
@@ -516,45 +517,71 @@ class WakeBlasterResult(SimulationResult):
             This gives the AEP as if only the simulated flow cases existed for the
             full year.
         with_wake_loss : bool, default True
-            If True, use the wake-affected power; if False, use the unwaked power.
+            If True, use the wake-affected power. 
+            If False, use the unwaked power based on free-flow wind speed, as calculated by Wakeblaster.
 
         Returns
         -------
         np.ndarray
             AEP for each turbine (i), wind direction (l) and wind speed (k) in GWh.
         """
-        if with_wake_loss:
-            power_ilk = self.power_ilk
-        else:
-            power_ilk = self.unwaked_power.ilk()
-        
-        if normalize_probabilities:
-            raise NotImplementedError("normalize_probabilities=True is not implemented yet for WakeBlasterResult.aep_ilk()")
+        return self.aep(normalize_probabilities=normalize_probabilities, with_wake_loss=with_wake_loss).ilk()
 
-        # power_ilk in W, P_ilk in hours -> Wh, then to GWh
-        aep_ilk = power_ilk * self.P_ilk * 1e-9
-        return aep_ilk
-
-    def aep(self, normalize_probabilities=False, with_wake_loss=True, hours_per_year=365*24):
+    def aep(self, normalize_probabilities=False, with_wake_loss=True,
+            hours_pr_year=365*24, linear_power_segments=False):
         """
         Compute Annual Energy Production (AEP) in GWh.
 
         Parameters
         ----------
         normalize_probabilities : bool, default False
-            If True, normalize probabilities before computing AEP.
+            If True, normalize the flow-case probabilities before computing AEP.
+            This gives the AEP as if the simulated flow cases represented a full year.
         with_wake_loss : bool, default True
-            If True, calculate AEP using wake-affected power; if False, use unwaked power.
+            If True, use the wake-affected power. 
+            If False, use the unwaked power based on free-flow wind speed, as calculated by Wakeblaster.
 
         Returns
         -------
-        float
-            Total AEP of the wind farm in GWh.
+        xr.DataArray
+            AEP of the wind farm in GWh. To get total AEP, call .sum() on the result.
         """
-        aep_ilk = self.aep_ilk(normalize_probabilities=normalize_probabilities, with_wake_loss=with_wake_loss)
-        total_aep = aep_ilk.sum()
-        logger.info("Computed AEP: %.3f GWh", total_aep)
-        return total_aep
+        if normalize_probabilities:
+            norm = self.P.ilk().sum((1, 2))[:, na, na]
+        else:
+            norm = 1
+        if with_wake_loss:
+            power_ilk = self.Power.ilk()
+        else:
+            power_ilk = self.unwaked_power.ilk()
+
+        if linear_power_segments:
+            s = "The linear_power_segments method "
+            assert all([n in self for n in ['Weibull_A', 'Weibull_k', 'Sector_frequency']]), \
+                s + "requires a site with weibull information"
+            assert normalize_probabilities is False, \
+                s + "cannot be combined with normalize_probabilities"
+            assert np.all(self.Power.isel(ws=0) == 0) and np.all(self.Power.isel(ws=-1) == 0), \
+                s + "requires first wind speed to have no power (just below cut-in)"
+            assert np.all(self.Power.isel(ws=-1) == 0), \
+                s + "requires last wind speed to have no power (just above cut-out)"
+            weighted_power = weibull.WeightedPower(
+                self.ws.values,
+                self.Power.ilk(),
+                self.Weibull_A.ilk(),
+                self.Weibull_k.ilk())
+            aep = weighted_power * self.Sector_frequency.ilk() * hours_pr_year * 1e-9
+            ws = (self.ws.values[1:] + self.ws.values[:-1]) / 2
+            return xr.DataArray(aep, [('wt', self.wt.values), ('wd', self.wd.values), ('ws', ws)])
+        else:
+            weighted_power = power_ilk * self.P.ilk() / norm
+        if 'time' in self.dims and weighted_power.shape[2] == 1:
+            weighted_power = weighted_power[:, :, 0]
+
+        return xr.DataArray(weighted_power * hours_pr_year * 1e-9,
+                            self.Power.coords,
+                            name='AEP [GWh]',
+                            attrs={'Description': 'Annual energy production [GWh]'})
 
     def flow_map(
         self,
@@ -1139,6 +1166,10 @@ class WakeBlaster(PropagateDownwind):
                             l_records.append(l_val)
 
             flow_cases = pd.DataFrame(records, columns=["WindSpeed_avg", "WindDirection", "weighting", "TI"])
+            # Normalize weighting to sum to 1 across all flow cases
+            # Possibly this should use the weight from the site distribution (localWind)
+            # instead of uniform weighting
+            flow_cases["weighting"] = flow_cases["weighting"] / flow_cases["weighting"].sum()
             if len(l_records):
                 flow_cases["MoninObukhovLength"] = l_records
             flow_cases["WindSpeed_std"] = flow_cases["TI"] * flow_cases["WindSpeed_avg"]
@@ -1199,7 +1230,7 @@ class WakeBlaster(PropagateDownwind):
 
                 for j, ws_val in enumerate(ws_vals):
                     p = float(sf[i]) * float(g[j])
-                    weighting = float(p * HOURS_PER_YEAR)
+                    weighting = float(p)
                     ti_val = _resolve_ti(TI_arr, i, j)
                     if not np.isfinite(ti_val) or ti_val <= 0:
                         ti_val = 0.1
@@ -1212,7 +1243,7 @@ class WakeBlaster(PropagateDownwind):
                 P2 = P[wd_idx, :]
                 for i, wd_val in enumerate(wd_vals[wd_idx]):
                     for j, ws_val in enumerate(ws_vals):
-                        weighting = float(P2[i, j]) * HOURS_PER_YEAR
+                        weighting = float(P2[i, j])
                         ti_val = _resolve_ti(TI_arr, i, j)
                         if not np.isfinite(ti_val) or ti_val <= 0:
                             ti_val = 0.1
@@ -1223,7 +1254,7 @@ class WakeBlaster(PropagateDownwind):
                 P2 = P[wd_idx]
                 for i, wd in enumerate(wd_vals[wd_idx]):
                     for j, ws in enumerate(ws_vals):
-                        weighting = float(P2[i]) * HOURS_PER_YEAR
+                        weighting = float(P2[i])
                         ti_val = _resolve_ti(TI_arr, i, j)
                         records.append([float(ws), float(wd), weighting, float(ti_val)])
 
@@ -1247,13 +1278,13 @@ class WakeBlaster(PropagateDownwind):
         ]
 
         weighting_sum = float(flow_cases["weighting"].sum())
-        logger.info("WakeBlaster flow case weighting sum = %.6f h", weighting_sum)
-        if not np.isclose(weighting_sum, HOURS_PER_YEAR, rtol=0.0, atol=5.0):
-            logger.warning(
-                "WakeBlaster: flow case weighting sum differs from HOURS_PER_YEAR "
-                "(%.6f vs %.6f h)",
+        logger.debug("WakeBlaster flow case weighting sum = %.6f", weighting_sum)
+        if not np.isclose(weighting_sum, 1.0, rtol=0.0, atol=1e-3):
+            logger.debug(
+                "WakeBlaster: flow case weighting sum differs from 1.0 "
+                "(%.6f vs %.6f )",
                 weighting_sum,
-                float(HOURS_PER_YEAR),
+                float(1.0),
             )
         return flow_cases
 
