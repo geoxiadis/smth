@@ -894,7 +894,8 @@ class WakeBlaster(PropagateDownwind):
         time: Any = False,
         TI: Optional[Sequence[float]] = None,
         L: Optional[Sequence[float]] = None,
-        return_simulationResult: bool = True
+        return_simulationResult: bool = True,
+        simulation_id: Optional[str] = None
     ) -> Optional[SimulationResult]:
         """
         Run farm-level simulation and return SimulationResult if requested.
@@ -928,6 +929,9 @@ class WakeBlaster(PropagateDownwind):
         return_simulationResult : bool, default True
             If True, parse and return a WakeBlasterResult. If False, run the simulation
             without constructing a SimulationResult object.
+        simulation_id : str, optional
+            Simulation ID of existing simulation to retrieve results from instead of starting new simulation.
+            Flow cases from this simulation must match those that would be generated from the provided input parameters.
 
         Returns
         -------
@@ -1025,18 +1029,31 @@ class WakeBlaster(PropagateDownwind):
             eddy_viscosity_cfg["type"] = "CombinedProfile"
             eddy_viscosity_cfg["stability_model"] = "BusingerDyer"
 
-        sim = et.WakeBlasterNewSimulation(
-            site_name,
-            "0",
-            self.flow_cases,
-            sim_cfg
-        )
-        logger.info("Simulation started (ID: %s)", sim.id)
-        self.wait_for_results(sim.id)
-        _, turbine_res = sim.get_results(
-            [],
-            ["power", "turbulence_intensity", "hub_wind_speed", "unwaked_power"]
-        )
+        if simulation_id is None:
+            sim = et.WakeBlasterNewSimulation(
+                site_name,
+                "0",
+                self.flow_cases,
+                sim_cfg
+            )
+            logger.info("Simulation started (ID: %s)", sim.id)
+            self.wait_for_results(sim.id)
+            _, turbine_res = sim.get_results(
+                [],
+                ["power", "turbulence_intensity", "hub_wind_speed", "unwaked_power"]
+            )
+        else:
+            logger.info("Retrieving results for existing simulation ID: %s", simulation_id)
+            sim = et.WakeBlasterSimulation(simulation_id, self.flow_cases)
+
+            if sim.are_results_ready():
+                _, turbine_res = sim.get_results(
+                    [],
+                    ["power", "turbulence_intensity", "hub_wind_speed", "unwaked_power"]
+                )
+            else:
+                logger.warning("Results for simulation ID %s are not ready yet.", simulation_id)
+                return None
 
         if return_simulationResult:
             return self.parse_results(turbine_res, x, y, type_i=type_i, h_i=h_i)
