@@ -1090,7 +1090,6 @@ class WakeBlaster(PropagateDownwind):
             DataFrame with columns for wind direction, wind speed, probability/hours,
             and optionally TI and L for each flow case.
         """
-        HOURS_PER_YEAR = 365*24
         ds = self.site.ds
         records = []
 
