@@ -13,7 +13,7 @@ from py_wake.flow_map import HorizontalGrid, XYGrid, YZGrid
 from py_wake.rotor_avg_models import gauss_quadrature, PolarGridRotorAvg, \
     polar_gauss_quadrature, EqGridRotorAvg, GQGridRotorAvg, CGIRotorAvg, GridRotorAvg, WSPowerRotorAvg, EllipSysPolygonRotorAvg
 from py_wake.rotor_avg_models.gaussian_overlap_model import GaussianOverlapAvgModel
-from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, PolarRotorAvg, NodeRotorAvgModel
+from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, PolarRotorAvg, NodeRotorAvgModel, RotorCenter
 from py_wake.site._site import UniformSite
 from py_wake.superposition_models import SquaredSum, LinearSum, WeightedSum
 from py_wake.tests import npt
