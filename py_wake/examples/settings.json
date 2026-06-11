@@ -1,0 +1,11 @@
+{
+    "api": {
+        "url": "",
+        "key": ""
+    },
+    "input": {
+    	"regional_roughness":"regional_roughness.json"
+        },
+    "simulation_config": {}	
+ }
+

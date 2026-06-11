@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<WindTurbineGenerator FormatVersion="1.01" Description="" ManufacturerName="" ReferenceURI="" RotorDiameter="">
+	<Comments></Comments>
+	<SuggestedHeights>
+		<Height></Height>
+	</SuggestedHeights>
+	<PerformanceTable AirDensity="1.225" TurbulenceIntensity="0.06" MaximumNoiseLevel="0.0" BladePitchAngle="-99999.0" DataStatus="Unknown" DataSource="" ReleaseDate="2021-11-23" ReferenceURI="https://www.proplanen.com" StationaryThrustCoEfficient="0.05">
+		<StartStopStrategy LowSpeedCutOut="3.0" LowSpeedCutIn="3.0" HighSpeedCutIn="25.0" HighSpeedCutOut="25.0"/>
+		<Comments></Comments>
+		<DataTable>
+		</DataTable>
+	</PerformanceTable>
+	<ContextInformation>
+		<CertificateChecksum/>
+	</ContextInformation>
+</WindTurbineGenerator>
