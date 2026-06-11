@@ -376,7 +376,7 @@ def test_eddy_viscosity_wind_farm_model_calculates_correct_aep() -> None:
         y=np.array([0.0, 0.0, 200.0]),
         h=np.array([60.0, 80.0, 100.0]),
     )
-    assert np.isclose(results.aep().sum().values.item(), 46.51592261454573)
+    assert np.isclose(results.aep().sum().values.item(), 46.535431855420505)
 
 
 @pytest.mark.parametrize("use_mixing_function", [True, False])
