@@ -11,14 +11,14 @@ class IEA37CaseStudy1(All2All):
     """Wind Farm model corresponding to the setup for IEA37 Wind Farm Layout Optimization Case Studies 1 and 2
     https://github.com/IEAWindTask37/iea37-wflo-casestudies/tree/master/cs1-2"""
 
-    def __init__(self, n_wt, deflectionModel=None):
+    def __init__(self, n_wt, deflectionModel=None, shear=None):
         """
         Parameters
         ----------
         n_wt : {16, 32, 64}site : Site
             Number of wind turbines
         """
-        site = IEA37Site(n_wt)
+        site = IEA37Site(n_wt, shear=shear)
         site.default_wd = np.arange(0, 360, 22.5)
 
         windTurbines = IEA37WindTurbines()

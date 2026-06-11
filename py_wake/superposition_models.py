@@ -79,21 +79,23 @@ class WeightedSum(SuperpositionModel):
     J. Fluid Mech. (2020), vol. 889, A8; doi:10.1017/jfm.2020.77
     """
 
-    def __init__(self, delta=0.01, max_err=1e-3, max_iter=5):
+    def __init__(self, delta=0.01, max_err=1e-3, max_iter=5, weight_limit=10 ** 10):
         # minimum deficit (as fraction of free-stream) to invoke weighted summation
         self.delta = delta
         # convergence limit for computing global convection velocity
         self.max_err = max_err
         # maximum number of iterations used in computing weights
         self.max_iter = max_iter
+        # Limit weights to this value. A limit of 1.0 means not exceeding linear superposition
+        self.weight_limit = weight_limit
 
-    def __call__(self, centerline_deficit_jxxx, WS_xxx,
+    def __call__(self, deficit_jxxx, WS_xxx,
                  convection_velocity_jxxx,
-                 sigma_sqr_jxxx, cw_jxxx, hcw_jxxx, dh_jxxx):
+                 sigma_sqr_jxxx, cw_jxxx, hcw_jxxx, dh_jxxx, deficit_centre_jxxx):
 
-        Ws = WS_xxx + np.zeros(centerline_deficit_jxxx.shape[1:])
+        Ws = WS_xxx + np.zeros(deficit_centre_jxxx.shape[1:])
 
-        usc = centerline_deficit_jxxx
+        usc = deficit_centre_jxxx
         uc = convection_velocity_jxxx
         sigma_sqr = sigma_sqr_jxxx
         cw = cw_jxxx
@@ -102,13 +104,15 @@ class WeightedSum(SuperpositionModel):
         Us = np.zeros_like(Ws)
         # Determine non-centreline deficit ratio
         # Local deficit
-        us = usc * np.exp(-1 / (2 * sigma_sqr) * cw**2)
+        us = usc * np.exp(-1 / (2 * (sigma_sqr + 1e-30)) * cw**2)
+        us[usc == 0] = 0.0
 
         # Set lower deficit limit below which deficits are linearly added
         us_lim = max(self.delta, 1e-30) * Ws[na]
         # Get indices
         Il = us >= us_lim
 
+        ucn = np.ones_like(uc)
         # Only start weighting computation if at least two deficits need to be combined
         # Computations are performed where velocities exceed the specified limit (us_lim).
         # The more complex indexing leads to more complex code.
@@ -146,7 +150,8 @@ class WeightedSum(SuperpositionModel):
                 # Initialize and avoid division by zero
                 ucn[:] = 1.
                 Inz = Uc != 0
-                ucn[:, Inz] = uc[:, Inz] / Uc[Inz]
+                # Limit weights to self.weight_limit
+                ucn[:, Inz] = np.minimum(uc[:, Inz] / Uc[Inz], self.weight_limit)
 
                 # Combined local deficit
                 # dummy matrix to keep original matrix shape
@@ -192,7 +197,11 @@ class WeightedSum(SuperpositionModel):
                 Uc_star[Ilx] = Ws[Ilx] - (sum1 + sum2)[Ilx] / Us_int[Ilx]
 
                 count += 1
-        return Us + np.sum(np.where(~Il, us, 0), axis=0)
+        # Replace nan with 1.0 for cases where convection variable are undefined (i.e. upstream of wt)
+        ucn = np.nan_to_num(ucn, nan=1.0)
+        # Reset weights to linear sum where WeightedSum is not applied
+        ucn[~Il] = 1.0
+        return np.sum(deficit_jxxx * ucn, axis=0)
 
 
 class CumulativeWakeSum(SuperpositionModel):

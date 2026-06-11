@@ -2,6 +2,7 @@ from numpy import newaxis as na
 from py_wake import np
 from py_wake.deflection_models.deflection_model import DeflectionIntegrator
 from py_wake.utils import gradients
+import warnings
 
 
 class GCLHillDeflection(DeflectionIntegrator):
@@ -69,11 +70,13 @@ def main():
 
         wt = V80()
         D = wt.diameter()
-        wfm = ZongGaussian(site, wt, deflectionModel=GCLHillDeflection(),
-                           turbulenceModel=CrespoHernandez())
-        wfm2 = ZongGaussian(site, wt,
-                            deflectionModel=GCLHillDeflection(wake_deficitModel=BastankhahGaussianDeficit()),
-                            turbulenceModel=CrespoHernandez())
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'The .* model is not representative of the setup used in the literature')
+            wfm = ZongGaussian(site, wt, deflectionModel=GCLHillDeflection(),
+                               turbulenceModel=CrespoHernandez())
+            wfm2 = ZongGaussian(site, wt,
+                                deflectionModel=GCLHillDeflection(wake_deficitModel=BastankhahGaussianDeficit()),
+                                turbulenceModel=CrespoHernandez())
 
         ws = 10
         yaw = 30

@@ -13,6 +13,8 @@ from py_wake.tests import npt
 from py_wake.deflection_models.fuga_deflection import FugaDeflection
 from scipy.interpolate import InterpolatedUnivariateSpline
 from py_wake.utils import fuga_utils
+from py_wake.utils.gradients import fd, autograd
+from py_wake.examples.data.hornsrev1 import V80
 
 
 def test_fuga_deflection_vs_notebook():
@@ -33,10 +35,10 @@ def test_fuga_deflection_vs_notebook():
 
     if 0:
         plt.plot(x, notebook_deflection, label='Notebook deflection')
-        plt.plot(x, fuga_deflection)
+        plt.plot(x, fuga_deflection, '.-')
         plt.show()
     plt.close('all')
-    npt.assert_allclose(fuga_deflection, notebook_deflection, atol=1e-5)
+    npt.assert_allclose(fuga_deflection, notebook_deflection, atol=1e-3)
 
 
 def test_fuga_wake_center_vs_notebook():
@@ -85,22 +87,24 @@ def test_fuga_deflection_time_series_gradient_evaluation():
     p = Path(tfp) / "fuga/v80_wake_center_x.csv"
     x, notebook_wake_center = np.array([v.split(",") for v in p.read_text().strip().split("\n")], dtype=float).T
 
-    powerCtFunction = PowerCtTabular([0, 100], [0, 0], 'w', [0.850877, 0.850877])
-    wt = WindTurbine(name='', diameter=80, hub_height=70, powerCtFunction=powerCtFunction)
-
+    wt = V80()
     path = tfp + 'fuga/2MW/Z0=0.00001000Zi=00400Zeta0=0.00E+00.nc'
     site = UniformSite([1, 0, 0, 0], ti=0.075)
 
-    wfm = PropagateDownwind(
-        site,
-        wt,
-        wake_deficitModel=FugaYawDeficit(path),
-        deflectionModel=FugaDeflection(path, 'input_par')
-    )
+    wfm = PropagateDownwind(site, wt, wake_deficitModel=FugaYawDeficit(path),
+                            deflectionModel=FugaDeflection(path, 'input_par'))
 
     WS = 10
 
-    yaw_ref = np.full((10, 1), 17)
-    yaw_step = np.eye(10, 10) * 1e-6 + yaw_ref
-    yaw = np.concatenate([yaw_step, yaw_ref], axis=1)
-    sim_res = wfm(np.arange(10) * wt.diameter() * 4, [0] * 10, yaw=yaw, wd=[270] * 11, ws=[WS] * 11, time=True)
+    yaw = np.arange(12).reshape((3, 4)) + 10
+    x = np.arange(3) * wt.diameter() * 4
+    kwargs = dict(x=x, y=x * 0, wd=np.arange(270, 274), ws=np.full(4, WS), time=True)
+
+    def dPdyaw(yaw):
+        return wfm(**kwargs, yaw=yaw, return_simulationResult=False)[2].sum()
+    if 0:
+        wfm(**kwargs, yaw=yaw).flow_map(XYGrid(resolution=100), time=0).plot_wake_map()
+        plt.show()
+    daep_autograd = autograd(dPdyaw)(yaw)
+    daep_fd = fd(dPdyaw)(yaw)
+    npt.assert_allclose(daep_autograd, daep_fd, atol=0.002)

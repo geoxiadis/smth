@@ -120,8 +120,8 @@ class AreaOverlapAvgModel(RotorAvgModel):
         #                                         (p - Rmax[mask]) * (p - d[mask])))
         A_triangle = np.sin(alpha) * R1[mask] * d[mask]
 
-        p_wake_f = (alpha * Rmax[mask]**2 + beta * Rmin[mask]**2 -
-                    A_triangle) / (R2[mask]**2 * np.pi)
+        p_wake_f = np.maximum((alpha * Rmax[mask]**2 + beta * Rmin[mask]**2 -
+                               A_triangle) / (R2[mask]**2 * np.pi), 0)  # maximum to avoid <0 due to numerical inaccuracy
 
         if p_wake_mask is None:
             A_ol_f[mask] = p_wake_f

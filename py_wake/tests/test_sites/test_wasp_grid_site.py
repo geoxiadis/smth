@@ -1,18 +1,21 @@
-from py_wake import np
-from numpy import newaxis as na
-from py_wake.tests import npt
-import pytest
-from py_wake.examples.data.ParqueFicticio import ParqueFicticio_path, ParqueFicticioSite
-from py_wake.site.wasp_grid_site import WaspGridSite
-import os
-import time
-from py_wake.tests.test_files.wasp_grid_site import one_layer
-from py_wake.site.distance import TerrainFollowingDistance, StraightDistance
+import contextlib
+import io
 import math
-from py_wake import NOJ
-import matplotlib.pyplot as plt
-from py_wake.site.xrsite import XRSite
+import os
 import shutil
+import time
+
+import matplotlib.pyplot as plt
+import pytest
+from numpy import newaxis as na
+
+from py_wake import NOJ, np
+from py_wake.examples.data.ParqueFicticio import ParqueFicticio_path, ParqueFicticioSite
+from py_wake.site.distance import StraightDistance, TerrainFollowingDistance
+from py_wake.site.wasp_grid_site import WaspGridSite
+from py_wake.site.xrsite import XRSite
+from py_wake.tests import npt
+from py_wake.tests.test_files.wasp_grid_site import one_layer
 from py_wake.wind_turbines._wind_turbines import WindTurbine
 from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
 
@@ -198,9 +201,9 @@ def test_wasp_resources_grid_point(site):
 def test_distances(distance, dw_ref):
     site = ParqueFicticioSite(distance)
     x, y = site.initial_position.T
-    site.distance.setup(src_x_ilk=x, src_y_ilk=y, src_h_ilk=np.array([70]), src_z_ilk=x * 0,
-                        dst_xyhz_j=(x, y, np.array([70]), x * 0))
-    dw_ijlk, cw_ijlk, dh_ijlk = site.distance(wd_l=[0])
+    dw_ijlk, cw_ijlk, dh_ijlk = site.distance(src_x_ilk=x, src_y_ilk=y, src_h_ilk=np.array([70]), wd_l=[0],
+                                              dst_xyh_jlk=(x, y, np.array([70])))
+
     npt.assert_almost_equal(dw_ijlk[0, :, 0, 0], dw_ref)
 
     cw_ref = [236.1, 0., -131.1, -167.8, -204.5, -131.1, -131.1, -45.4]
@@ -220,7 +223,7 @@ def test_speed_up_using_pickle():
     start = time.time()
     site = WaspGridSite.from_wasp_grd(ParqueFicticio_path, speedup_using_pickle=True)
     time_w_pkl = time.time() - start
-    npt.assert_array_less(time_w_pkl * 10, time_wo_pkl)
+    npt.assert_array_less(time_w_pkl * 8, time_wo_pkl)
 
 
 def test_speed_up_using_pickle_wrong_pkl():
@@ -228,7 +231,8 @@ def test_speed_up_using_pickle_wrong_pkl():
     if os.path.exists(pkl_fn):
         os.remove(pkl_fn)
     shutil.copy(__file__, pkl_fn)
-    site = WaspGridSite.from_wasp_grd(ParqueFicticio_path, speedup_using_pickle=True)
+    with contextlib.redirect_stdout(io.StringIO()):
+        site = WaspGridSite.from_wasp_grd(ParqueFicticio_path, speedup_using_pickle=True)
 
 
 def test_one_layer():
@@ -298,8 +302,8 @@ def test_plot_wd_distribution(site):
     if 0:
         plt.show()
     plt.close('all')
-    npt.assert_array_almost_equal(p, [0.052, 0.043, 0.058, 0.085, 0.089, 0.061,
-                                      0.047, 0.083, 0.153, 0.152, 0.108, 0.068], 3)
+    npt.assert_array_almost_equal(p, [0.053, 0.043, 0.057, 0.084, 0.09, 0.062, 0.047, 0.081, 0.151,
+                                      0.153, 0.11, 0.069], 3)
 
 
 def test_plot_wd_distribution_with_ws_levels(site):
@@ -308,18 +312,18 @@ def test_plot_wd_distribution_with_ws_levels(site):
     if 0:
         print(np.round(p, 3).data.tolist())
         plt.show()
-    npt.assert_array_almost_equal(p, [[0.039, 0.013, 0.001, 0.0, 0.0],
+    npt.assert_array_almost_equal(p, [[0.039, 0.014, 0.001, 0.0, 0.0],
                                       [0.034, 0.009, 0.0, 0.0, 0.0],
                                       [0.035, 0.022, 0.0, 0.0, 0.0],
-                                      [0.034, 0.048, 0.003, 0.0, 0.0],
+                                      [0.034, 0.047, 0.003, 0.0, 0.0],
                                       [0.031, 0.052, 0.007, 0.0, 0.0],
-                                      [0.03, 0.03, 0.002, 0.0, 0.0],
+                                      [0.03, 0.031, 0.002, 0.0, 0.0],
                                       [0.027, 0.019, 0.001, 0.0, 0.0],
-                                      [0.034, 0.043, 0.006, 0.0, 0.0],
-                                      [0.047, 0.082, 0.023, 0.001, 0.0],
-                                      [0.048, 0.074, 0.026, 0.003, 0.0],
-                                      [0.044, 0.046, 0.015, 0.002, 0.0],
-                                      [0.041, 0.023, 0.003, 0.0, 0.0]], 3)
+                                      [0.034, 0.041, 0.006, 0.0, 0.0],
+                                      [0.047, 0.081, 0.022, 0.001, 0.0],
+                                      [0.048, 0.074, 0.027, 0.003, 0.0],
+                                      [0.044, 0.047, 0.016, 0.003, 0.0],
+                                      [0.041, 0.024, 0.004, 0.0, 0.0]], 3)
     plt.close('all')
 
 

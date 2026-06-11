@@ -1,24 +1,34 @@
-import pytest
-from py_wake import np
-from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit, BastankhahGaussian
-from py_wake.deficit_models.noj import NOJ
+import os
+import warnings
 
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80, wt9_y, wt9_x, wt16_x, wt16_y
-from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines
-from py_wake.wind_turbines import WindTurbines
+import matplotlib.pyplot as plt
+import pytest
+
+from py_wake import examples, np
+from py_wake.deficit_models.gaussian import (
+    BastankhahGaussian,
+    IEA37SimpleBastankhahGaussianDeficit,
+)
+from py_wake.deficit_models.noj import NOJ
+from py_wake.deficit_models.utils import ct2a_mom1d
+from py_wake.deflection_models.jimenez import JimenezWakeDeflection
+from py_wake.examples.data.hornsrev1 import (
+    V80,
+    Hornsrev1Site,
+    wt9_x,
+    wt9_y,
+    wt16_x,
+    wt16_y,
+)
+from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
+from py_wake.flow_map import XYGrid
+from py_wake.literature.iea37_case_study1 import IEA37CaseStudy1
+from py_wake.site._site import UniformSite
 from py_wake.tests import npt
 from py_wake.utils.gradients import autograd, cs, fd
-from py_wake.utils.profiling import timeit, profileit
-import matplotlib.pyplot as plt
-from py_wake.deflection_models.jimenez import JimenezWakeDeflection
-from py_wake.flow_map import XYGrid
-import os
-from py_wake import examples
-from py_wake.literature.iea37_case_study1 import IEA37CaseStudy1
+from py_wake.utils.profiling import profileit, timeit
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind
-from py_wake.site._site import UniformSite
-from py_wake.deficit_models.utils import ct2a_mom1d
-import warnings
+from py_wake.wind_turbines import WindTurbines
 
 
 def test_yaw_wrong_name():
@@ -120,23 +130,24 @@ def test_aep_gradients_function1(wrt_arg):
     kwargs = {'x': x, 'y': y, 'h': x * 0 + wfm.windTurbines.hub_height(),
               'wd': [0], 'ws': 9.8, 'yaw': np.arange(1, 6).reshape((5, 1, 1)) * 5, 'tilt': 0}
 
-    dAEP_autograd = wfm.aep_gradients(gradient_method=autograd, wrt_arg=wrt_arg)(**kwargs)
-    dAEP_cs = wfm.aep_gradients(gradient_method=cs, wrt_arg=wrt_arg)(**kwargs)
-    dAEP_fd = wfm.aep_gradients(gradient_method=fd, wrt_arg=wrt_arg)(**kwargs)
+    dAEP_autograd = wfm.aep_gradients(gradient_method=autograd, wrt_arg=wrt_arg)(**kwargs)[0]
+    dAEP_cs = wfm.aep_gradients(gradient_method=cs, wrt_arg=wrt_arg)(**kwargs)[0]
+    dAEP_fd = wfm.aep_gradients(gradient_method=fd, wrt_arg=wrt_arg)(**kwargs)[0]
 
     if 0:
         ax1, ax2 = plt.subplots(1, 2)[1]
         wfm(**kwargs).flow_map(XYGrid(resolution=100)).plot_wake_map(ax=ax1)
         ax2.set_title(wrt_arg)
-        ax2.plot(dAEP_autograd.flatten(), '.', label='autograd')
-        ax2.plot(dAEP_cs.flatten(), '.', label='cs')
-        ax2.plot(dAEP_fd.flatten(), '.', label='fd')
+        x = np.arange(len(dAEP_autograd.flatten()))
+        ax2.plot(x, dAEP_autograd.flatten(), '.', label='autograd')
+        ax2.plot(x + .1, dAEP_cs.flatten(), '.', label='cs')
+        ax2.plot(x + .2, dAEP_fd.flatten(), '.', label='fd')
+        ax2.ticklabel_format(useOffset=False)
         plt.legend()
         plt.show()
 
     npt.assert_array_almost_equal(dAEP_autograd, dAEP_cs, 14)
     npt.assert_array_almost_equal(dAEP_autograd, dAEP_fd, 5)
-    npt.assert_array_equal(dAEP_autograd, wfm.aep_gradients(gradient_method=autograd, wrt_arg=wrt_arg, **kwargs))
 
 
 @pytest.mark.parametrize('wrt_arg', ['x', 'y', 'h',
@@ -214,7 +225,9 @@ def test_aep_vs_aep():
 
     windTurbines = V80()
     site = Hornsrev1Site()
-    wf_model = BastankhahGaussian(site, windTurbines)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', 'The BastankhahGaussian model is not representative of the setup')
+        wf_model = BastankhahGaussian(site, windTurbines)
 
     npt.assert_array_almost_equal(wf_model(wt16_x, wt16_y).aep(with_wake_loss=False).values.sum(),
                                   wf_model.aep(wt16_x, wt16_y, with_wake_loss=False))
@@ -272,7 +285,7 @@ def test_wd_dependent_wt_positions():
                                                          [0, -100, 0]], wd=[0, 90, 180], WS=[[[5]], [[10]]])
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', UserWarning)
-        ws_eff = sim_res.flow_map().WS_eff.interp(
+        ws_eff = sim_res.flow_map(wd=sim_res.wd, ws=sim_res.ws).WS_eff.interp(
             x=('z', [-100, -300, 100]), y=('z', [-300, 100, 300]), wd=('z', [0, 90, 180])).squeeze().values
     npt.assert_array_equal(ws_eff[0], ws_eff)
     if 0:
@@ -284,7 +297,7 @@ def test_wd_dependent_wt_positions():
 def test_ws_dependent_wt_positions():
     wfm = IEA37CaseStudy1(16)
     sim_res = wfm(x=[[[0, 0, 0]], [[100, 200, 300]]], y=np.zeros((2, 1, 3)), wd=[270], ws=[8, 9, 10])
-    ws_eff = sim_res.flow_map().WS_eff.interp(x=400, y=0).squeeze()
+    ws_eff = sim_res.flow_map(wd=sim_res.wd, ws=sim_res.ws).WS_eff.interp(x=400, y=0).squeeze()
     npt.assert_array_almost_equal(ws_eff, [4.06513, 4.117601, 3.830711])
     if 0:
         for ws, ax in zip(sim_res.ws, plt.subplots(3, 1, figsize=(4, 10))[1]):
@@ -303,3 +316,42 @@ def test_time_dependent_wt_positions():
         for t, ax in zip(sim_res.time.values, plt.subplots(3, 1, figsize=(4, 10))[1]):
             sim_res.flow_map(time=t).plot_wake_map(ax=ax)
         plt.show()
+
+
+@pytest.mark.parametrize(["yaw", "tilt"], [[0, 0], [0, 5], [5, 0], [5, 5]])
+def test_aep_yaw_gradients_yaw_and_tilt_combinations(yaw, tilt):
+    wrt_arg = "yaw"
+
+    from py_wake.literature.gaussian_models import Blondel_Cathelain_2020
+    from py_wake.turbulence_models import CrespoHernandez
+
+    site = IEA37Site(16)
+    windTurbines = IEA37_WindTurbines()
+
+    wfm = Blondel_Cathelain_2020(
+        site,
+        windTurbines,
+        turbulenceModel=CrespoHernandez(),
+        deflectionModel=JimenezWakeDeflection(),
+    )
+
+    x, y = wfm.site.initial_position[np.array([0, 2, 5, 8, 14])].T
+    kwargs = {
+        "x": x,
+        "y": y,
+        "h": x * 0 + wfm.windTurbines.hub_height(),
+        "wd": [0],
+        "ws": 9.8,
+        "yaw": np.zeros(5) + yaw,
+        "tilt": np.zeros(5) + tilt,
+    }
+
+    dAEP_autograd = wfm.aep_gradients(gradient_method=autograd, wrt_arg=wrt_arg, **kwargs)
+    dAEP_cs = wfm.aep_gradients(gradient_method=cs, wrt_arg=wrt_arg, **kwargs)
+    dAEP_fd = wfm.aep_gradients(gradient_method=fd, wrt_arg=wrt_arg, **kwargs)
+
+    npt.assert_array_almost_equal(dAEP_fd, dAEP_cs, 5)
+    if yaw == tilt == 0:
+        npt.assert_array_equal(dAEP_autograd, 0)
+    else:
+        npt.assert_array_almost_equal(dAEP_autograd, dAEP_cs, 14)

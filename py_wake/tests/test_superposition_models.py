@@ -10,7 +10,7 @@ from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.turbulence_models import TurbulenceModel
 from py_wake.flow_map import HorizontalGrid, Points
 from py_wake.tests.test_deficit_models.test_noj import NibeA0
-from py_wake.examples.data.hornsrev1 import V80, wt_x, wt9_x, wt9_y
+from py_wake.examples.data.hornsrev1 import V80, wt9_x, wt9_y
 from py_wake.deficit_models.deficit_model import BlockageDeficitModel, WakeDeficitModel
 from py_wake.deficit_models import NoWakeDeficit
 from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines
@@ -155,8 +155,8 @@ def test_superpositionModels(superpositionModel):
     sim_res_a2a = wfm_a2a(wt9_x, wt9_y, operating=operating)
     sim_res_pdw = wfm_pdw(wt9_x, wt9_y, operating=operating)
     npt.assert_array_almost_equal(sim_res_a2a.WS_eff.sel(wt=8), sim_res_pdw.WS_eff.sel(wt=8))
-    fm_a2a = sim_res_a2a.flow_map(Points(wt9_x[-1:], wt9_y[-1:], [70]))
-    fm_pdw = sim_res_a2a.flow_map(Points(wt9_x[-1:], wt9_y[-1:], [70]))
+    fm_a2a = sim_res_a2a.flow_map(Points(wt9_x[-1:], wt9_y[-1:], [70]), wd=sim_res_a2a.wd, ws=sim_res_a2a.ws)
+    fm_pdw = sim_res_a2a.flow_map(Points(wt9_x[-1:], wt9_y[-1:], [70]), wd=sim_res_pdw.wd, ws=sim_res_pdw.ws)
     npt.assert_array_almost_equal(sim_res_a2a.WS_eff.sel(wt=8).squeeze(), fm_a2a.WS_eff)
     npt.assert_array_almost_equal(sim_res_a2a.WS_eff.sel(wt=8).squeeze(), fm_pdw.WS_eff)
 
@@ -168,10 +168,14 @@ def test_superpositionModels_rotor_avg_model(superpositionModel):
                   superpositionModel=superpositionModel(), turbulenceModel=CrespoHernandez())
     wfm_a2a = All2AllIterative(**kwargs)
     wfm_pdw = PropagateDownwind(**kwargs)
+    wfm_rc = PropagateDownwind(**{**kwargs, 'wake_deficitModel': NiayifarGaussianDeficit()})
+
     operating = [1] * 8 + [0]
     sim_res_a2a = wfm_a2a(wt9_x, wt9_y, operating=operating)
     sim_res_pdw = wfm_pdw(wt9_x, wt9_y, operating=operating)
     npt.assert_array_almost_equal(sim_res_a2a.WS_eff.sel(wt=8), sim_res_pdw.WS_eff.sel(wt=8))
+    sim_res_rc = wfm_rc(wt9_x, wt9_y, operating=operating)
+    npt.assert_array_less(sim_res_rc.WS_eff.sel(wd=270)[3:], sim_res_pdw.WS_eff.sel(wd=270)[3:])
 
 
 def test_squaredSum_speedups():

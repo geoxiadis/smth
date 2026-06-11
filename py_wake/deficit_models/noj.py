@@ -81,7 +81,7 @@ class NOJ(PropagateDownwind, DeprecatedModel):
                                    superpositionModel=superpositionModel,
                                    deflectionModel=deflectionModel,
                                    turbulenceModel=turbulenceModel)
-        DeprecatedModel.__init__(self, 'py_wake.literature.noj.Jensen_1983')
+        # DeprecatedModel.__init__(self, 'py_wake.literature.noj.Jensen_1983')
 
 
 class NOJLocalDeficit(NOJDeficit):

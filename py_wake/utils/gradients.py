@@ -1,27 +1,27 @@
-from py_wake import np
-from numpy import asarray as np_asarray
+import inspect
+from functools import wraps
+from inspect import signature
+from itertools import count
+
+import autograd.numpy as anp
+
 # from numpy import asanyarray as np_asanyarray
 import numpy
-import autograd.numpy as anp
-from autograd.numpy.numpy_boxes import ArrayBox
-import inspect
 from autograd.core import defvjp, primitive
-from autograd.differential_operators import jacobian, elementwise_grad
-from inspect import signature
-from functools import wraps
-from xarray.core.dataarray import DataArray
-from xarray.core import variable
-from py_wake.utils import gradients
-from scipy.interpolate._cubic import PchipInterpolator as scipy_PchipInterpolator
-
-from itertools import count
-from scipy.interpolate import UnivariateSpline as scipy_UnivariateSpline
-
-
-from py_wake.utils.numpy_utils import AutogradNumpy
+from autograd.differential_operators import elementwise_grad, jacobian
+from autograd.numpy.numpy_boxes import ArrayBox
 from autograd.numpy.numpy_vjps import unbroadcast_f
-from scipy.special import gamma as sgamma
 from autograd.scipy.special import gamma as agamma
+from numpy import asarray as np_asarray
+from scipy.interpolate import UnivariateSpline as scipy_UnivariateSpline
+from scipy.interpolate._cubic import PchipInterpolator as scipy_PchipInterpolator
+from scipy.special import gamma as sgamma
+from xarray.core import variable
+from xarray.core.dataarray import DataArray
+
+from py_wake import np
+from py_wake.utils import gradients
+from py_wake.utils.numpy_utils import AutogradNumpy
 
 
 def asarray(x, dtype=None, order=None, **kwargs):
@@ -36,6 +36,32 @@ def asarray(x, dtype=None, order=None, **kwargs):
     return np_asarray(x, dtype, order, **kwargs)
 
 
+def item_assign(x, idx, values, axis=0, test=0):
+    if axis:
+        x = np.moveaxis(x, axis, 0)
+        values = np.moveaxis(values, axis, 0)
+    assert x[idx].shape == np.shape(values)
+    if isinstance(x, ArrayBox) or test:
+        if isinstance(idx, slice):
+            idx = np.arange(x.shape[axis])[idx]
+        res = []
+        idx_i = 0
+        for x_i in range(x.shape[0]):
+            if idx_i < len(idx) and x_i == idx[idx_i]:
+                res.append(values[idx_i])
+                idx_i += 1
+            else:
+                res.append(x[x_i])
+        x = np.array(res)
+
+    else:
+        # x = x.copy()
+        x[idx] = values
+    if axis:
+        x = np.moveaxis(x, 0, axis)
+    return x
+
+
 # def asanyarray(x, dtype=None, order=None):
 #     if isinstance(x, (ArrayBox)):
 #         return x
@@ -45,10 +71,12 @@ def asarray(x, dtype=None, order=None, **kwargs):
 
 
 def minimum(x1, x2, out=None, where=True, **kwargs):
-    if isinstance(x1, ArrayBox) or isinstance(x2, ArrayBox):
-        return anp.where((x2 < x1) & where, x2, x1)  # @UndefinedVariable
-    else:
-        return numpy.minimum(x1, x2, out=out, where=where, **kwargs)
+    try:
+        if np.backend.minimum == minimum:
+            raise TypeError
+        return np.backend.minimum(x1, x2, out=out, where=where, **kwargs)
+    except TypeError:
+        return np.backend.where((x2 < x1) & where, x2, x1)
 
 
 def negative(x1, out=None, where=True, **kwargs):
@@ -177,7 +205,9 @@ def autograd(f, vector_interdependence=True, argnum=0):
                 return f(*args, **kwargs)
             wrap_1inp.org_f = f
             dfdinp = autograd(wrap_1inp, vector_interdependence=vector_interdependence)(wrt_1arg, *args)
-            return [dfdinp[i0:i1].reshape(s) for i0, i1, s in zip(wrt_arg_i[:-1], wrt_arg_i[1:], wrt_arg_shape)]
+            output_shape = np.shape(dfdinp)[:-1]
+            return [dfdinp[..., i0:i1].reshape(output_shape + s)
+                    for i0, i1, s in zip(wrt_arg_i[:-1], wrt_arg_i[1:], wrt_arg_shape)]
         return wrap
     else:
         if vector_interdependence:
@@ -201,11 +231,13 @@ def plot_gradients(f, dfdx, x, label, step=1, ax=None):
     import matplotlib.pyplot as plt
     global color_dict
     if ax is None:
-        ax = plt
+        ax = plt.gca()
     c = color_dict.get(label, None)
     step = np.array([-step, 0, step])
 
-    c = ax.plot(x + step, f + step * dfdx, ".-", color=c, label=('', label)[c is None])[0].get_color()
+    if label in ax.get_legend_handles_labels()[1]:
+        label = ""
+    c = ax.plot(x + step, f + step * dfdx, ".-", color=c, label=label)[0].get_color()
 
     if label not in color_dict:
         color_dict[label] = c
@@ -315,6 +347,13 @@ def erf(z):
         return scipy_erf(z)
 
 
+try:
+    trapz_fun = np.trapezoid  # Numpy 2
+except AttributeError:  # pragma: no cover
+    # Numpy 1
+    trapz_fun = np.trapz  # pragma: no cover
+
+
 # def get_dtype(arg_lst):
 #     return (float, np.complex128)[any([np.iscomplexobj(v) for v in arg_lst])]
 def trapz(y, x, axis=-1):
@@ -334,7 +373,7 @@ def trapz(y, x, axis=-1):
         else:   # pragma: no cover
             raise NotImplementedError()
     else:
-        return np.trapz(y, x, axis=axis)
+        return trapz_fun(y, x, axis=axis)
 
 
 def mod(x1, x2):
@@ -366,6 +405,9 @@ def arctan2(y, x):
         r[m] = np.arctan(np.atleast_1d(y)[m] / np.atleast_1d(x)[m])
         r[(x.real < 0) & (y.real >= 0)] += np.pi
         r[(x.real < 0) & (y.real < 0)] -= np.pi
+        m2 = (x.real == 0) & (y.real != 0)
+        if np.any(m2):
+            r[m2] -= np.asarray(x.imag)[m2] / np.asarray(y.real)[m2] * 1j
         return np.reshape(r, np.shape(y))
     elif isinstance(y, ArrayBox) or isinstance(x, ArrayBox):
         return anp.arctan2(y, x)  # @UndefinedVariable
@@ -392,3 +434,18 @@ def sign(x):
     if np.iscomplexobj(x):
         x = x.real
     return np.sign(x)
+
+
+def floor(x):
+    if np.iscomplexobj(x):
+        return np.floor(x.real) + np.floor(x.imag) * 1j
+    else:
+        return np.floor(x)
+
+
+def isin(element, test_elements, assume_unique=False, invert=False, *, kind=None):
+    if isinstance(element, ArrayBox):
+        element = element._value
+    if isinstance(test_elements, ArrayBox):
+        test_elements = test_elements._value
+    return np.isin(element, test_elements, assume_unique, invert, kind=kind)

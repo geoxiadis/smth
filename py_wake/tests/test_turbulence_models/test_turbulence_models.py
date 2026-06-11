@@ -14,6 +14,7 @@ from py_wake.tests import npt
 from py_wake.tests.test_deficit_models.test_noj import NibeA0
 from py_wake.turbulence_models.stf import STF2005TurbulenceModel, STF2017TurbulenceModel, IECWeight
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel, XRLUTTurbulenceModel
+from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
 from py_wake.turbulence_models.gcl_turb import GCLTurbulence
 import matplotlib.pyplot as plt
@@ -26,6 +27,7 @@ from py_wake.utils.model_utils import get_models
 from numpy import newaxis as na
 import xarray as xr
 from py_wake.deficit_models.utils import ct2a_mom1d
+import warnings
 
 WindFarmModel.verbose = False
 
@@ -75,16 +77,17 @@ def test_models_with_BastankhahGaussian(turbulence_model, ref_ti):
     site = IEA37Site(16)
     x, y = site.initial_position.T
     windTurbines = IEA37_WindTurbines()
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.* model is not representative of the setup')
+        for wake_model in [BastankhahGaussian(site, windTurbines, turbulenceModel=turbulence_model)]:
 
-    for wake_model in [BastankhahGaussian(site, windTurbines, turbulenceModel=turbulence_model)]:
+            res = wake_model(x, y)
+            # print(turbulence_model.__class__.__name__, np.round(res.TI_eff_ilk[:, 0, 0], 3).tolist())
+            if 0:
+                res.flow_map(wd=0).plot_ti_map()
+                plt.show()
 
-        res = wake_model(x, y)
-        # print(turbulence_model.__class__.__name__, np.round(res.TI_eff_ilk[:, 0, 0], 3).tolist())
-        if 0:
-            res.flow_map(wd=0).plot_ti_map()
-            plt.show()
-
-        npt.assert_array_almost_equal(res.TI_eff_ilk[:, 0, 0], ref_ti, 3)
+            npt.assert_array_almost_equal(res.TI_eff_ilk[:, 0, 0], ref_ti, 3)
 
 
 def test_max_sum():
@@ -201,7 +204,11 @@ def test_turbulence_models_upstream(turbulenceModel):
     kwargs = {'x': [0, 0, 500, 500], 'y': [0, 500, 0, 500], 'wd': [0], 'ws': [8]}
 
     fm = wfm(**kwargs).flow_map()
-    assert np.all(fm.TI_eff.isel(y=(fm.y > 500)) == 0.075)
+    if isinstance(wfm.turbulenceModel, RANSLUTTurbulence):
+        # RANSLUT has added ti upstream too
+        npt.assert_allclose(fm.TI_eff.isel(y=(fm.y > 600)), 0.075, atol=0.001)
+    else:
+        assert np.all(fm.TI_eff.isel(y=(fm.y > 500)) == 0.075)
     if 0:
         fm.plot_ti_map()
         plt.show()
@@ -259,8 +266,9 @@ def test_CrespoHernandez(kwargs, ref):
     Navid Zehtabiyan-Rezaie, Mahdi Abkar
     https://doi.org/10.1016/j.jweia.2023.105504
     """
-
-    wfm = NiayifarGaussian(UniformSite(), V80(), turbulenceModel=CrespoHernandez(**kwargs))
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.* model is not representative of the setup')
+        wfm = NiayifarGaussian(UniformSite(), V80(), turbulenceModel=CrespoHernandez(**kwargs))
     sim_res = wfm(wt_x, wt_y, wd=270, ws=8, TI=0.077)
     ti = sim_res.TI_eff.values.reshape((10, 8)).mean(1) * 100
     if 0:

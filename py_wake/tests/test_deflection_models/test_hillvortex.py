@@ -10,6 +10,7 @@ from py_wake.wind_turbines._wind_turbines import WindTurbine
 from py_wake.wind_turbines.power_ct_functions import PowerCtFunction
 from py_wake.tests import npt
 from py_wake.tests.check_speed import timeit
+import warnings
 
 
 def test_torque_result():
@@ -36,10 +37,11 @@ def test_torque_result():
                       powerCtFunction=PowerCtFunction(input_keys=['ws', 'yaw'],
                                                       power_ct_func=power_ct_function,
                                                       power_unit='w', additional_models=[]))
-
-    wfm = ZongGaussian(site, v52,
-                       deflectionModel=GCLHillDeflection(),
-                       turbulenceModel=CrespoHernandez())
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', 'The ZongGaussian model is not representative of the setup')
+        wfm = ZongGaussian(site, v52,
+                           deflectionModel=GCLHillDeflection(),
+                           turbulenceModel=CrespoHernandez())
     x_ref = np.arange(2, 12, 2)
     positive_ref = [-0.2, -.35, -.45, -.55, -.65]
     negative_ref = [.15, .3, .4, .45, .5]
@@ -72,8 +74,10 @@ def test_N():
     grid = XYGrid(x=[10 * D, 20 * D], y=np.linspace(-1.5 * D, 1.5 * D, 100))
 
     def deflection_20d(N):
-        wfm = ZongGaussian(site, wt, deflectionModel=GCLHillDeflection(N=N),
-                           turbulenceModel=CrespoHernandez())
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'The ZongGaussian model is not representative of the setup')
+            wfm = ZongGaussian(site, wt, deflectionModel=GCLHillDeflection(N=N),
+                               turbulenceModel=CrespoHernandez())
         fm = wfm(x, y, yaw=30, tilt=0, wd=270, ws=10).flow_map(grid)
         return fm.min_WS_eff().values[-1]
 
@@ -97,11 +101,13 @@ def test_wake_deficitModel_input():
 
     wt = V80()
     D = wt.diameter()
-    wfm1 = ZongGaussian(site, wt, deflectionModel=GCLHillDeflection(),
-                        turbulenceModel=CrespoHernandez())
-    wfm2 = BastankhahGaussian(site, wt,
-                              deflectionModel=GCLHillDeflection(wake_deficitModel=ZongGaussianDeficit()),
-                              turbulenceModel=CrespoHernandez())
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.* model is not representative of the setup')
+        wfm1 = ZongGaussian(site, wt, deflectionModel=GCLHillDeflection(),
+                            turbulenceModel=CrespoHernandez())
+        wfm2 = BastankhahGaussian(site, wt,
+                                  deflectionModel=GCLHillDeflection(wake_deficitModel=ZongGaussianDeficit()),
+                                  turbulenceModel=CrespoHernandez())
 
     grid = XYGrid(x=np.linspace(10, D * 10, 100), y=np.linspace(-1.5 * D, 1.5 * D, 100))
     cl1, cl2 = [wfm(x, y, yaw=30, tilt=0, wd=270, ws=10).flow_map(grid).min_WS_eff() for wfm in [wfm1, wfm2]]

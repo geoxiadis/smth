@@ -17,7 +17,7 @@ def standard_power_ct_curve(power_norm, diameter, turbulence_intensity=.1,
     diameter : int or float
         Rotor diameter [m]
     turbulence_intensity : float
-        Turbulence intensity [%]
+        Turbulence intensity [-], default is 0.1 (10 %)
     rho : float, optional
         Density of air [kg/m^3], default is 1.225
     max_cp : float, optional
@@ -25,13 +25,13 @@ def standard_power_ct_curve(power_norm, diameter, turbulence_intensity=.1,
     constant_ct : float, optional
         Ct value in constant-ct region
     gear_loss_const : float, optional
-        Constant gear loss [% of power_norm in kW]
+        Constant gear loss as factor of power_norm [-], default is 0.01 (1 %)
     gear_loss_var : float, optional
-        Variable gear loss [%]
+        Variable gear loss [-], default is 0.014 (1.4 %)
     generator_loss : float, optional
-        Generator loss [%]
+        Generator loss [-], default is 0.03 (3 %)
     converter_loss : float, optional
-        converter loss [%]
+        converter loss [-], default is 0.03 (3 %)
     """
 
     area = (diameter / 2) ** 2 * np.pi
@@ -53,8 +53,8 @@ def standard_power_ct_curve(power_norm, diameter, turbulence_intensity=.1,
     if turbulence_intensity > 0:
         sigma = sigma_lst[:, na]
         ndist = 1 / np.sqrt(2 * np.pi * sigma ** 2) * np.exp(-(wsp_lst - wsp_lst[:, na]) ** 2 / (2 * sigma ** 2))
-#         for i in range(len(wsp_lst)):
-#             ndist[i, i * 2 + 1:] = 0
+        #         for i in range(len(wsp_lst)):
+        #             ndist[i, i * 2 + 1:] = 0
         power_lst = (ndist * p_raw).sum(1) / ndist.sum(1)
     else:
         power_lst = p_raw

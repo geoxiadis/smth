@@ -197,3 +197,57 @@ def gauss_quadrature(n_x, n_y):
 def polar_gauss_quadrature(n_r, n_theta):
     x, y, w = gauss_quadrature(n_r, n_theta)
     return (x + 1) / 2, (y + 1) * np.pi, w
+
+
+def EllipSys_polar_grid(n_rnodes, n_theta, D):
+    """
+    Calculate polar grid cell centers and area using polygons as done in EllipSys3D
+    for the Actuator Shape model. Number of cells center is (n_rnodes - 1) * n_theta.
+    """
+    # Polar grid
+    dr = 0.5 * D / (float(n_rnodes) - 1.0)
+    dtheta = 2.0 * np.pi / n_theta
+    # theta is defined from positive y-axis, clockwise
+    theta, r = np.meshgrid(np.arange(np.pi / 2.0, 2.5 * np.pi, dtheta),
+                           dr * np.arange(0, n_rnodes))
+    # xy coords of the polar grid, should be the same as adgrid in PyWakeEllipSys
+    xygrid = np.array([r * np.sin(-theta), r * np.cos(theta)])
+
+    # trapz coordinates (4 corners)
+    xygrid4 = np.array([xygrid,
+                        np.roll(xygrid, -1, 1),  # one node out
+                        np.roll(xygrid, (-1, -1), (1, 2)),  # one node counter clockwise
+                        np.roll(xygrid, -1, 2)]  # one node in
+                       )[:, :, :-1]  # exclude last trapz from outermost nodes to center
+    # trapz area: (a+b)/2*h
+    # a=2*sin(dtheta/2)*r_inner
+    # b=2*sin(dtheta/2)*r_outer
+    # (a+b)/2 = sin(dtheta/2)*(r_inner+r_outer)
+    # h = np.cos(dtheta/2)*dr
+    area = ((np.sin(dtheta / 2) * (r[1:] + r[:-1]) * np.cos(dtheta / 2) * dr))
+    totalarea = np.sum(area)
+
+    # Find center coords, cxy, for integration
+    # Split each trapz into two triangles, T1, T2
+    # Calculate Mean of T1 and T2 coords
+    R1 = (xygrid4[0] + xygrid4[2] + xygrid4[1]) / 3
+    R2 = (xygrid4[0] + xygrid4[2] + xygrid4[3]) / 3
+
+    # Area of T1 And T2 from cross product
+    xygrid4_rel = xygrid4 - xygrid4[0]  # corners relative to first corner
+    A1 = (xygrid4_rel[1, 0] * xygrid4_rel[2, 1] - xygrid4_rel[1, 1] * xygrid4_rel[2, 0]) / 2
+    A2 = (xygrid4_rel[2, 0] * xygrid4_rel[3, 1] - xygrid4_rel[2, 1] * xygrid4_rel[3, 0]) / 2
+    # Calculate center coords as the area weighted mean of R1 and R2
+    cxy = ((A1[na] * R1 + A2[na] * R2) / (area[na]))
+    return cxy, area, totalarea
+
+
+class EllipSysPolygonRotorAvg(GridRotorAvg):
+    """EllipSys3D Polygon polar grid grid rotor average model"""
+
+    def __init__(self, n_r=4, n_theta=16):
+        self.n_rnodes = n_r + 1
+        self.n_theta = n_theta
+        cxy, area, totalarea = EllipSys_polar_grid(self.n_rnodes, self.n_theta, 2.0)
+        GridRotorAvg.__init__(self, nodes_x=cxy[0].flatten(), nodes_y=cxy[1].flatten(),
+                              nodes_weight=area.flatten() / totalarea)

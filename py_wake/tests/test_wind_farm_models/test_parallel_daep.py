@@ -43,6 +43,7 @@ def test_parallel_daep_with_time_site():
     T = np.arange(len(ds.time))
     site = XRSite(ds)
     wfm = Nygaard_2022(site, V80())
+    wd = ds.WD.mean(['x', 'y', 'h'])
 
     test_x, test_y = [
         ds.x.mean().item(),
@@ -56,7 +57,7 @@ def test_parallel_daep_with_time_site():
 
     def aep_func(x, y, n_cpu=1):  # full=False, **kwargs
         _f = np.zeros_like(T)
-        sim_res = wfm(x, y, time=T, ws=_f, wd=_f, n_cpu=n_cpu)
+        sim_res = wfm(x, y, time=T, ws=_f, wd=wd, n_cpu=n_cpu)
         return sim_res.aep().sum().values
 
     def aep_jac(x, y, n_cpu=1, **kwargs):
@@ -67,7 +68,7 @@ def test_parallel_daep_with_time_site():
             x=x,
             y=y,
             ws=_f,
-            wd=_f,
+            wd=wd,
             time=T,
             n_cpu=n_cpu,
         )

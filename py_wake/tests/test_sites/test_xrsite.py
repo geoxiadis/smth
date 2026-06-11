@@ -1,28 +1,33 @@
-from py_wake import np
-from py_wake.site.shear import PowerShear
-from py_wake.site.xrsite import XRSite, GlobalWindAtlasSite, UniformSite
-import xarray as xr
-from py_wake.tests import npt
-import pytest
-import matplotlib.pyplot as plt
-from numpy import newaxis as na
-from py_wake.tests.test_files import tfp
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
-from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
-from py_wake.wind_turbines import WindTurbines
-from py_wake.deficit_models.gaussian import BastankhahGaussian, BastankhahGaussianDeficit
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind
-from py_wake.superposition_models import LinearSum
-from py_wake.tests.check_speed import timeit
-from py_wake.site._site import LocalWind
-from py_wake.utils import weibull
-from py_wake.deficit_models.noj import NOJ
-from py_wake.flow_map import XYGrid
 import warnings
 from urllib.error import HTTPError, URLError
-from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
-from py_wake.utils.gradients import fd, autograd, cs
 
+import matplotlib.pyplot as plt
+import pytest
+import xarray as xr
+from numpy import newaxis as na
+
+from py_wake import np
+from py_wake.deficit_models.gaussian import (
+    BastankhahGaussian,
+    BastankhahGaussianDeficit,
+)
+from py_wake.deficit_models.noj import NOJ
+from py_wake.examples.data.hornsrev1 import V80, Hornsrev1Site
+from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
+from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
+from py_wake.flow_map import XYGrid
+from py_wake.site._site import LocalWind
+from py_wake.site.shear import PowerShear
+from py_wake.site.xrsite import GlobalWindAtlasSite, UniformSite, XRSite
+from py_wake.superposition_models import LinearSum
+from py_wake.tests import npt
+from py_wake.tests.check_speed import timeit
+from py_wake.tests.test_files import tfp
+from py_wake.utils import weibull
+from py_wake.utils.functions import mean_deg
+from py_wake.utils.gradients import autograd, cs, fd
+from py_wake.wind_farm_models.engineering_models import PropagateDownwind
+from py_wake.wind_turbines import WindTurbines
 
 f = [0.035972, 0.039487, 0.051674, 0.070002, 0.083645, 0.064348,
      0.086432, 0.117705, 0.151576, 0.147379, 0.10012, 0.05166]
@@ -203,7 +208,6 @@ def test_complex_grid_local_wind(complex_grid_site):
     y = np.arange(5)
     x = y * 2
     X, Y = np.meshgrid(x, y)
-    x_i, y_i = X.flatten(), Y.flatten()
 
     wdir_lst = np.arange(0, 360, 90)
     wsp_lst = np.arange(3, 6)
@@ -225,8 +229,9 @@ def test_complex_grid_local_wind(complex_grid_site):
                                          [0.0078508, 0.01177761, 0.01557493],
                                          [0.0105829, 0.01576518, 0.02066746],
                                          [0.01079997, 0.01656828, 0.02257487]])
-
-    wfm = BastankhahGaussian(site, V80())
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.* model is not representative of the setup')
+        wfm = BastankhahGaussian(site, V80())
     wfm([5], [3])
 
 
@@ -235,6 +240,8 @@ def test_complex_grid_local_wind_time(complex_grid_site):
     site.ds['TI'] = (['x', 'y', 'wd'], np.arange(3 * 2 * 13).reshape(3, 2, 13))
     wdir_lst = [0, 1, 2, 1, 0]
     wsp_lst = [9, 10, 9, 10, 11]
+    with pytest.raises(ValueError, match='wd and ws must be specified for time series'):
+        site.local_wind(x=[2.5, 7.5], y=[2.5, 2.5], h=100, ws=wsp_lst, time=True)
     lw = site.local_wind(x=[2.5, 7.5], y=[2.5, 2.5], h=100, wd=wdir_lst, ws=wsp_lst, time=True)
     assert lw.WS_ilk.shape == (2, 5, 1)
     assert lw.WD_ilk.shape == (2, 5, 1)
@@ -296,6 +303,29 @@ def test_GlobalWindAtlasSite():
     for var, atol in [('Sector_frequency', 0.03), ('Weibull_A', 1.6), ('Weibull_k', 0.4)]:
         npt.assert_allclose(site.ds.interp(h=70)[var], ref.ds[var], atol=atol)
 
+    def get_mean_ws(h):
+        lw = site.local_wind(wd=270, ws=10, h=h)
+        return weibull.mean(lw['Weibull_A_ilk'], lw['Weibull_k_ilk']).flatten().squeeze()
+
+    try:
+        site2 = GlobalWindAtlasSite(lat, long, roughness=0.001, ti=0.075, height=[75, 150])
+    except (HTTPError, URLError):
+        pytest.xfail('HTTPError in GlobalWindAtlasSite')
+
+    if 0:
+        h = np.linspace(10, 200)
+        plt.plot([get_mean_ws(h) for h in h], h)
+        plt.plot(
+            weibull.mean(
+                site2.ds.sel(
+                    wd=270, ws=10).Weibull_A, site2.ds.sel(
+                    wd=270, ws=10).Weibull_k), [
+                75, 150], '.r')
+        plt.show()
+
+    npt.assert_array_equal(weibull.mean(site2.ds.sel(wd=270, ws=10).Weibull_A, site2.ds.sel(wd=270, ws=10).Weibull_k),
+                           [get_mean_ws(h) for h in [75, 150]])
+
 
 def test_wrong_height():
     ti = 0.1
@@ -312,7 +342,7 @@ def test_wrong_height():
 
     wdir_lst = np.arange(0, 360, 90)
     wsp_lst = np.arange(3, 6)
-    lw = site.local_wind(x=x_i, y=y_i, h=100, wd=wdir_lst, ws=wsp_lst)
+    site.local_wind(x=x_i, y=y_i, h=100, wd=wdir_lst, ws=wsp_lst)
 
 
 def test_wd_independent_site():
@@ -374,7 +404,7 @@ def test_elevation():
 
 def test_plot_wd_distribution(complex_ws_site):
     res = complex_ws_site.plot_wd_distribution()
-    ref = [0.0312, 0.0332, 0.043, 0.0568, 0.0648, 0.0567, 0.0718, 0.0967, 0.1199, 0.1154, 0.0809, 0.045]
+    ref = [0.0314, 0.033, 0.0426, 0.0564, 0.0649, 0.0567, 0.0711, 0.0958, 0.1195, 0.1161, 0.0822, 0.0459]
     if 0:
         print(np.round(res.squeeze().values, 4).tolist())
         plt.show()
@@ -407,7 +437,9 @@ def test_from_flow_box_2wt():
     windTurbines = V80()
 
     # simulate current and neighbour wt
-    wfm = BastankhahGaussian(site, windTurbines)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.* model is not representative of the setup')
+        wfm = BastankhahGaussian(site, windTurbines)
     wd = np.arange(30)
     sim_res = wfm([0, 0], [0, 500], wd=wd)
     ref_aep = sim_res.aep().sel(wt=0)
@@ -424,7 +456,9 @@ def test_from_flow_box_2wt():
     site = XRSite.from_flow_box(box)
 
     # Simujlate current wt and compare aep
-    wfm = BastankhahGaussian(site, windTurbines)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.* model is not representative of the setup')
+        wfm = BastankhahGaussian(site, windTurbines)
     sim_res = wfm(wt_x, wt_y, wd=wd)
     aep = sim_res.aep()
 
@@ -456,7 +490,7 @@ def test_neighbour_farm_speed():
     # Consider wd=270 +/- 30 deg only
     wd_lst = np.arange(240, 301)
 
-    sim_res, t = timeit(wf_model, verbose=False)(all_x, all_y, type=types, ws=9.8, wd=wd_lst)
+    sim_res, _ = timeit(wf_model, verbose=False)(all_x, all_y, type=types, ws=9.8, wd=wd_lst)
     if 1:
         ext = 100
         flow_box = wf_model(neighbour_x, neighbour_y, wd=wd_lst).flow_box(
@@ -492,7 +526,7 @@ def test_from_flowbox():
 
     flow_box = sim_res.flow_box(x, y, V80()._hub_heights[0])
 
-    wake_site = XRSite.from_flow_box(flow_box)
+    XRSite.from_flow_box(flow_box)
 
 
 @pytest.mark.parametrize('h,wd,ws,h_i,wd_l,ws_k', [
@@ -672,8 +706,6 @@ def test_from_pwc_point(method_speedup, ref, pywasp_pwc_point):
                    1.06002303, 1., 0.93179214]])
     )[ref]
 
-    sector = np.linspace(0.0, 330.0, 12)
-
     x = np.array([263655.0, 263891.1, 264022.2])
     y = np.array([6506601.0, 6506394.0, 6506124.0])
     h = np.array([70] * 3)
@@ -752,13 +784,8 @@ def test_non_uniform_ts_xrsite_compute_local_wind_without_ref_ws_wd_inputs():
             ),
         )
     )
-
     # test local wind compute without ref ws and wd inputs
-    ws0 = non_uniform_ts_site.local_wind(
-        site_x[1],
-        site_y[2],
-        time=[3],
-    )["WS_ilk"]
+    ws0 = non_uniform_ts_site.local_wind(site_x[1], site_y[2], time=[3], wd=[0], ws=[0])["WS_ilk"]
     assert ws0 == site_ws[1, 2, 3]
 
     # try wfm call with the site and no ref ws & wd
@@ -769,10 +796,6 @@ def test_non_uniform_ts_xrsite_compute_local_wind_without_ref_ws_wd_inputs():
         wake_deficitModel=BastankhahGaussianDeficit(),
         superpositionModel=LinearSum(),
     )
-    aep = (
-        wf_model([site_x[1], site_x[2]], [site_y[1], site_y[2]], time=site_time)
-        .aep()
-        .sum()
-        .values
-    )
+    ws, wd = site_ws.mean((0, 1)), mean_deg(site_wd, (0, 1))
+    aep = (wf_model(site_x[1:3], site_y[1:3], time=site_time, ws=ws, wd=wd).aep().sum().values)
     assert aep > 0.0

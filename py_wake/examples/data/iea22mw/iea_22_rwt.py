@@ -40,6 +40,8 @@ class IEA_22MW_280_RWT(WindTurbine):
                 "MW",
                 IEA_22MW_280_RWT_ct_curve[:, 1],
                 method=method,
+                ws_cutin=3.,
+                ws_cutout=25.,
             ),
         )
 
@@ -48,7 +50,7 @@ def main():
     wt = IEA_22MW_280_RWT()
     print('Diameter', wt.diameter())
     print('Hub height', wt.hub_height())
-    ws = np.arange(3, 25)
+    ws = np.arange(0., 30.)
     import matplotlib.pyplot as plt
     plt.plot(ws, wt.power(ws), '.-', label='power [W]')
     c = plt.plot([], label='ct')[0].get_color()

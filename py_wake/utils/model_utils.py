@@ -1,12 +1,14 @@
 import inspect
 import os
 import pkgutil
-from py_wake import np
-from numpy import newaxis as na
-from py_wake.site._site import Site
 import warnings
-from py_wake.utils.grid_interpolator import GridInterpolator
+
+from numpy import newaxis as na
+
 import py_wake
+from py_wake import np
+from py_wake.site._site import Site
+from py_wake.utils.grid_interpolator import GridInterpolator
 
 
 class Model():
@@ -22,8 +24,8 @@ class XRLUTModel(Model):
         """
         Parameters
         ----------
-        da : xarray.dataarray
-            dataarray containing lookup table.
+        da : xarray.dataarray, list, tuple
+            dataarray containing lookup table or list of dataarrays (one for each turbine type).
         get_input : function or None, optional
             if None (default): The get_input method of XRDeficitModel is used. This option requires that the
             names of the input dimensions matches names of the default PyWake keyword arguments, e.g. dw_ijlk, WS_ilk,
@@ -44,18 +46,26 @@ class XRLUTModel(Model):
         bounds : {'limit', 'check', 'ignore'}
             how to handle out-of-bounds coordinate interpolation, see GridInterpolator
         """
-        self.da = da
+        if not isinstance(da, (list, tuple)):
+            da = [da]
+        self.da_lst = da
+        if len(da) == 1:
+            self.da = self.da_lst[0]
+        assert all([self.da_lst[0].dims == da.dims for da in self.da_lst]), "All data arrays must have same dimensions"
         self._args4model = getattr(self, '_args4model', set())
+
         if get_input:
             self.get_input = get_input
         else:
-            self._args4model |= set(self.da.dims)
+            self._args4model |= set(self.da_lst[0].dims)
         if get_output:
             self.get_output = get_output
         self._args4model |= (set(inspect.getfullargspec(self.get_input).args) |
-                             set(inspect.getfullargspec(self.get_output).args)) - {'self', 'output_ijlk'}
+                             set(inspect.getfullargspec(self.get_output).args) |
+                             set(inspect.getfullargspec(XRLUTModel.__call__).args)) - {'self', 'output_ijlk'}
 
-        self.interp = GridInterpolator([da[k].values for k in da.dims], da.values, method=method, bounds=bounds)
+        self.interp_lst = [GridInterpolator([da[k].values for k in da.dims], da.values, method=method, bounds=bounds)
+                           for da in self.da_lst]
 
     @property
     def args4model(self):
@@ -67,18 +77,35 @@ class XRLUTModel(Model):
         dimensions of the dataarray, which must have names that matches the names of the default PyWake
         keyword arguments, e.g. dw_ijlk, WS_ilk, D_src_il, etc, or user-specified custom inputs"""
         return [np.expand_dims(kwargs[k], [i for i, d in enumerate('ijlk') if d not in k.split('_')[-1]])
-                for k in self.da.dims]
+                for k in self.da_lst[0].dims]
 
     def get_output(self, output_ijlk, **kwargs):
         """Default get_output function.
         This function just returns the interpolated values"""
         return output_ijlk
 
-    def __call__(self, **kwargs):
-        input_ijlk = self.get_input(**kwargs)
-        IJLK = tuple(np.max([inp.shape for inp in input_ijlk], 0))
-        output_ijlk = self.interp(np.array([np.broadcast_to(inp, IJLK).flatten()
-                                            for inp in input_ijlk]).T).reshape(IJLK)
+    def __call__(self, type_il, **kwargs):
+        kwargs['type_il'] = type_il
+        input_ijlk_lst = self.get_input(**kwargs)
+        IJLK = tuple(np.max([inp.shape for inp in input_ijlk_lst], 0))
+        input_IJLK_lst = [np.broadcast_to(inp, IJLK) for inp in input_ijlk_lst]
+
+        def get_type_output(type_, input_IJLK_lst):
+            return self.interp_lst[type_](np.array([inp.flatten()
+                                                   for inp in input_IJLK_lst]).T).reshape(input_IJLK_lst[0].shape)
+
+        if len(self.interp_lst) == 1:
+            output_ijlk = get_type_output(0, input_IJLK_lst)
+        elif type_il.shape[0] == 1:
+            # PropagateDownwind or All2AllIterative with only one turbine, type depends on l (wind direction)
+            output_ijlk = np.concatenate([get_type_output(int(t), [inp[:, :, [l]] for inp in input_IJLK_lst])
+                                          for l, t in enumerate(type_il.flatten())], 2)
+        else:
+            # All2AllIterative, type depends on i (wind turbine)
+            assert type_il.shape[1] == 1
+            output_ijlk = np.concatenate([get_type_output(int(t), [inp[[i]] for inp in input_IJLK_lst])
+                                          for i, t in enumerate(type_il.flatten())], 0)
+
         return self.get_output(output_ijlk, **kwargs)
 
 
@@ -95,11 +122,13 @@ class ModelMethodWrapper():
 
         def w(*args, **kwargs):
             return wrapper(f, *args, **kwargs)
+        w.superpositionModel = getattr(f, '__self__', f).superpositionModel
         return w
 
 
 class RotorAvgAndGroundModelContainer():
-    def __init__(self, groundModel=None, rotorAvgModel=None):
+    def __init__(self, superpositionModel, groundModel, rotorAvgModel):
+        self.superpositionModel = superpositionModel
         self.groundModel = groundModel
         self.rotorAvgModel = rotorAvgModel
 
@@ -133,33 +162,46 @@ class RotorAvgAndGroundModelContainer():
 
 
 def get_exclude_dict():
-    from py_wake.deficit_models.deficit_model import ConvectionDeficitModel, WakeDeficitModel, \
-        BlockageDeficitModel
-    from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
-    from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, NodeRotorAvgModel
-    from py_wake.wind_farm_models.engineering_models import EngineeringWindFarmModel, PropagateDownwind
-    from py_wake.deflection_models.deflection_model import DeflectionIntegrator
-
-    from py_wake.superposition_models import LinearSum
+    from py_wake.deficit_models.deficit_model import (
+        BlockageDeficitModel,
+        ConvectionDeficitModel,
+        WakeDeficitModel,
+        XRLUTDeficitModel,
+    )
     from py_wake.deficit_models.noj import NOJDeficit
-    from py_wake.turbulence_models.turbulence_model import XRLUTTurbulenceModel
+    from py_wake.deficit_models.rans_lut import RANSLUTDeficit
+    from py_wake.deflection_models.deflection_model import DeflectionIntegrator
     from py_wake.ground_models.ground_models import NoGround
-    from py_wake.site.jit_streamline_distance import JITStreamlineDistance
+    from py_wake.rotor_avg_models.rotor_avg_model import (
+        NodeRotorAvgModel,
+        RotorAvgModel,
+    )
+    from py_wake.site.streamline_distance import StreamlineDistance
+    from py_wake.superposition_models import LinearSum
+    from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
+    from py_wake.deficit_models.rans_lut import RANSLUTDeficit, RANSLUTConvDeficit
+    from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
+    from py_wake.turbulence_models.turbulence_model import XRLUTTurbulenceModel
+    from py_wake.wind_farm_models.engineering_models import (
+        EngineeringWindFarmModel,
+        PropagateDownwind,
+    )
     return {
         "WindFarmModel": ([EngineeringWindFarmModel], [], PropagateDownwind),
         "EngineeringWindFarmModel": ([], [], PropagateDownwind),
-        "DeficitModel": ([ConvectionDeficitModel, BlockageDeficitModel, WakeDeficitModel, XRLUTDeficitModel],
+        "DeficitModel": ([ConvectionDeficitModel, BlockageDeficitModel, WakeDeficitModel, XRLUTDeficitModel,
+                          RANSLUTDeficit],
                          [RotorAvgModel], NOJDeficit),
-        "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel], [RotorAvgModel], NOJDeficit),
+        "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel, RANSLUTDeficit, RANSLUTConvDeficit], [RotorAvgModel], NOJDeficit),
         "RotorAvgModel": ([NodeRotorAvgModel], [], None),
         "SuperpositionModel": ([], [], LinearSum),
-        "BlockageDeficitModel": ([XRLUTDeficitModel], [], None),
+        "BlockageDeficitModel": ([XRLUTDeficitModel, RANSLUTDeficit], [RANSLUTConvDeficit], None),
         "DeflectionModel": ([DeflectionIntegrator], [], None),
-        "TurbulenceModel": ([XRLUTTurbulenceModel], [], None),
+        "TurbulenceModel": ([XRLUTTurbulenceModel, RANSLUTTurbulence], [], None),
         "AddedTurbulenceSuperpositionModel": ([], [], None),
         "GroundModel": ([], [], NoGround),
         "Shear": ([], [], None),
-        "StraightDistance": ([], [JITStreamlineDistance], None),
+        "StraightDistance": ([], [StreamlineDistance], None),
 
     }
 
@@ -170,9 +212,11 @@ def cls_in(A, cls_lst):
 
 def get_models(base_class, exclude_None=False, include_dirs=[]):
     if base_class is Site:
-        from py_wake.examples.data.iea37._iea37 import IEA37Site
         from py_wake.examples.data.hornsrev1 import Hornsrev1Site
-        from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
+        from py_wake.examples.data.iea37._iea37 import IEA37Site
+        from py_wake.examples.data.ParqueFicticio._parque_ficticio import (
+            ParqueFicticioSite,
+        )
         return [IEA37Site, Hornsrev1Site, ParqueFicticioSite]
     exclude_cls_lst, exclude_subcls_lst, default = get_exclude_dict()[base_class.__name__]
 
@@ -189,7 +233,9 @@ def get_models(base_class, exclude_None=False, include_dirs=[]):
         module_name = parent_module + '.' + module_name
         import importlib
         try:
-            _module = importlib.import_module(module_name)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                _module = importlib.import_module(module_name)
             for n in dir(_module):
                 v = _module.__dict__[n]
                 if inspect.isclass(v):
@@ -252,9 +298,9 @@ def get_signature(cls, kwargs={}, indent_level=0):
 def get_model_input(wfm, x, y, ws=10, wd=270, **kwargs):
     ws, wd = [np.atleast_1d(v) for v in [ws, wd]]
     x, y = map(np.asarray, [x, y])
-    wfm.site.distance.setup(src_x_ilk=[[[0]]], src_y_ilk=[[[0]]], src_h_ilk=[[[0]]], src_z_ilk=[[[0]]],
-                            dst_xyhz_j=(x, y, x * 0, x * 0))
-    dw_ijlk, hcw_ijlk, dh_ijlk = wfm.site.distance(wd_l=wd)
+
+    dw_ijlk, hcw_ijlk, dh_ijlk = wfm.site.distance(src_x_ilk=[[[0]]], src_y_ilk=[[[0]]], src_h_ilk=[[[0]]],
+                                                   dst_xyh_jlk=(x, y, x * 0), wd_l=wd)
     sim_res = wfm([0], [0], ws=ws, wd=wd, **kwargs)
 
     args = {'dw_ijlk': dw_ijlk, 'hcw_ijlk': hcw_ijlk, 'dh_ijlk': dh_ijlk,

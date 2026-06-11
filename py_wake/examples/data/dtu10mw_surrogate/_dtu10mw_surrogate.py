@@ -8,6 +8,7 @@ from py_wake.wind_turbines.wind_turbine_functions import FunctionSurrogates
 from py_wake.examples.data import example_data_path
 from py_wake.utils.model_utils import fix_shape
 from autograd.numpy.numpy_boxes import ArrayBox
+import warnings
 
 
 class DTU10MW_PowerCtSurrogate(PowerCtSurrogate):
@@ -87,7 +88,9 @@ def main():
         # ===============================================================================================================
         # DTU10MW_1WT_Surrogate
         # ===============================================================================================================
-        wt = DTU10MW_1WT_Surrogate()
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'Do not pass an `input_shape`/`input_dim` argument to a layer')
+            wt = DTU10MW_1WT_Surrogate()
         # plot power/ct curves
         ax1 = plt.gca()
         ax2 = plt.twinx()

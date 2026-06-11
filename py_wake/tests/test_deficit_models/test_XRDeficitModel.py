@@ -14,6 +14,8 @@ from numpy import newaxis as na
 from py_wake.superposition_models import SquaredSum
 from py_wake.utils.gradients import cabs
 from py_wake.utils.fuga_utils import FugaUtils
+from py_wake.wind_turbines._wind_turbines import WindTurbines
+import pytest
 
 
 def test_noj():
@@ -76,6 +78,74 @@ def test_noj():
         plt.show()
 
     npt.assert_array_almost_equal(Z[14, 100:400:10], Z_ref[14, 100:400:10], 1)
+
+
+@pytest.mark.parametrize('wfm_cls', [PropagateDownwind, All2AllIterative])
+def test_multitype_noj(wfm_cls):
+
+    # Make NOJ dataarray look-up table
+    noj = NOJDeficit(rotorAvgModel=None)
+    x = np.linspace(-500, 1500, 500)
+    y = np.linspace(-500, 500, 1000)
+    ct = np.linspace(0.1, 8 / 9, 50)
+    DW, CW = np.meshgrid(x, y)
+    dw_ijlk = DW.flatten()[na, :, na, na]
+    cw_ijlk = CW.flatten()[na, :, na, na]
+    ct_ilk = ct[na, na]
+
+    def get_da(D):
+        D_src_il = np.array([[D]])
+        wake_radius_ijlk = noj.wake_radius(D_src_il=D_src_il, dw_ijlk=dw_ijlk)
+        output = noj.calc_deficit(ct_ilk=ct_ilk, D_src_il=D_src_il, wake_radius_ijl=wake_radius_ijlk[:, :, :, 0],
+                                  dw_ijlk=dw_ijlk, cw_ijlk=np.abs(cw_ijlk), WS_ilk=np.array([[[1]]]))
+        return xr.DataArray(output.reshape(DW.shape + ct.shape),
+                            coords={'cw_ijlk': y, 'dw_ijlk': x, 'ct_ilk': ct})
+    xrdeficit = XRLUTDeficitModel([get_da(80), get_da(120)], use_effective_ws=False)
+
+    # compare LUT based deficit model with original NOJDeficit
+    wt_x = np.arange(4) * 80 * 5
+    wt_y = wt_x * 0
+    V120 = HornsrevV80()
+    V120._diameters[0] = 120
+    wts = WindTurbines.from_WindTurbine_lst([HornsrevV80(), V120])
+
+    site = UniformSite(ti=0.075)
+
+    wfm = wfm_cls(site, wts, wake_deficitModel=xrdeficit, superpositionModel=SquaredSum())
+    wfm_noj = NOJ(site, wts, rotorAvgModel=None)
+
+    sim_res, sim_res_ref = [w(x=wt_x, y=wt_y, wd=[90, 270], ws=[6, 8, 10], type=[0, 0, 1, 1]) for w in [wfm, wfm_noj]]
+
+    if 0:
+        for wd in sim_res.wd:
+            plt.plot(sim_res_ref.sel(wd=wd, ws=10).WS_eff.squeeze())[0].get_color()
+            plt.plot(sim_res.sel(wd=wd, ws=10).WS_eff.squeeze(), '--')
+        plt.show()
+
+    npt.assert_array_almost_equal(sim_res.WS_eff, sim_res_ref.WS_eff, 3)
+    npt.assert_array_almost_equal(sim_res.CT, sim_res_ref.CT, 5)
+
+    x_j = np.linspace(-400, 1600, 50)
+    y_j = np.linspace(-200, 200, 500)
+
+    flow_map, flow_map_ref = [s.flow_map(HorizontalGrid(x_j, y_j)) for s in [sim_res, sim_res_ref]]
+    X, Y = flow_map.XY
+    Z, Z_ref = [fm.WS_eff_xylk[:, :, 0, 0] for fm in [flow_map, flow_map_ref]]
+
+    s = slice(0, None, 5)
+    if 0:
+        for wd, axes in zip(sim_res.wd, plt.subplots(2, 2)[1]):
+            fm = sim_res.flow_map(HorizontalGrid(x_j, y_j), wd=wd, ws=10)
+            fm.plot_wake_map(levels=np.arange(5, 10.5, .1), ax=axes[0])
+            axes[0].plot(X[s, 25], Y[s, 25], '.-')
+
+            axes[1].plot(Z[:, 25], Y[:, 25], label="Z=70m")
+            axes[1].plot(Z_ref[:, 25], Y[:, 25], label="ref")
+            axes[1].plot(Z_ref[s, 25], Y[s, 25], '.')
+            axes[1].legend()
+        plt.show()
+
+    npt.assert_array_almost_equal(Z[s, 25], Z_ref[s, 25], 1)
 
 
 def test_fuga():

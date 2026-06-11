@@ -1,34 +1,48 @@
-from numpy import newaxis as na
-import pytest
-import xarray as xr
+import warnings
 
 import matplotlib.pyplot as plt
+import pytest
+import xarray as xr
+from numpy import newaxis as na
+
 from py_wake import np
-from py_wake.deficit_models.deficit_model import WakeDeficitModel, BlockageDeficitModel
-from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, NiayifarGaussianDeficit
+from py_wake.deficit_models.deficit_model import BlockageDeficitModel, WakeDeficitModel
+from py_wake.deficit_models.gaussian import (
+    BastankhahGaussianDeficit,
+    NiayifarGaussianDeficit,
+)
 from py_wake.deficit_models.no_wake import NoWakeDeficit
+from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.deflection_models.deflection_model import DeflectionModel
-from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
 from py_wake.examples.data.hornsrev1 import V80, Hornsrev1Site
-from py_wake.examples.data.iea34_130rwt._iea34_130rwt import IEA34_130_1WT_Surrogate
-from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site, IEA37WindTurbines
+from py_wake.examples.data.iea37._iea37 import (
+    IEA37_WindTurbines,
+    IEA37Site,
+    IEA37WindTurbines,
+)
+from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
 from py_wake.ground_models.ground_models import GroundModel
+from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel
 from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel
 from py_wake.site.distance import StraightDistance
-from py_wake.site.shear import LogShear, PowerShear, Shear
-from py_wake.superposition_models import SuperpositionModel, AddedTurbulenceSuperpositionModel
+from py_wake.site.shear import LLJRiemer, LogShear, MOSTShear, PowerShear, Shear
+from py_wake.site.streamline_distance import StreamlineDistance
+from py_wake.site.xrsite import XRSite
+from py_wake.superposition_models import (
+    AddedTurbulenceSuperpositionModel,
+    SuperpositionModel,
+)
 from py_wake.tests import npt
-from py_wake.turbulence_models.stf import STF2017TurbulenceModel, STF2005TurbulenceModel
+from py_wake.turbulence_models.stf import STF2005TurbulenceModel, STF2017TurbulenceModel
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel
 from py_wake.utils import gradients
-from py_wake.utils.gradients import autograd, plot_gradients, fd, cs
+from py_wake.utils.gradients import autograd, cs, fd, plot_gradients
 from py_wake.utils.model_utils import get_models
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative, EngineeringWindFarmModel
-from py_wake.deficit_models.noj import NOJDeficit
-from py_wake.site.jit_streamline_distance import JITStreamlineDistance
-from py_wake.site.xrsite import XRSite
-from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel
-import warnings
+from py_wake.wind_farm_models.engineering_models import (
+    All2AllIterative,
+    EngineeringWindFarmModel,
+    PropagateDownwind,
+)
 
 
 def check_gradients(wfm, name, wt_x=[-1300, -650, 0], wt_y=[0, 0, 0], wt_h=[110, 110, 110], fd_step=1e-6, fd_decimal=6,
@@ -45,7 +59,7 @@ def check_gradients(wfm, name, wt_x=[-1300, -650, 0], wt_y=[0, 0, 0], wt_h=[110,
         h_lst = np.array([0, 0, 1.]) * np.arange(-50, 50, 5)[:, na] + wt.hub_height()
         kwargs = {'ws': [9], 'wd': [270]}
         if 'yaw_ilk' in wfm.args4all:
-            kwargs.update({'yaw': 0, 'tilt': 0, **kwargs})
+            kwargs.update({'yaw': 10, 'tilt': 5, **kwargs})
 
         xp, yp, hp = x_lst[20], y_lst[25], h_lst[2]
 
@@ -54,6 +68,7 @@ def check_gradients(wfm, name, wt_x=[-1300, -650, 0], wt_y=[0, 0, 0], wt_h=[110,
         output_func, output_label = output
         output_func = output_func(wfm)
 
+        cs(output_func, True, 0)(xp, wt_y, **kwargs)
         dOutputdx_lst = [grad(output_func, True, 0)(xp, wt_y, **kwargs)[2] for grad in [fdstep, cs, autograd]]
         npt.assert_almost_equal(dOutputdx_lst[0], dOutputdx_lst[1], fd_decimal)
         npt.assert_almost_equal(dOutputdx_lst[1], dOutputdx_lst[2], ad_decimal)
@@ -62,7 +77,9 @@ def check_gradients(wfm, name, wt_x=[-1300, -650, 0], wt_y=[0, 0, 0], wt_h=[110,
         npt.assert_almost_equal(dOutputdy_lst[0], dOutputdy_lst[1], fd_decimal)
         npt.assert_almost_equal(dOutputdy_lst[1], dOutputdy_lst[2], ad_decimal)
 
-        dOutputdh_lst = [grad(output_func, True, 2)(wt_x, wt_y, hp, **kwargs)[2] for grad in [fdstep, cs, autograd]]
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'Output seems independent of input')
+            dOutputdh_lst = [grad(output_func, True, 2)(wt_x, wt_y, hp, **kwargs)[2] for grad in [fdstep, cs, autograd]]
         npt.assert_almost_equal(dOutputdh_lst[0], dOutputdh_lst[1], fd_decimal)
         npt.assert_almost_equal(dOutputdh_lst[1], dOutputdh_lst[2], ad_decimal)
 
@@ -224,22 +241,31 @@ def test_sites(site):
     )
 
 
-@pytest.mark.parametrize('model', get_models(Shear))
+@pytest.mark.parametrize(
+    "model",
+    [
+        PowerShear(h_ref=100, alpha=0.1),
+        LogShear(h_ref=100, z0=0.03),
+        MOSTShear(h_ref=100, z0=0.03, h_zeta=0.0),
+        LLJRiemer(strength=2.0, width=100.0, h_ref=400.0),
+        LLJRiemer(strength=2.0, width=100.0, h_ref=400.0, wsp_ref=8.0),
+    ],
+)
 def test_shear(model):
-    if model is not None:
-        model = {PowerShear: PowerShear(h_ref=100, alpha=.1),
-                 LogShear: LogShear(h_ref=100, z0=.03)}[model]
-        check_gradients(lambda site, wt, s=Hornsrev1Site(shear=model): PropagateDownwind(
-            s, wt, wake_deficitModel=BastankhahGaussianDeficit(),
+    check_gradients(
+        lambda site, wt, s=Hornsrev1Site(shear=model): PropagateDownwind(
+            s,
+            wt,
+            wake_deficitModel=BastankhahGaussianDeficit(),
         ),
-            model.__class__.__name__,
-            wt_h=[100, 100, 100]
-        )
+        model.__class__.__name__,
+        wt_h=[100, 100, 100],
+    )
 
 
 @pytest.mark.parametrize('model', get_models(StraightDistance))
 def test_distance_models(model):
-    if model not in [None, JITStreamlineDistance]:
+    if model not in [None, StreamlineDistance]:
         site = ParqueFicticioSite(distance=model())
         x, y = site.initial_position[3]
         check_gradients(lambda site, wt, s=site: PropagateDownwind(
@@ -253,7 +279,10 @@ def test_distance_models(model):
         )
 
 
-@pytest.mark.parametrize('wt', [IEA37WindTurbines, V80, IEA34_130_1WT_Surrogate])
+@pytest.mark.parametrize('wt', [IEA37WindTurbines, V80,
+                                # IEA34_130_1WT_Surrogate #  triggers segmentation fault in
+                                # NEWAPointTimeseries.add_weibull
+                                ])
 def test_windturbines(wt):
     wt = wt()
 
@@ -282,3 +311,8 @@ def test_output(output):
 
 def test_overlapping_area_factor():
     check_gradients(lambda site, wt: PropagateDownwind(site, wt, NOJDeficit()), name='partial wake', wt_y=[0, 200, 200])
+
+
+if __name__ == "__main__":
+    # pytest.main([__file__])
+    pytest.main([__file__, "-k test_shear"])
