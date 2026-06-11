@@ -5,6 +5,7 @@ from copy import deepcopy
 
 import pandas as pd
 import numpy as np
+from numpy import newaxis as na
 import xarray as xr
 import matplotlib.pyplot as plt
 from osgeo import gdal
@@ -19,7 +20,6 @@ from py_wake.deficit_models.deficit_model import WakeDeficitModel
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind
 from py_wake.wind_farm_models.wind_farm_model import SimulationResult
 from py_wake.superposition_models import SquaredSum
-from py_wake.utils.gradients import cabs
 from py_wake.deficit_models.utils import ct2a_madsen
 from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel
 from py_wake.utils import weibull
@@ -32,10 +32,10 @@ from wakeblastersdk.sdk import set_client_id, get_simulation_info
 import energytoolbox as et
 import logging
 import time
-import h5py
 from typing import Any, Dict, Optional, Sequence, Tuple
 from py_wake.wind_turbines import WindTurbines
 from py_wake.site import Site, UniformSite
+
 
 logger = logging.getLogger("__main__")
 logger.setLevel('INFO')
@@ -317,7 +317,10 @@ def export_wtg_file(
     power_crv = np.asarray(_call_curve_with_optional_type(wind_turbines.power, ws_range, turbine_type), dtype=float)
     ct_crv = np.asarray(_call_curve_with_optional_type(wind_turbines.ct, ws_range, turbine_type), dtype=float)
 
-    tree = ET.parse("WTG_Template.wtg")
+    _wtg_template = Path(__file__).resolve().parent.parent / "examples" / "data" / "WTG_Template.wtg"
+    if not _wtg_template.exists():
+        raise FileNotFoundError(f"WTG template not found at {_wtg_template}")
+    tree = ET.parse(str(_wtg_template))
     root = tree.getroot()
 
     root.attrib.update({
@@ -355,7 +358,7 @@ def export_wtg_file(
     cut_node.attrib["HighSpeedCutOut"] = str(last_ws)
 
     tree.write(filename, encoding="UTF-8", xml_declaration=True)
-    logging.info("WTG file exported to %s", filename)
+    logger.info("WTG file exported to %s", filename)
 
 
 class WakeBlasterConfig:
@@ -395,11 +398,11 @@ class WakeBlasterConfig:
                 settings = json.load(fp)
         except FileNotFoundError:
             msg = f"Configuration file '{filename}' not found."
-            logging.error(msg)
+            logger.error(msg)
             raise RuntimeError(msg)
         except json.JSONDecodeError:
             msg = f"Configuration file '{filename}' is not valid JSON."
-            logging.error(msg)
+            logger.error(msg)
             raise RuntimeError(msg)
 
         self.simulation_config = settings.get(
@@ -502,49 +505,83 @@ class WakeBlasterResult(SimulationResult):
         )
         self.windFarmModel = windFarmModel
         self.localWind = localWind
-
-    def aep_ilk(self, with_wake_loss=True):
+    
+    def aep_ilk(self, normalize_probabilities=False, with_wake_loss=True):
         """
         Compute AEP for each turbine, wind direction and wind speed.
 
         Parameters
         ----------
+        normalize_probabilities : bool, default False
+            If True, normalize probabilities so they sum to 1 before computing AEP.
+            This gives the AEP as if only the simulated flow cases existed for the
+            full year.
         with_wake_loss : bool, default True
-            If True, use the wake-affected power; if False, use the unwaked power.
+            If True, use the wake-affected power. 
+            If False, use the unwaked power based on free-flow wind speed, as calculated by Wakeblaster.
 
         Returns
         -------
         np.ndarray
             AEP for each turbine (i), wind direction (l) and wind speed (k) in GWh.
-        
         """
-        if with_wake_loss:
-            power_ilk = self.power_ilk
-        else:
-            power_ilk = self.unwaked_power.ilk()
+        return self.aep(normalize_probabilities=normalize_probabilities, with_wake_loss=with_wake_loss).ilk()
 
-        # power_ilk in W, P_ilk in hours -> Wh, then to GWh
-        aep_ilk = power_ilk * self.P_ilk * 1e-9
-        return aep_ilk
-
-    def aep(self, with_wake_loss=True):
+    def aep(self, normalize_probabilities=False, with_wake_loss=True,
+            hours_pr_year=365*24, linear_power_segments=False):
         """
         Compute Annual Energy Production (AEP) in GWh.
 
         Parameters
         ----------
+        normalize_probabilities : bool, default False
+            If True, normalize the flow-case probabilities before computing AEP.
+            This gives the AEP as if the simulated flow cases represented a full year.
         with_wake_loss : bool, default True
-            If True, calculate AEP using wake-affected power; if False, use unwaked power.
+            If True, use the wake-affected power. 
+            If False, use the unwaked power based on free-flow wind speed, as calculated by Wakeblaster.
 
         Returns
         -------
-        float
-            Total AEP of the wind farm in GWh.
+        xr.DataArray
+            AEP of the wind farm in GWh. To get total AEP, call .sum() on the result.
         """
-        aep_ilk = self.aep_ilk(with_wake_loss=with_wake_loss)
-        total_aep = aep_ilk.sum()
-        logging.info("Computed AEP: %.3f GWh", total_aep)
-        return total_aep
+        if normalize_probabilities:
+            norm = self.P.ilk().sum((1, 2))[:, na, na]
+        else:
+            norm = 1
+        if with_wake_loss:
+            power_ilk = self.Power.ilk()
+        else:
+            power_ilk = self.unwaked_power.ilk()
+
+        if linear_power_segments:
+            s = "The linear_power_segments method "
+            assert all([n in self for n in ['Weibull_A', 'Weibull_k', 'Sector_frequency']]), \
+                s + "requires a site with weibull information"
+            assert normalize_probabilities is False, \
+                s + "cannot be combined with normalize_probabilities"
+            assert np.all(self.Power.isel(ws=0) == 0) and np.all(self.Power.isel(ws=-1) == 0), \
+                s + "requires first wind speed to have no power (just below cut-in)"
+            assert np.all(self.Power.isel(ws=-1) == 0), \
+                s + "requires last wind speed to have no power (just above cut-out)"
+            weighted_power = weibull.WeightedPower(
+                self.ws.values,
+                self.Power.ilk(),
+                self.Weibull_A.ilk(),
+                self.Weibull_k.ilk())
+            aep = weighted_power * self.Sector_frequency.ilk() * hours_pr_year * 1e-9
+            ws = (self.ws.values[1:] + self.ws.values[:-1]) / 2
+            return xr.DataArray(aep, [('wt', self.wt.values), ('wd', self.wd.values), ('ws', ws)])
+        else:
+            weighted_power = power_ilk * self.P.ilk() / norm
+        if 'time' in self.dims and weighted_power.shape[2] == 1:
+            weighted_power = weighted_power[:, :, 0]
+
+        return xr.DataArray(weighted_power * hours_pr_year * 1e-9,
+                            self.Power.coords,
+                            name='AEP [GWh]',
+                            attrs={'Description': 'Annual energy production [GWh]'})
 
     def flow_map(
         self,
@@ -581,7 +618,7 @@ class WakeBlasterResult(SimulationResult):
         # 1) Run simulation if no grid file provided
         if grid_file is None:
             grid_file = self.windFarmModel.calculate_flow_plane(ws, wd, height)
-            logging.debug("Generated flow plane file: %s", grid_file)
+            logger.debug("Generated flow plane file: %s", grid_file)
 
         # 2) Load Surfer grid data
         grid_data = load_surfer_grid(grid_file)
@@ -599,13 +636,13 @@ class WakeBlasterResult(SimulationResult):
         if TI_da is None:
             ambient_TI = 0.1
         else:
-            # passende Windrichtung wählen
+            # select TI for closest wind direction
             if "wd" in TI_da.dims:
                 wd_vals = np.asarray(TI_da["wd"].values, dtype=float)
                 wd_idx = int(np.argmin(np.abs(wd_vals - wd)))
                 TI_da = TI_da.isel(wd=wd_idx)
         
-            # falls punktbasiertes Site: erstmal ersten Punkt nehmen
+            # if point-based site: take the first point
             if "i" in TI_da.dims:
                 TI_da = TI_da.isel(i=0)
         
@@ -643,7 +680,7 @@ class WakeBlasterResult(SimulationResult):
 
         # 8) Store grid file path for custom plotting
         fm.attrs["_grid_file"] = grid_file
-        logging.info("Flow map generated for ws=%.1f, wd=%.1f", ws, wd)
+        logger.info("Flow map generated for ws=%.1f, wd=%.1f", ws, wd)
 
         return fm
 
@@ -846,84 +883,6 @@ class WakeBlaster(PropagateDownwind):
             TI_da = TI_da.isel(ws=ws_idx)
         return float(np.asarray(TI_da).squeeze())
 
-
-    def _flowcase_reference_point(self) -> Tuple[float, float, float]:
-        x_arr = getattr(self, "_last_x", None)
-        y_arr = getattr(self, "_last_y", None)
-        h_arr = getattr(self, "_last_h_i", None)
-        if x_arr is not None and y_arr is not None and len(x_arr) and len(y_arr):
-            h_ref = float(h_arr[0]) if h_arr is not None and len(h_arr) else float(self.windTurbines.hub_height())
-            return float(x_arr[0]), float(y_arr[0]), h_ref
-
-        ds = self.site.ds
-        x_ref = 0.0
-        y_ref = 0.0
-        h_ref = float(self.windTurbines.hub_height())
-        if "x" in ds.coords:
-            x_ref = _scalarize(ds["x"].values)
-        if "y" in ds.coords:
-            y_ref = _scalarize(ds["y"].values)
-        if "h" in ds.coords:
-            h_ref = _scalarize(ds["h"].values)
-        return float(x_ref), float(y_ref), float(h_ref)
-
-    def _create_flowcases_from_local_wind(self) -> Optional[pd.DataFrame]:
-        ds = self.site.ds
-        if "wd" not in ds.coords or "ws" not in ds.coords:
-            return None
-
-        wd_vals = np.asarray(ds.coords["wd"].values, dtype=float)
-        if len(wd_vals) > 1 and (wd_vals[-1] == 360 or wd_vals[-1] == wd_vals[0] + 360):
-            wd_vals = wd_vals[:-1]
-        ws_vals = np.asarray(ds["ws"].values, dtype=float)
-
-        x_ref, y_ref, h_ref = self._flowcase_reference_point()
-        lw = self.site.local_wind(
-            x=np.array([x_ref], dtype=float),
-            y=np.array([y_ref], dtype=float),
-            h=np.array([h_ref], dtype=float),
-            wd=wd_vals,
-            ws=ws_vals,
-        )
-
-        P = np.asarray(lw.P)
-        if P.ndim == 3:
-            P = P[0]
-        elif P.ndim != 2:
-            raise ValueError(f"WakeBlaster: unexpected local_wind P dimensions {P.shape}")
-
-        TI_vals = None
-        if "TI" in lw:
-            TI_vals = np.asarray(lw.TI)
-            if TI_vals.ndim == 3:
-                TI_vals = TI_vals[0]
-            elif TI_vals.ndim == 2:
-                pass
-            elif TI_vals.ndim == 1:
-                TI_vals = np.repeat(TI_vals[:, None], len(ws_vals), axis=1)
-            elif TI_vals.ndim == 0:
-                TI_vals = np.full((len(wd_vals), len(ws_vals)), float(TI_vals))
-            else:
-                TI_vals = None
-
-        records = []
-        for i, wd_val in enumerate(wd_vals):
-            for j, ws_val in enumerate(ws_vals):
-                weighting = float(P[i, j]) * 8766.0
-                ti_val = float(TI_vals[i, j]) if TI_vals is not None else float("nan")
-                if not np.isfinite(ti_val) or ti_val <= 0:
-                    ti_val = 0.1
-                records.append([float(ws_val), float(wd_val), float(weighting), float(ti_val)])
-        flow_cases = pd.DataFrame(records, columns=["WindSpeed_avg", "WindDirection", "weighting", "TI"])
-        flow_cases["WindSpeed_std"] = flow_cases["TI"] * flow_cases["WindSpeed_avg"]
-        flow_cases = flow_cases.drop(columns=["TI"]).reset_index(drop=True)
-        flow_cases["flow_case_id"] = [
-            f"{idx:05d}WS{row.WindSpeed_avg}dir{row.WindDirection}"
-            for idx, row in flow_cases.iterrows()
-        ]
-        return flow_cases
-
-
     def __call__(
         self,
         x: Sequence[float],
@@ -932,22 +891,52 @@ class WakeBlaster(PropagateDownwind):
         type: Optional[Sequence[int]] = None,
         wd: Optional[Sequence[float]] = None,
         ws: Optional[Sequence[float]] = None,
-        time: Optional[Sequence[Any]] = None,
+        time: Any = False,
         TI: Optional[Sequence[float]] = None,
         L: Optional[Sequence[float]] = None,
-        return_simulationResult: bool = True
+        return_simulationResult: bool = True,
+        simulation_id: Optional[str] = None
     ) -> Optional[SimulationResult]:
         """
         Run farm-level simulation and return SimulationResult if requested.
 
-        Non-breaking defaults:
-        - if type and h are omitted, behaviour matches the existing single-design flow
-        - if wd/ws are omitted, flow cases are created from the site climate as before
+        Parameters
+        ----------
+        x : array_like
+            Turbine eastings in meters.
+        y : array_like
+            Turbine northings in meters. Must have the same length as x.
+        h : float or array_like, optional
+            Hub height per turbine. If None, hub heights are derived from wind_turbines
+            using the provided type values.
+        type : int or array_like, optional
+            Turbine type index per turbine. Scalar values are broadcast to all turbines.
+            If None, type 0 is used for all turbines.
+        wd : array_like, optional
+            Wind directions in degrees. If omitted together with ws and time=False,
+            flow cases are derived from the site climate.
+        ws : array_like, optional
+            Wind speeds in m/s. If omitted together with wd and time=False,
+            flow cases are derived from the site climate.
+        time : bool or array_like
+            If False (default), wd and ws form a Cartesian grid (standard AEP mode).
+            If True, wd and ws are paired samples with implicit timestamps 0,1,...,n.
+            If array_like, same as True but the array is used as the time coordinate.
+        TI : scalar or array_like, optional
+            Turbulence intensity, scalar or matching wd/ws.
+        L : scalar or array_like, optional
+            Monin-Obukhov length for stability, scalar or matching wd/ws.
+        return_simulationResult : bool, default True
+            If True, parse and return a WakeBlasterResult. If False, run the simulation
+            without constructing a SimulationResult object.
+        simulation_id : str, optional
+            Simulation ID of existing simulation to retrieve results from instead of starting new simulation.
+            Flow cases from this simulation must match those that would be generated from the provided input parameters.
 
-        - If time is provided, wd and ws must also be provided and have the same length
-        - If time is omitted, but duplicate wd/ws pairs exist, the simulation result will contain the flow case numbers
-          as time coordinates, which can be used to map back to the original wd/ws pairs.
-        - TI and L can be included for stability effects, either as scalars or matching wd/ws
+        Returns
+        -------
+        SimulationResult or None
+            Parsed simulation result when return_simulationResult=True, otherwise None.
         """
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
@@ -959,8 +948,20 @@ class WakeBlaster(PropagateDownwind):
         h_i = self._normalize_h_i(self.num_wt, type_i, h)
         self._last_type_i = type_i
         self._last_h_i = h_i
-        self._explicit_time_series = time is not None
-        self._time_values = None if time is None else np.asarray(np.atleast_1d(time))
+        self._last_x = np.asarray(x, dtype=float)
+        self._last_y = np.asarray(y, dtype=float)
+
+        # Normalize time to PyWake convention: False | True | array_like
+        if time is False:
+            self._explicit_time_series = False
+            self._time_values = None
+        elif time is True:
+            self._explicit_time_series = True
+            self._time_values = None  # will use np.arange later
+        else:
+            # array_like
+            self._explicit_time_series = True
+            self._time_values = np.asarray(np.atleast_1d(time))
 
         self.flow_cases = self.create_flowcases(wd=wd, ws=ws, time=time, TI=TI, L=L)
 
@@ -1030,18 +1031,31 @@ class WakeBlaster(PropagateDownwind):
             eddy_viscosity_cfg["type"] = "CombinedProfile"
             eddy_viscosity_cfg["stability_model"] = "BusingerDyer"
 
-        sim = et.WakeBlasterNewSimulation(
-            site_name,
-            "0",
-            self.flow_cases,
-            sim_cfg
-        )
-        logger.info("Simulation started (ID: %s)", sim.id)
-        self.wait_for_results(sim.id)
-        _, turbine_res = sim.get_results(
-            [],
-            ["power", "turbulence_intensity", "hub_wind_speed", "unwaked_power"]
-        )
+        if simulation_id is None:
+            sim = et.WakeBlasterNewSimulation(
+                site_name,
+                "0",
+                self.flow_cases,
+                sim_cfg
+            )
+            logger.info("Simulation started (ID: %s)", sim.id)
+            self.wait_for_results(sim.id)
+            _, turbine_res = sim.get_results(
+                [],
+                ["power", "turbulence_intensity", "hub_wind_speed", "unwaked_power"]
+            )
+        else:
+            logger.info("Retrieving results for existing simulation ID: %s", simulation_id)
+            sim = et.WakeBlasterSimulation(simulation_id, self.flow_cases)
+
+            if sim.are_results_ready():
+                _, turbine_res = sim.get_results(
+                    [],
+                    ["power", "turbulence_intensity", "hub_wind_speed", "unwaked_power"]
+                )
+            else:
+                logger.warning("Results for simulation ID %s are not ready yet.", simulation_id)
+                return None
 
         if return_simulationResult:
             return self.parse_results(turbine_res, x, y, type_i=type_i, h_i=h_i)
@@ -1051,34 +1065,67 @@ class WakeBlaster(PropagateDownwind):
         self,
         wd: Optional[Sequence[float]] = None,
         ws: Optional[Sequence[float]] = None,
-        time: Optional[Sequence[Any]] = None,
+        time: Any = False,
         TI: Optional[Sequence[float]] = None,
         L: Optional[Sequence[float]] = None
     ) -> pd.DataFrame:
-        HOURS_PER_YEAR = 8766
+        """Create flow cases for the WakeBlaster simulation.
+
+        Parameters
+        ----------
+        wd : array_like, optional
+            Wind directions in degrees. If None, derived from site climate.
+        ws : array_like, optional
+            Wind speeds in m/s. If None, derived from site climate.
+        time : bool or array_like, default False
+            False: wd/ws form a Cartesian grid (or fall back to site climate).
+            True: wd/ws are paired samples with implicit timestamps 0, 1, ..., n-1, matching flow case ids.
+            array_like: wd/ws are paired samples with explicit timestamps.
+        TI : float or array_like, optional
+            Turbulence intensity. Scalar (applied to all cases) or array matching wd/ws.
+        L : float or array_like, optional
+            Monin-Obukhov length for atmospheric stability. Scalar or array matching wd/ws.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with columns for wind direction, wind speed, probability/hours,
+            and optionally TI and L for each flow case.
+        """
         ds = self.site.ds
         records = []
 
-        # Explicit cases from user-supplied wd/ws/time
-        if wd is not None or ws is not None or time is not None:
+        # Determine whether we are in time-series (paired) mode
+        _is_time_series = time is not False  # True or array_like
+
+        # Explicit cases from user-supplied wd/ws (grid or paired)
+        if wd is not None or ws is not None or _is_time_series:
             if wd is None or ws is None:
                 raise ValueError("When specifying explicit cases, both wd and ws must be provided.")
 
             wd_vals = np.asarray(np.atleast_1d(wd), dtype=float)
             ws_vals = np.asarray(np.atleast_1d(ws), dtype=float)
-            l_records = [] # store L values seperately if provided, to be added as a column later
+            l_records = [] # store L values separately if provided, to be added as a column later
 
-            if time is not None:
-                time_vals = np.atleast_1d(time)
-                if not (len(wd_vals) == len(ws_vals) == len(time_vals)):
-                    raise ValueError("For time-series mode, wd, ws and time must have the same length.")
+            if _is_time_series:
+                # time=True or time=array_like: wd[i] paired with ws[i]
+                if time is not True:
+                    time_vals = np.atleast_1d(time)
+                    if not (len(wd_vals) == len(ws_vals) == len(time_vals)):
+                        raise ValueError("For time-series mode, wd, ws and time must have the same length.")
+                else:
+                    # time=True: implicit timestamps, just validate wd/ws lengths match
+                    if len(wd_vals) != len(ws_vals):
+                        raise ValueError("For time-series mode (time=True), wd and ws must have the same length.")
+                
                 ti_vals = None if TI is None else np.asarray(np.atleast_1d(TI), dtype=float)
                 if ti_vals is not None and ti_vals.size not in (1, len(wd_vals)):
                     raise ValueError("TI must be scalar or have the same length as wd/ws in time-series mode.")
-                l_vals = np.asarray(np.atleast_1d(L), dtype=float) if L is not None else None
+                
+                l_vals = None if L is None else np.asarray(np.atleast_1d(L), dtype=float)
                 if l_vals is not None and l_vals.size not in (1, len(wd_vals)):
                     raise ValueError("L must be scalar or have the same length as wd/ws in time-series mode.")
-
+                weight = 1.0 / len(wd_vals)  # Equal weighting for time-series cases
                 for idx, (wd_val, ws_val) in enumerate(zip(wd_vals, ws_vals)):
                     if ti_vals is None:
                         ti_val = self._site_ti_value(wd_val, ws_val)
@@ -1090,10 +1137,12 @@ class WakeBlaster(PropagateDownwind):
                         l_val = float(l_vals[0]) if l_vals.size == 1 else float(l_vals[idx])
                     if not np.isfinite(ti_val) or ti_val <= 0:
                         ti_val = 0.1
-                    records.append([float(ws_val), float(wd_val), 1.0, float(ti_val)])
+                    records.append([float(ws_val), float(wd_val), weight, float(ti_val)])
                     if l_vals is not None:
                         l_records.append(l_val)
             else:
+                # time=False: Create flow cases as cartesian product of wd and ws.
+                # Weights are derived from the site climate, matching PyWake's P_ilk behaviour
                 ti_vals = None if TI is None else np.asarray(np.atleast_1d(TI), dtype=float)
                 if ti_vals is not None and ti_vals.size not in (1, len(wd_vals), len(ws_vals), len(wd_vals) * len(ws_vals)):
                     raise ValueError(
@@ -1104,6 +1153,26 @@ class WakeBlaster(PropagateDownwind):
                     raise ValueError(
                         "L must be scalar, len(wd), len(ws), or len(wd)*len(ws) for explicit wd/ws mode."
                     )
+
+                # Query site probability at all turbine positions, matching PyWake's
+                # calc_wt_interaction which calls site.local_wind with every turbine's
+                # (x, y, h).  P_ilk has shape (n_wt, n_wd, n_ws); we average over
+                # turbines to get a single (n_wd, n_ws) weight matrix per flow case.
+                # For uniform sites this is identical to a single-point query.
+                _x = self._last_x if hasattr(self, '_last_x') else np.array([0.0])
+                _y = self._last_y if hasattr(self, '_last_y') else np.array([0.0])
+                _h = self._last_h_i if hasattr(self, '_last_h_i') else np.array([70.0])
+                try:
+                    lw_prob = self.site.local_wind(
+                        x=_x, y=_y, h=_h, wd=wd_vals, ws=ws_vals
+                    )
+                    # P_ilk shape: (n_wt, n_wd, n_ws) -> mean over turbines -> (n_wd, n_ws)
+                    P_lk = np.asarray(lw_prob.P_ilk, dtype=float).mean(axis=0)
+                except Exception:
+                    # Fallback: uniform weights if site query fails
+                    P_lk = np.ones((len(wd_vals), len(ws_vals)), dtype=float)
+                    P_lk /= P_lk.sum()
+
                 flat_ti_idx = 0
                 flat_l_idx = 0
                 for i, wd_val in enumerate(wd_vals):
@@ -1131,7 +1200,7 @@ class WakeBlaster(PropagateDownwind):
                         flat_l_idx += 1
                         if not np.isfinite(ti_val) or ti_val <= 0:
                             ti_val = 0.1
-                        records.append([float(ws_val), float(wd_val), 1.0, float(ti_val)])
+                        records.append([float(ws_val), float(wd_val), float(P_lk[i, j]), float(ti_val)])
                         if l_vals is not None:
                             l_records.append(l_val)
 
@@ -1196,7 +1265,7 @@ class WakeBlaster(PropagateDownwind):
 
                 for j, ws_val in enumerate(ws_vals):
                     p = float(sf[i]) * float(g[j])
-                    weighting = float(p * HOURS_PER_YEAR)
+                    weighting = float(p)
                     ti_val = _resolve_ti(TI_arr, i, j)
                     if not np.isfinite(ti_val) or ti_val <= 0:
                         ti_val = 0.1
@@ -1209,7 +1278,7 @@ class WakeBlaster(PropagateDownwind):
                 P2 = P[wd_idx, :]
                 for i, wd_val in enumerate(wd_vals[wd_idx]):
                     for j, ws_val in enumerate(ws_vals):
-                        weighting = float(P2[i, j]) * HOURS_PER_YEAR
+                        weighting = float(P2[i, j])
                         ti_val = _resolve_ti(TI_arr, i, j)
                         if not np.isfinite(ti_val) or ti_val <= 0:
                             ti_val = 0.1
@@ -1220,7 +1289,7 @@ class WakeBlaster(PropagateDownwind):
                 P2 = P[wd_idx]
                 for i, wd in enumerate(wd_vals[wd_idx]):
                     for j, ws in enumerate(ws_vals):
-                        weighting = float(P2[i]) * HOURS_PER_YEAR
+                        weighting = float(P2[i])
                         ti_val = _resolve_ti(TI_arr, i, j)
                         records.append([float(ws), float(wd), weighting, float(ti_val)])
 
@@ -1244,13 +1313,13 @@ class WakeBlaster(PropagateDownwind):
         ]
 
         weighting_sum = float(flow_cases["weighting"].sum())
-        logger.info("WakeBlaster flow case weighting sum = %.6f h", weighting_sum)
-        if not np.isclose(weighting_sum, HOURS_PER_YEAR, rtol=0.0, atol=5.0):
-            logger.warning(
-                "WakeBlaster: flow case weighting sum differs from HOURS_PER_YEAR "
-                "(%.6f vs %.6f h)",
+        logger.debug("WakeBlaster flow case weighting sum = %.6f", weighting_sum)
+        if not np.isclose(weighting_sum, 1.0, rtol=0.0, atol=1e-3):
+            logger.debug(
+                "WakeBlaster: flow case weighting sum differs from 1.0 "
+                "(%.6f vs %.6f )",
                 weighting_sum,
-                float(HOURS_PER_YEAR),
+                float(1.0),
             )
         return flow_cases
 
@@ -1282,7 +1351,40 @@ class WakeBlaster(PropagateDownwind):
         h_i: Optional[Sequence[float]] = None,
     ) -> SimulationResult:
         """
-        Parse WakeBlaster API results into a SimulationResult.
+        Parse WakeBlaster API outputs into a WakeBlasterResult.
+
+        The parser supports two result interpretations:
+
+        1) Grid mode (wd x ws):
+           Used when no explicit time series was requested and no duplicate
+           (WindDirection, WindSpeed_avg) pairs exist in flow cases.
+
+        2) Time-series mode (flow-case axis):
+           Used when explicit time mode was requested (time=True or array_like),
+           or when duplicate (WindDirection, WindSpeed_avg) pairs are detected.
+           In the duplicate case, parsing is auto-switched to time-series mode
+           to avoid ambiguous reshaping onto a unique wd/ws grid.
+
+        Parameters
+        ----------
+        turbine_res : dict[str, pd.DataFrame]
+            Raw result tables returned by WakeBlaster.
+        x : array_like
+            Turbine eastings used to reconstruct local wind coordinates.
+        y : array_like
+            Turbine northings used to reconstruct local wind coordinates.
+        type_i : array_like, optional
+            Turbine type index per turbine. If None, uses the cached value from
+            the latest model call.
+        h_i : array_like, optional
+            Hub height per turbine. If None, uses the cached value from the
+            latest model call (or model defaults if not cached).
+
+        Returns
+        -------
+        SimulationResult
+            WakeBlasterResult containing simulation results.
+            Dimensions are wt,wd,ws in grid mode and wt,time in time-series mode.
         """
         num_wt = self.num_wt
         num_wd = self.num_wd
@@ -1328,6 +1430,7 @@ class WakeBlaster(PropagateDownwind):
         ti = _prepare_table(turbine_res['turbulence_intensity'], 'turbulence_intensity')
 
         if use_time_series:
+            # Time-series mode: keep results in flow-case order, allowing duplicates
             n_case = len(flow_cases)
             if len(pwr) != n_case:
                 raise ValueError(
@@ -1342,7 +1445,7 @@ class WakeBlaster(PropagateDownwind):
 
             weighting = np.asarray(flow_cases['weighting'], dtype=float)
             P_ilk = np.tile(weighting[np.newaxis, :, np.newaxis], (num_wt, 1, 1))
-            ct_ilk = np.zeros((num_wt, n_case, 1))
+            ct_ilk = np.zeros((num_wt, n_case, 1)) # The WakeBlaster API currently does not return Ct 
 
             wd_array = np.asarray(flow_cases['WindDirection'], dtype=float)
             ws_array = np.asarray(flow_cases['WindSpeed_avg'], dtype=float)
@@ -1350,7 +1453,7 @@ class WakeBlaster(PropagateDownwind):
             if self._explicit_time_series and self._time_values is not None and len(self._time_values) == n_case:
                 time_array = np.asarray(self._time_values)
             else:
-                # For auto-switched duplicates (or mismatched explicit time), use case index.
+                # For implicit time series (or mismatched explicit time), use flow case index.
                 time_array = np.arange(n_case)
 
             ti_input_ilk = None
@@ -1366,6 +1469,7 @@ class WakeBlaster(PropagateDownwind):
                 if np.isfinite(L_flow).any():
                     L_input_ilk = L_flow[np.newaxis, :, np.newaxis]
         else:
+            # Grid mode: reshape results onto (wt, wd, ws), with unique wd/ws pairs.
             P_ilk = flow_cases['weighting'].values.reshape(num_wd, num_ws)
             P_ilk = np.tile(P_ilk[np.newaxis, :, :], (num_wt, 1, 1))
 
@@ -1492,7 +1596,7 @@ class WakeBlaster(PropagateDownwind):
         flow_case = pd.DataFrame({
             "WindSpeed_avg": [wind_speed],
             "WindDirection": [wind_direction],
-            "weighting": [8766.0],
+            "weighting": [365*24],
         })
 
         config: Any = self.wakeblasterconfig.simulation_config.copy()
@@ -1502,7 +1606,7 @@ class WakeBlaster(PropagateDownwind):
             "single_height": True,
         }
 
-        logging.debug(
+        logger.debug(
             "Flow plane simulation config: %s\nFlow case:\n%s",
             config,
             flow_case.to_dict(orient="records")
@@ -1515,7 +1619,7 @@ class WakeBlaster(PropagateDownwind):
             flow_case,
             config
         )
-        logging.info(
+        logger.info(
             "Started flow plane simulation (ID: %s) for wind_speed=%s, wind_direction=%s",
             simulation.id,
             wind_speed,
@@ -1534,12 +1638,12 @@ class WakeBlaster(PropagateDownwind):
         Download the Surfer grid file for a completed flow plane simulation.
         """
         file_path = f"flow_plane_{sim_id}_h{height}.grd"
-        logging.info("Downloading flow plane grid file: %s", file_path)
+        logger.info("Downloading flow plane grid file: %s", file_path)
 
         try:
             wb.download_surfer_grid(sim_id, height, file_path)  # type: ignore[attr-defined]
         except Exception as exc:
-            logging.exception(
+            logger.exception(
                 "Failed to download grid file for simulation '%s' at height %.2f",
                 sim_id,
                 height
