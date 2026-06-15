@@ -11,6 +11,7 @@ from py_wake.utils.numpy_utils import NumpyWrapper
 np = numpy
 locals()['np'] = NumpyWrapper()
 
+from py_wake.deficit_models.wakeblaster import WakeBlaster, WakeBlasterConfig  # nopep8
 from py_wake.deficit_models.deficit_model import DeficitModel  # nopep8
 from py_wake.deficit_models.fuga import Fuga, FugaBlockage  # nopep8
 from py_wake.deficit_models.gaussian import (  # nopep8

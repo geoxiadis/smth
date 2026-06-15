@@ -226,7 +226,7 @@ class FugaXRLUT(FugaUtils):
         for var in variables:
             if var in ds.data_vars:
                 ds[var] = self.get_table(var)
-        da = ds.to_dataarray('variables')
+        da = ds.to_array('variables')
         attrs['variable_names'] = da.variables.values
         da['variables'] = np.arange(len(da.variables))
         da.attrs = attrs
