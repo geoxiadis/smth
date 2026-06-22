@@ -102,6 +102,7 @@ PyWake 2.5.0: An open-source wind farm simulation tool. DTU Wind, Technical Univ
         notebooks/Optimization
         notebooks/YawMisalignment
         notebooks/Noise
+        notebooks/Shadow
 
     .. toctree::
         :maxdepth: 1

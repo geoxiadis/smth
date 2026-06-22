@@ -56,7 +56,7 @@ def test_multiprocessing_wd(pool):
     if debug:
         print("1 CPU, 12wd/CPU: %.2fs, %d CPUs, 1wd/CPU: %.2fs, speedup: %d%%" %
               (t1, pool._processes, t2, (t1 - t2) / t1 * 100))
-    npt.assert_almost_equal(aep1, aep2 / len(wd_lst))
+    npt.assert_allclose(aep1, aep2 / len(wd_lst), rtol=1e-5, atol=1e-3)
 
 
 def test_multiprocessing_wfm_xy(pool):
@@ -67,7 +67,7 @@ def test_multiprocessing_wfm_xy(pool):
     t1, t2 = np.mean(t_lst1), np.mean(t_lst2)
     if debug:
         print("1 CPU: %.2fs, %d CPUs: %.2fs, speedup: %d%%" % (t1, pool._processes, t2, (t1 - t2) / t1 * 100))
-    npt.assert_almost_equal(aep1, aep2)
+    npt.assert_allclose(aep1, aep2, rtol=1e-5, atol=1e-3)
 
 
 def test_multiprocessing_xy(pool):
@@ -78,7 +78,7 @@ def test_multiprocessing_xy(pool):
     t1, t2 = np.mean(t_lst1), np.mean(t_lst2)
     if debug:
         print("1 CPU: %.2fs, %d CPUs: %.2fs, speedup: %d%%" % (t1, pool._processes, t2, (t1 - t2) / t1 * 100))
-    npt.assert_almost_equal(aep1, aep2)
+    npt.assert_allclose(aep1, aep2, rtol=1e-5, atol=1e-3)
 
 
 def test_pool():

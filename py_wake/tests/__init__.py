@@ -16,6 +16,10 @@ def ptf(filename, known_hash=None):
     # Running this again will not cause a download. Pooch will check the hash
     # (checksum) of the downloaded file against the given value to make sure
     # it's the right file (not corrupted or outdated).
+    local_file = Path(__file__).parent / 'test_files' / filename
+    if local_file.exists():
+        if known_hash is None or pooch.file_hash(local_file) == known_hash:
+            return local_file
 
     pct_encoding = {'/': '%2F', '.': '%2E', '_': '%5F', '-': '%2D'}
     for k, v in pct_encoding.items():

@@ -38,6 +38,7 @@ from py_wake.wind_farm_models.engineering_models import (
     EngineeringWindFarmModel,
     PropagateDownwind,
 )
+import time
 
 
 @pytest.mark.parametrize('v,dtype,dtype32', [(5., float, np.float32),
@@ -73,19 +74,23 @@ def test_speed_mem():
     if os.name == 'posix':
         pytest.xfail("Memory tests behave differently on Linux")
 
-    def f(x):
-        return (x**2).sum()
+    def f(N):
+        x = np.arange(N) * np.arange(1024**2 / 8)[:, na]
+        x += 1
+        return x.nbytes / 1024**2, x.dtype, x.sum()
 
-    N = 1000
-    x = np.arange(N, dtype=float) * np.arange(1024**2 / 8)[:, na] + 1
-    t64, mem64 = profileit(f)(x)[1:]
-
+    N = 100
     with Numpy32():
-        x = np.asarray(x)
-        t32, mem32 = profileit(f)(x)[1:]
+        r32, t32, mem32 = profileit(f)(N)
 
+    r64, t64, mem64 = profileit(f)(N)
+    assert r64[:2] == (100, np.float64)
+    assert r32[:2] == (50, np.float32)
+    npt.assert_allclose(r64[2], np.float64(r32[2]), rtol=1e-5)
+    npt.assert_allclose([mem32, mem64], [50, 100], atol=10)
     assert t32 / t64 < .6
-    assert mem32 / mem64 < .6
+    assert mem32 / mem64 < .6  # should be 500/1000
+
 
 # def test_speed():
 #     site = Hornsrev1Site()

@@ -31,7 +31,10 @@ dependencies = [
   "scipy",
   "tqdm",
   "joblib>=1.3",
+  "numba",
   "pooch",          
+  "pyproj",
+  "pvlib",
 ]
 dynamic = ["version"]
 

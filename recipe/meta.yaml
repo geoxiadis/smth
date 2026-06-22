@@ -18,7 +18,10 @@ requirements:
     - h5netcdf
     - matplotlib
     - netcdf4
+    - numba
     - numpy
+    - pyproj
+    - pvlib
     - python
     - pyyaml
     - scipy
