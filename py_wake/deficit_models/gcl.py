@@ -164,8 +164,8 @@ class GCLDeficit(WakeDeficitModel):
     """
 
     def __init__(self, use_effective_ws=False, use_effective_ti=False, rotorAvgModel=None, groundModel=None):
-        DeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
-                              use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
+        WakeDeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
+                                  use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
 
     def wake_radius(self, dw_ijlk, D_src_il, ct_ilk, **kwargs):
         TI_ilk = kwargs[self.TI_key]

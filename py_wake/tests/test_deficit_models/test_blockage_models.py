@@ -148,20 +148,21 @@ def test_wake_and_blockage(setup, blockage_model, center_ref, side_ref):
 
 
 @pytest.mark.parametrize('blockage_model,blockage_loss', [
-    (SelfSimilarityDeficit, 0.48400582168040873),
-    (SelfSimilarityDeficit2020, 0.5340605643996773),
-    (VortexCylinder, 0.4233034),
-    (VortexDipole, 0.43020528020955756),
-    (RankineHalfBody, 0.4321021),
-    (HybridInduction, 0.5346664644311072),
-    (Rathmann, 0.4214828972740218),
-    (RathmannScaled, 0.5876724732884275)
-][::-1])
+    (SelfSimilarityDeficit(), 0.4839984084675226),
+    (SelfSimilarityDeficit2020(), 0.5340498126759176),
+    (VortexCylinder(), 0.4233034298949511),
+    (VortexDipole(), 0.4302002712906304),
+    (RankineHalfBody(high_ct_mod=False), 0.4321021),
+    (RankineHalfBody(high_ct_mod=True), 0.5982599664101648),
+    (HybridInduction(), 0.5346583874823221),
+    (Rathmann(), 0.42147818614169297),
+    (RathmannScaled(), 0.5876510911966307)
+])
 def test_aep_two_turbines(setup, blockage_model, blockage_loss):
     site, windTurbines = setup
 
     nwm_ss = All2AllIterative(site, windTurbines, wake_deficitModel=NoWakeDeficit(),
-                              blockage_deficitModel=blockage_model(), superpositionModel=LinearSum())
+                              blockage_deficitModel=blockage_model, superpositionModel=LinearSum())
 
     sim_res = nwm_ss(x=[0, 80 * 3], y=[0, 0])
     aep_no_blockage = sim_res.aep_ilk(with_wake_loss=False).sum(2)

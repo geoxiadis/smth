@@ -114,7 +114,10 @@ class SelfSimilarityDeficit2020(SelfSimilarityDeficit):
            range of thrust coefficients and the results of the constantly
            loaded rotor are excluded in the fit.
     References:
-        [1] N. Troldborg, A.R. Meyer Fortsing, Wind Energy, 2016
+        [1] N. Troldborg, A.R. Meyer Forsting, Wind Energy, 2016
+        [2] Meyer Forsting, A., Navarro Diaz, G. P., Segalini, A., Andersen, S. J.,
+        & Ivanell, S. (2023). On the accuracy of predicting wind-farm blockage.
+        Renewable Energy, 241, 114-129. https://doi.org/10.1016/j.renene.2023.05.129
     """
 
     def __init__(self, ct2a=ct2a_madsen, ss_alpha=8. / 9., ss_beta=np.sqrt(2),
@@ -143,21 +146,21 @@ class SelfSimilarityDeficit2020(SelfSimilarityDeficit):
         """
         Compute half radius of self-similar profile as function of streamwise
         location (x<0 upstream)
-        Linear replacement of Eq. (13) [1]
+        Linear replacement, Eq. (13) in [2]
         """
         r12_ijlk = self.r12p[0] * x_ijlk + self.r12p[1]
         return r12_ijlk
 
     def far_gamma(self, ct_ilk):
         """
-        gamma(CT) @ x/R = -6
+        gamma(CT) @ x/R = -6, Eq. (17) in [2]
         """
         fg_ilk = self.fgp[0] * np.sin((ct_ilk - self.fgp[1]) / self.fgp[3]) + self.fgp[2]
         return fg_ilk
 
     def near_gamma(self, ct_ilk):
         """
-        gamma(CT) @ x/R = -1
+        gamma(CT) @ x/R = -1, Eq. (16) in [2]
         """
         # fn_ilk = self.ngp[0] * ct_ilk**3 + self.ngp[1] * ct_ilk**2 + self.ngp[2] * ct_ilk + self.ngp[3]
         fn_ilk = ((self.ngp[0] * ct_ilk + self.ngp[1]) * ct_ilk + self.ngp[2]) * ct_ilk + self.ngp[3]
@@ -165,7 +168,7 @@ class SelfSimilarityDeficit2020(SelfSimilarityDeficit):
 
     def inter_gamma_fac(self, x_ijlk):
         """
-        Interpolation coefficient between near- and far-field gamma(CT)
+        Interpolation coefficient between near- and far-field gamma(CT), Eq. (15) in [2]
         """
         finter_ijlk = cabs(self.ct2af(x_ijlk) - self.ct2af(-1.)) / np.ptp(self.ct2af(np.array([-6, -1])))
         finter_ijlk = np.where(x_ijlk < -6, 1., finter_ijlk)
@@ -182,7 +185,7 @@ class SelfSimilarityDeficit2020(SelfSimilarityDeficit):
 
     def gamma(self, x_ijlk, ct_ilk):
         """
-        Two-dimensional scaling function gamma(x,CT)
+        Two-dimensional scaling function gamma(x,CT), Eq. (14) in [2]
         """
         ng_ilk = self.near_gamma(ct_ilk)
         fg_ilk = self.far_gamma(ct_ilk)

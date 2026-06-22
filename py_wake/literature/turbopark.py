@@ -26,8 +26,12 @@ class Nygaard_2022(PropagateDownwind):
 
         wake_deficitModel = TurboGaussianDeficit(
             ct2a=ct2a_mom1d,
-            groundModel=Mirror(),
-            rotorAvgModel=GaussianOverlapAvgModel())
+            groundModel=Mirror(superpositionModel=SquaredSum()),
+            rotorAvgModel=GaussianOverlapAvgModel(),
+            # ctlim=0.96 corresponds to limiting the term in the sqrt of epsilon to 3 as in
+            # the matlab code from Ørsted (https://github.com/OrstedRD/TurbOPark/blob/main/TurbOPark.m#L197)
+            ctlim=0.96
+        )
 
         # Ørsted scales the deficit with respect to the ambient wind speed of the downstream turbine:
         wake_deficitModel.WS_key = 'WS_jlk'

@@ -10,3 +10,4 @@ from .gaussian import BastankhahGaussianDeficit, IEA37SimpleBastankhahGaussianDe
 from .fuga import FugaDeficit, FugaYawDeficit, FugaMultiLUTDeficit
 from .gcl import GCLDeficit
 from .no_wake import NoWakeDeficit
+from .rans_lut import RANSLUTDeficit, RANSLUT

@@ -17,7 +17,8 @@ class RankineHalfBody(BlockageDeficitModel):
     """
 
     def __init__(self, ct2a=ct2a_madsen, limiter=1e-10, exclude_wake=True, superpositionModel=None,
-                 rotorAvgModel=None, groundModel=None, upstream_only=False, use_effective_ws=False):
+                 rotorAvgModel=None, groundModel=None, upstream_only=False, use_effective_ws=False,
+                 high_ct_mod=False):
         BlockageDeficitModel.__init__(self, upstream_only=upstream_only, superpositionModel=superpositionModel,
                                       rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                       use_effective_ws=use_effective_ws)
@@ -27,6 +28,7 @@ class RankineHalfBody(BlockageDeficitModel):
         # zero, as here the wake model is active
         self.exclude_wake = exclude_wake
         self.ct2a = ct2a
+        self.high_ct_mod = high_ct_mod
 
     def outside_body(self, WS_ilk, ct2a_ilk, R_il, dw_ijlk, cw_ijlk, r_ijlk):
         """
@@ -49,6 +51,15 @@ class RankineHalfBody(BlockageDeficitModel):
         ct2a_ilk = self.ct2a(ct_ilk)
         R_il = D_src_il / 2.
         m_ilk = 2. * WS_ilk * ct2a_ilk * np.pi * R_il[:, :, na]**2
+        if self.high_ct_mod:
+            # change source strength
+            m_ilk *= (1. - ct2a_ilk) / (1. - 2. * ct2a_ilk)
+            # shift source
+            shift_ilk = (ct2a_ilk * R_il[:, :, na] / np.sqrt(1. - 2. * ct2a_ilk))
+            # check that shapes commute
+            if dw_ijlk.shape[3] != ct2a_ilk.shape[2]:
+                dw_ijlk = np.repeat(dw_ijlk, ct2a_ilk.shape[2], axis=3)
+            dw_ijlk -= shift_ilk[:, na, :, :]
         # radial distance
         r_ijlk = hypot(dw_ijlk, cw_ijlk)
         # find points lying outside RHB, the only ones to be computed

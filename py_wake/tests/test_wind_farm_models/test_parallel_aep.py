@@ -44,7 +44,7 @@ def pool():
     return get_pool(2)
 
 
-debug = True
+debug = 0
 
 
 def test_multiprocessing_wd(pool):

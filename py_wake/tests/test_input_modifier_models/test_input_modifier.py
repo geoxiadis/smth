@@ -97,8 +97,8 @@ def run_floating(wfm_cls, pitch, displacement):
     (All2AllIterative, False, False, [10., 6.51877627, 6.289912]),
     (PropagateDownwind, True, False, [10., 7.450013, 7.108338]),
     (All2AllIterative, True, False, [10., 7.450013, 7.108338]),
-    (All2AllIterative, False, True, [10., 6.457691, 6.272679]),
-    (All2AllIterative, True, True, [10., 7.404978, 7.095028])
+    (All2AllIterative, False, True, [10., 6.457691, 6.273483]),
+    (All2AllIterative, True, True, [10., 7.404977, 7.095445])
 ])
 def test_floating_pitch_modifier(wfm_cls, pitch, displacement, ref):
 

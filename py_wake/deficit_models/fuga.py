@@ -11,7 +11,10 @@ from py_wake.utils.gradients import cabs
 
 from py_wake.utils.model_utils import DeprecatedModel
 import glob
-from xarray.core.merge import merge_attrs
+try:
+    from xarray.core.merge import merge_attrs
+except ModuleNotFoundError:  # pragma: no cover
+    from xarray.structure.merge import merge_attrs  # Moved to xarray.structure in v2025.03.0
 import warnings
 import os
 
@@ -45,7 +48,6 @@ class Fuga(PropagateDownwind, DeprecatedModel):
                                                                  remove_wriggles=remove_wriggles),
                                    rotorAvgModel=rotorAvgModel, superpositionModel=LinearSum(),
                                    deflectionModel=deflectionModel, turbulenceModel=turbulenceModel)
-        DeprecatedModel.__init__(self, 'py_wake.literature.fuga.Ott_2014')
 
 
 class FugaBlockage(All2AllIterative, DeprecatedModel):
@@ -74,7 +76,6 @@ class FugaBlockage(All2AllIterative, DeprecatedModel):
                                   rotorAvgModel=rotorAvgModel, superpositionModel=LinearSum(),
                                   deflectionModel=deflectionModel, blockage_deficitModel=fuga_deficit,
                                   turbulenceModel=turbulenceModel, convergence_tolerance=convergence_tolerance)
-        DeprecatedModel.__init__(self, 'py_wake.literature.fuga.Ott_2014_Blockage')
 
 
 class FugaMultiLUTDeficit(XRLUTDeficitModel):
@@ -126,7 +127,7 @@ class FugaMultiLUTDeficit(XRLUTDeficitModel):
         self.x, self.y = da.x.values, da.y.values
         self._args4model = {k + "_ilk" for k in ['zeta0', 'zi'] if k in da.dims}
 
-        method = [['linear', 'nearest'][d in ['d_h', 'variable']] for d in da.dims]
+        method = [['linear', 'nearest'][d in ['d_h', 'variables']] for d in da.dims]
         XRLUTDeficitModel.__init__(self, da, get_input=self.get_input, method=method, bounds=bounds,
                                    rotorAvgModel=rotorAvgModel, groundModel=groundModel,
                                    use_effective_ws=False, use_effective_ti=use_effective_ti)
@@ -139,21 +140,29 @@ class FugaMultiLUTDeficit(XRLUTDeficitModel):
         z_ijlk = h_ilk[:, na]
         lim = self.da.y.max().item()
 
-        def get_mdu(hcw_ijlk):
-            hcw_ijlk = np.nan_to_num(np.clip(hcw_ijlk, -lim, lim), nan=lim)
+        def get_mdu(hcw_ijlk, dw_ijlk=dw_ijlk):
+            hcw_ijlk = np.clip(hcw_ijlk, -lim, lim)
+            hcw_ijlk = np.where(np.isnan(hcw_ijlk), lim, hcw_ijlk)
             return self._calc_mdu(D_src_il=D_src_il, dw_ijlk=dw_ijlk,
                                   hcw_ijlk=hcw_ijlk, h_ilk=h_ilk, z_ijlk=z_ijlk, TI_ilk=TI_ilk, **kwargs)
         mdu_target = get_mdu(dw_ijlk * 0) * np.exp(-2)  # corresponding to 2 sigma
 
         def get_err(hcw):
-            return get_mdu(hcw) - mdu_target
+            return mdu_target - get_mdu(hcw)
 
         def get_wake_radius(wake_radius_ijlk):
             # Newton Raphson
-            for _ in range(4):
+            for _ in range(8):
                 err = get_err(wake_radius_ijlk)
                 derr = get_err(wake_radius_ijlk + 1) - err
-                wake_radius_ijlk = wake_radius_ijlk - err / derr
+                # the gradient may be negative after the shoulder (due to speedup), but in that case the solution is
+                # closer to the centerline instead of farther away so take the abs to reverse the direction
+                derr = np.abs(derr)
+                derr = np.where(err == 0, 1, derr)
+                step = -np.clip(err / derr, -100, 100)  # limit step to 100m
+                if np.allclose(step, 0, atol=.1):
+                    break
+                wake_radius_ijlk = np.maximum(wake_radius_ijlk + step, 1)  # minimum 1m wake width
             return np.abs(wake_radius_ijlk)
         wake_radius_ijlk = get_wake_radius(D_src_il[:, na, :, na])  # diameter as initial guess
 

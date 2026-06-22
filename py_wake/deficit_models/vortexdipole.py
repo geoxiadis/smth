@@ -50,13 +50,13 @@ class VortexDipole(BlockageDeficitModel):
         # here it is simplified. Effectively the equations are the same as for
         # a Rankine Half Body.
         # avoid devision by zero
-        r_ijlk = np.where((r_ijlk / R_il[:, na, :, na]) < self.limiter, np.inf, r_ijlk)
+        r_ijlk = np.where((r_ijlk / R_il[:, na, :, na]) < self.limiter, self.limiter, r_ijlk)
         # deficit
         with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', r'invalid value encountered in true_divide')
-            warnings.filterwarnings('ignore', r'invalid value encountered in divide')
-            warnings.filterwarnings('ignore', r'invalid value encountered in power')
-            deficit_ijlk = gammat_ilk[:, na] / 4. * R_il[:, na, :, na]**2 * (-dw_ijlk / r_ijlk**3)
+            warnings.filterwarnings('ignore')
+            deficit_ijlk = np.where((r_ijlk / R_il[:, na, :, na]) < self.limiter,
+                                    0,
+                                    gammat_ilk[:, na] / 4. * R_il[:, na, :, na]**2 * (-dw_ijlk / r_ijlk**3))
 
         if self.exclude_wake:
             deficit_ijlk = self.remove_wake(deficit_ijlk, dw_ijlk, cw_ijlk, D_src_il, wake_radius_ijlk,

@@ -3,6 +3,9 @@ from py_wake import np
 from py_wake.utils.profiling import profileit, line_timeit, compare_lineprofile, timeit
 from py_wake.tests import npt
 from py_wake.utils.numpy_utils import Numpy32
+import io
+import contextlib
+from _pytest.capture import capfd
 
 
 def test_profile_it():
@@ -14,10 +17,10 @@ def test_profile_it():
 
     for i in range(10):
         try:
-            # check 3 successive runs (all should take .1 s and 10MB
+            # check 3 successive runs (all should take 1 s and 10MB
             for _ in range(3):
-                r, t, m = profileit(f)(.1, 100)
-                npt.assert_allclose(t, 0.1, rtol=.2)
+                r, t, m = profileit(f)(1, 100)
+                npt.assert_allclose(t, 1, rtol=.2)
                 npt.assert_allclose(m, 100, rtol=.2)
             return
         except AssertionError:
@@ -30,7 +33,8 @@ def test_line_profile():
     def f():
         time.sleep(0.09)
         time.sleep(0.01)
-    timeit(f, line_profile=1, verbose=1)()
+    with contextlib.redirect_stdout(io.StringIO()):
+        timeit(f, line_profile=1, verbose=1)()
 
 
 def test_compare_lineprofile():
@@ -45,9 +49,10 @@ def test_compare_lineprofile():
 
     N = 1000000
     profile_funcs = [f2]
-    res, lp64 = line_timeit(f, profile_funcs)(np.full(N, 1))
+    with contextlib.redirect_stdout(io.StringIO()):
+        res, lp64 = line_timeit(f, profile_funcs)(np.full(N, 1))
 
-    with Numpy32():
-        res, lp32 = line_timeit(f, profile_funcs)(np.full(N, 1))
+        with Numpy32():
+            res, lp32 = line_timeit(f, profile_funcs)(np.full(N, 1))
 
-    compare_lineprofile(lp64, lp32)
+        compare_lineprofile(lp64, lp32)

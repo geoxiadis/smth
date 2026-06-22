@@ -1,13 +1,15 @@
-import time
-import functools
-import sys
-from py_wake import np
-import gc
-import os
-import psutil
 import ctypes
+import functools
+import gc
 import linecache
+import os
+import sys
+import time
 import warnings
+
+import psutil
+
+from py_wake import np
 
 
 def timeit(func, min_time=0, min_runs=1, verbose=False, line_profile=False, profile_funcs=[]):
@@ -15,20 +17,20 @@ def timeit(func, min_time=0, min_runs=1, verbose=False, line_profile=False, prof
     def newfunc(*args, **kwargs):
         if line_profile and getattr(sys, 'gettrace')() is None:  # pragma: no cover
             lp_wrapper = line_timeit(func, profile_funcs)
-            t = time.time()
+            t = time.perf_counter()
             res, lp = lp_wrapper(*args, **kwargs)
-            t = time.time() - t
+            t = time.perf_counter() - t
             if verbose:
                 lp.print_stats()
             return res, [t]
         else:
             t_lst = []
-            time_start = time.time()
-            for i in range(100000):
-                t0 = time.time_ns()
+            time_start = time.perf_counter()
+            for i in range(10000000):
+                t0 = time.perf_counter_ns()
                 res = func(*args, **kwargs)
-                t_lst.append((time.time_ns() - t0) * 1e-9)
-                if (time.time() - time_start) > min_time and len(t_lst) >= min_runs:
+                t_lst.append((time.perf_counter_ns() - t0) * 1e-9)
+                if (time.perf_counter() - time_start) > min_time and len(t_lst) >= min_runs:
                     break
 
             if verbose:  # pragma: no cover
@@ -90,11 +92,8 @@ def compare_lineprofile(lp1, lp2, include_gt_pct=None):  # pragma: no cover
                                   lines[lineno1 - 1]))
         print(template % ("", "", "--------", "--------", "", "", "----", ""))
         with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', r'divide by zero encountered in double_scalars')
-            print(
-                template %
-                ("", "", total1 / 1e6, total2 / 1e6, "", "", "%5.1f" %
-                 ((total2 - total1) / total1 * 100), ""))
+            print(template % ("", "", total1 / 1e6, total2 / 1e6, "", "", "%5.1f" %
+                              ((total2 - total1) / total1 * 100), ""))
 
 
 def get_memory_usage():

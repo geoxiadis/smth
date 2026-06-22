@@ -1,5 +1,11 @@
+import warnings
+
+import xarray as xr
+
 from py_wake import np
 from py_wake.site._site import UniformWeibullSite
+from py_wake.site.wrf import WRFSite
+from py_wake.tests import ptf
 from py_wake.wind_turbines import WindTurbine
 from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
 
@@ -103,6 +109,25 @@ class Hornsrev1Site(UniformWeibullSite):
              2.583984, 2.548828, 2.470703, 2.607422, 2.626953, 2.326172]
         UniformWeibullSite.__init__(self, np.array(f) / np.sum(f), a, k, ti=ti, shear=shear)
         self.initial_position = np.array([wt_x, wt_y]).T
+
+
+class Hornsrev1WRFSite(WRFSite):
+    """WRF Site covering Hornsrev1 for April 2020"""
+
+    def __init__(self, time_slice=slice("2020-04-01 00:00", "2020-04-30"), streamlines=True):
+        wrf_ds = xr.load_dataset(ptf('wrf/Hornsrev1_2020_04.nc',
+                                     known_hash='2df8efff6ed71d3c84639ba3d669b4d65e1ec45170b37f0305f3f0f7b54df048'))
+
+        WRFSite.__init__(self, wrf_ds.sel(time=time_slice), streamlines=streamlines)
+        try:
+            import windkit as wk
+            xy_crs = wk.spatial.create_dataset(wt_x, wt_y, 70, "EPSG:25832")
+            crs = wk.spatial.get_crs(wrf_ds)
+            xy_crs = wk.spatial.reproject(xy_crs, crs)
+            wt_x_crs, wt_y_crs = xy_crs.west_east.values, xy_crs.south_north.values
+            self.initial_position = np.array([wt_x_crs, wt_y_crs]).T
+        except BaseException:
+            warnings.warn('windkit not available. Could not reproject initial position to current crs')
 
 
 def main():

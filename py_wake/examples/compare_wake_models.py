@@ -1,3 +1,6 @@
+import warnings
+
+
 def main():
     if __name__ == '__main__':
         from py_wake import NOJ
@@ -8,15 +11,17 @@ def main():
         from py_wake.examples.data.hornsrev1 import HornsrevV80, Hornsrev1Site
         from py_wake.examples.data.iea37._iea37 import IEA37Site
 
-        LUT_path = os.path.dirname(py_wake.__file__) + '/tests/test_files/fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc'
+        LUT_path = os.path.dirname(py_wake.__file__) + \
+            '/tests/test_files/fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc'
 
         wt_x, wt_y = IEA37Site(16).initial_position.T
 
         windTurbines = HornsrevV80()
         site = Hornsrev1Site()
-
-        wake_models = [NOJ(site, windTurbines), BastankhahGaussian(
-            site, windTurbines), Fuga(LUT_path, site, windTurbines)]
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'The .* model is not representative of the setup used in the literature')
+            wake_models = [NOJ(site, windTurbines), BastankhahGaussian(
+                site, windTurbines), Fuga(LUT_path, site, windTurbines)]
 
         for wake_model in wake_models:
 

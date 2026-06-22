@@ -17,18 +17,14 @@ class FrandsenWeight():
     """
 
     def apply_weight(self, dw_ijlk, cw_ijlk, D_src_il, TI_ilk, TI_add_ijlk):
+        dw_ijlk = np.where(dw_ijlk == 0, 1e-20, dw_ijlk)
         s_ijlk = dw_ijlk / D_src_il[:, na, :, na]
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', r'divide by zero encountered in true_divide')
-            warnings.filterwarnings('ignore', r'divide by zero encountered in divide')
-            warnings.filterwarnings('ignore', r'invalid value encountered in true_divide')
-            warnings.filterwarnings('ignore', r'invalid value encountered in divide')
 
-            # Theta_w is the characteristic view angle defined in Eq. (3.18)
-            theta_w = (180.0 / np.pi * np.arctan(1 / s_ijlk) + 10) / 2
+        # Theta_w is the characteristic view angle defined in Eq. (3.18)
+        theta_w = (180.0 / np.pi * np.arctan(1 / s_ijlk) + 10) / 2
 
-            # thetq denotes the acutally view angles
-            theta = np.where(dw_ijlk > 0, np.arctan(cw_ijlk / dw_ijlk) * 180.0 / np.pi, 0)
+        # thetq denotes the acutally view angles
+        theta = np.where(dw_ijlk > 0, np.arctan(cw_ijlk / dw_ijlk) * 180.0 / np.pi, 0)
         weights_ijlk = np.where(theta < theta_w, np.exp(-(theta / theta_w)**2), 0) * (dw_ijlk > 1e-10)
 
         # In Frandsens thesis, the weight is multiplied to I0 * alpha:

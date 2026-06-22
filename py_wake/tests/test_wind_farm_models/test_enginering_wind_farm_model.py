@@ -14,7 +14,7 @@ from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit
 from py_wake.deficit_models.large_wind_farm_correction_model import LargeWindFarmCorrectionDeficitModel
 from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.deficit_models.noj import NOJDeficit
-from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit, SelfSimilarityDeficit2020
+from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit
 from py_wake.deficit_models.utils import ct2a_mom1d
 from py_wake.deflection_models.jimenez import JimenezWakeDeflection
 from py_wake.examples.data.hornsrev1 import HornsrevV80, Hornsrev1Site, wt_x, wt_y, V80
@@ -42,6 +42,7 @@ from py_wake.deficit_models.vortexdipole import VortexDipole
 from py_wake.deficit_models.rankinehalfbody import RankineHalfBody
 from py_wake.deficit_models.rathmann import Rathmann, RathmannScaled
 from py_wake.deficit_models.vortexcylinder import VortexCylinder
+from py_wake.deficit_models.rans_lut import RANSLUTDemoDeficit
 
 
 WindFarmModel.verbose = False
@@ -73,8 +74,9 @@ def test_wec():
     wts = HornsrevV80()
 
     site = UniformSite([1, 0, 0, 0], ti=0.075)
-
-    wfm = BastankhahGaussian(site, wts, ct2a=ct2a_mom1d)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.* model is not representative of the setup')
+        wfm = BastankhahGaussian(site, wts, ct2a=ct2a_mom1d)
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
 
@@ -365,7 +367,7 @@ def test_time_series_dates():
     d = np.load(os.path.dirname(examples.__file__) + "/data/time_series.npz")
     wd, ws, ws_std = [d[k][:6 * 24] for k in ['wd', 'ws', 'ws_std']]
     ti = np.minimum(ws_std / ws, .5)
-    t = pd.date_range("2000-01-01", freq="10T", periods=24 * 6)
+    t = pd.date_range("2000-01-01", freq="10min", periods=24 * 6)
     wt = V80()
     site = Hornsrev1Site()
     site.ds['TI'] = xr.DataArray(ti, [('time', t)])
@@ -381,7 +383,7 @@ def test_time_series_dates():
 def test_time_series_override_WS():
     d = np.load(os.path.dirname(examples.__file__) + "/data/time_series.npz")
     wd, ws = [d[k][:6 * 24] for k in ['wd', 'ws']]
-    t = pd.date_range("2000-01-01", freq="10T", periods=24 * 6)
+    t = pd.date_range("2000-01-01", freq="10min", periods=24 * 6)
     WS_it = (np.arange(80) / 100)[:, na] + ws[na]
     wt = V80()
     site = Hornsrev1Site()
@@ -396,7 +398,7 @@ def test_time_series_override_WS():
 def test_time_series_override_WD():
     d = np.load(os.path.dirname(examples.__file__) + "/data/time_series.npz")
     wd, ws = [d[k][:6 * 24] for k in ['wd', 'ws']]
-    t = pd.date_range("2000-01-01", freq="10T", periods=24 * 6)
+    t = pd.date_range("2000-01-01", freq="10min", periods=24 * 6)
     WD_it = (np.arange(80) / 100)[:, na] + wd[na]
     wt = V80()
     site = Hornsrev1Site()
@@ -413,7 +415,7 @@ def test_time_series_override_TI():
     d = np.load(os.path.dirname(examples.__file__) + "/data/time_series.npz")
     wd, ws, ws_std = [d[k][:6 * 24] for k in ['wd', 'ws', 'ws_std']]
     ti = np.minimum(ws_std / ws, .5)
-    t = pd.date_range("2000-01-01", freq="10T", periods=24 * 6)
+    t = pd.date_range("2000-01-01", freq="10min", periods=24 * 6)
     wt = V80()
     site = Hornsrev1Site()
     x, y = site.initial_position.T
@@ -596,7 +598,8 @@ def test_PropagateUpDownIterative_wake_deficitModels(wake_deficitModel):
 
     x = np.array([0, 400, 800, 800])
     y = [0, 0, 100, -200]
-    npt.assert_array_almost_equal(pudi(x, y, wd=270).WS_eff, all2all(x, y, wd=270).WS_eff, 5)
+    tol = {RANSLUTDemoDeficit: 3}.get(wake_deficitModel, 6)
+    npt.assert_array_almost_equal(pudi(x, y, wd=270).WS_eff, all2all(x, y, wd=270).WS_eff, tol)
 
 
 @pytest.mark.parametrize('blockage_deficitModel', get_models(BlockageDeficitModel))

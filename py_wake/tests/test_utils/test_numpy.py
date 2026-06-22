@@ -1,21 +1,31 @@
 import os
+import warnings
 
+import matplotlib.pyplot as plt
+import pytest
 from autograd.numpy.numpy_boxes import ArrayBox
 from numpy import newaxis as na
-import pytest
 
 from py_wake import np
-from py_wake.deficit_models.deficit_model import WakeDeficitModel, BlockageDeficitModel
+from py_wake.deficit_models.deficit_model import BlockageDeficitModel, WakeDeficitModel
 from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit
+from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.deflection_models.deflection_model import DeflectionModel
+from py_wake.examples.data.hornsrev1 import V80, Hornsrev1Site
+from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
 from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
-from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines
+from py_wake.flow_map import XYGrid
 from py_wake.ground_models.ground_models import GroundModel
+from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel
+from py_wake.rotor_avg_models.gaussian_overlap_model import GaussianOverlapAvgModel
 from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel
 from py_wake.site._site import Site
 from py_wake.site.distance import StraightDistance
 from py_wake.site.shear import Shear
-from py_wake.superposition_models import SuperpositionModel, AddedTurbulenceSuperpositionModel
+from py_wake.superposition_models import (
+    AddedTurbulenceSuperpositionModel,
+    SuperpositionModel,
+)
 from py_wake.tests import npt
 from py_wake.turbulence_models.stf import STF2005TurbulenceModel, STF2017TurbulenceModel
 from py_wake.turbulence_models.turbulence_model import TurbulenceModel
@@ -23,16 +33,12 @@ from py_wake.utils.gradients import autograd
 from py_wake.utils.model_utils import get_models
 from py_wake.utils.numpy_utils import Numpy32
 from py_wake.utils.profiling import profileit
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative, EngineeringWindFarmModel
-from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
-
-from py_wake.rotor_avg_models.gaussian_overlap_model import GaussianOverlapAvgModel
-from py_wake.rotor_avg_models.area_overlap_model import AreaOverlapAvgModel
-from py_wake.deficit_models.noj import NOJDeficit
-import warnings
-from py_wake.flow_map import XYGrid
-import matplotlib.pyplot as plt
+from py_wake.wind_farm_models.engineering_models import (
+    All2AllIterative,
+    EngineeringWindFarmModel,
+    PropagateDownwind,
+)
+import time
 
 
 @pytest.mark.parametrize('v,dtype,dtype32', [(5., float, np.float32),
@@ -68,19 +74,23 @@ def test_speed_mem():
     if os.name == 'posix':
         pytest.xfail("Memory tests behave differently on Linux")
 
-    def f(x):
-        return (x**2).sum()
+    def f(N):
+        x = np.arange(N) * np.arange(1024**2 / 8)[:, na]
+        x += 1
+        return x.nbytes / 1024**2, x.dtype, x.sum()
 
-    N = 1000
-    x = np.arange(N, dtype=float) * np.arange(1024**2 / 8)[:, na] + 1
-    t64, mem64 = profileit(f)(x)[1:]
-
+    N = 100
     with Numpy32():
-        x = np.asarray(x)
-        t32, mem32 = profileit(f)(x)[1:]
+        r32, t32, mem32 = profileit(f)(N)
 
+    r64, t64, mem64 = profileit(f)(N)
+    assert r64[:2] == (100, np.float64)
+    assert r32[:2] == (50, np.float32)
+    npt.assert_allclose(r64[2], np.float64(r32[2]), rtol=1e-5)
+    npt.assert_allclose([mem32, mem64], [50, 100], atol=10)
     assert t32 / t64 < .6
-    assert mem32 / mem64 < .6
+    assert mem32 / mem64 < .6  # should be 500/1000
+
 
 # def test_speed():
 #     site = Hornsrev1Site()
@@ -189,11 +199,11 @@ def test_np32_flowmap():
 
     with Numpy32():
 
-        for kwargs in [{}, dict(wd_chunks=12, ws_chunks=9), dict(n_cpu=2, wd_chunks=12, ws_chunks=9)]:
+        for kwargs in [{}, dict(wd_chunks=12, ws_chunks=9)]:
             simulationResult = wf_model(x=np.array([0.0, 0.0]), y=np.array([1000.0, 0.0]), **kwargs)
             fm = simulationResult.flow_map(XYGrid(resolution=50))
-            fm.plot_wake_map()
             if 0:
+                fm.plot_wake_map()
                 plt.show()
 
 

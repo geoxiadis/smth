@@ -1,14 +1,16 @@
-from py_wake import np
+from abc import ABC, abstractmethod
 
-from abc import abstractmethod, ABC
-from py_wake.wind_turbines.wind_turbine_functions import WindTurbineFunction, FunctionSurrogates, \
-    WindTurbineFunctionList
-from py_wake.utils.check_input import check_input
-from py_wake.utils.model_utils import check_model, fix_shape
+from py_wake import np
 from py_wake.utils import gradients
+from py_wake.utils.check_input import check_input
 from py_wake.utils.gradients import PchipInterpolator, UnivariateSpline
 from py_wake.utils.grid_interpolator import GridInterpolator
-
+from py_wake.utils.model_utils import check_model, fix_shape
+from py_wake.wind_turbines.wind_turbine_functions import (
+    FunctionSurrogates,
+    WindTurbineFunction,
+    WindTurbineFunctionList,
+)
 
 """
 sequenceDiagram
@@ -93,13 +95,14 @@ class AdditionalModel(WindTurbineFunction, ABC):
 
 
 class SimpleYawModel(AdditionalModel):
-    """Simple model that replace ws with cos(yaw)*ws and scales the CT output with cos(yaw)**2"""
+    """Simple model that replace ws with cos(yaw)*ws and scales the CT output with cos(yaw)**exp"""
 
-    def __init__(self):
+    def __init__(self, exp=2):
         AdditionalModel.__init__(
             self, input_keys=[
                 'ws', 'yaw', 'tilt'], optional_inputs=['yaw', 'tilt'],
             output_keys=['power', 'ct'])
+        self.exp = exp
 
     def __call__(self, f, ws, yaw=None, tilt=None, **kwargs):
         if yaw is not None and tilt is not None:
@@ -111,8 +114,8 @@ class SimpleYawModel(AdditionalModel):
             co = np.cos(gradients.deg2rad(fix_shape(tilt, ws, True)))
         power_ct_arr = f(ws * co, **kwargs)  # calculate for reduced ws (ws projection on rotor)
         if kwargs['run_only'] == 1:  # ct
-            # multiply ct by cos(yaw)**2 to compensate for reduced thrust
-            return power_ct_arr * co**2
+            # multiply ct by cos(yaw)**exp to compensate for reduced thrust
+            return power_ct_arr * co**self.exp
         return power_ct_arr
 
 
@@ -132,6 +135,33 @@ class DensityScale(AdditionalModel):
         return power_ct_arr
 
 
+class SmoothCutIn(AdditionalModel):
+    def __init__(self, u0, u1):
+        """Apply smooth transition ct from u0 (ct=0) to u1 (ct=ct(u1), typically ct_max)
+
+        Parameters
+        ----------
+        u0 : int or float
+            Wind speed at which the transition starts (ct=0)
+        u1 : int or float
+            Wind speed at which the transition ends (ct=ct(u1), typically ct_max)
+        """
+        AdditionalModel.__init__(self, input_keys=['ws', 'WD'], optional_inputs=[], output_keys=['power', 'ct'])
+        self.u1 = u1
+        self.u0 = u0
+
+        self.um = (u0 + u1) / 2
+        self.f = np.pi / (u1 - u0)
+
+    def __call__(self, f, ws, run_only, WD=None, **kwargs):
+        if run_only == 1:
+            power_ct_arr = np.asarray(f(np.maximum(ws, self.u1), run_only=run_only, **kwargs))
+            power_ct_arr *= np.sin(np.clip((ws - self.um) * self.f, -np.pi / 2, np.pi / 2)) / 2 + .5
+        else:
+            power_ct_arr = np.asarray(f(ws, run_only=run_only, **kwargs))
+        return power_ct_arr
+
+
 class DensityCompensation(AdditionalModel):
     """Scales the wind speed with density before calculating power and ct"""
 
@@ -147,7 +177,7 @@ class DensityCompensation(AdditionalModel):
         return np.asarray(f(ws, **kwargs))
 
 
-default_additional_models = [SimpleYawModel(), DensityScale(1.225)]
+default_additional_models = [SimpleYawModel(exp=2), DensityScale(1.225)]
 
 
 class PowerCtFunction(PowerCtModelContainer, ABC):
@@ -361,7 +391,12 @@ class PowerCtNDTabular(PowerCtFunction):
         try:
             return self.interp[run_only](args)
         except ValueError:
-            check_input(self.interp[run_only].x, args.T, self.input_keys)
+            try:
+                # try to raise an exception with a better error message
+                check_input(self.interp[run_only].x, args.T, self.input_keys)
+                raise  # pragma: no cover  # raise original exception
+            except BaseException:
+                raise  # raise new and better exception
 
 
 class PowerCtXr(PowerCtNDTabular):

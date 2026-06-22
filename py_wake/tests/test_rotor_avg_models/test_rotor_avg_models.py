@@ -11,9 +11,9 @@ from py_wake.examples.data.hornsrev1 import V80
 from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines
 from py_wake.flow_map import HorizontalGrid, XYGrid, YZGrid
 from py_wake.rotor_avg_models import gauss_quadrature, PolarGridRotorAvg, \
-    polar_gauss_quadrature, EqGridRotorAvg, GQGridRotorAvg, CGIRotorAvg, GridRotorAvg, WSPowerRotorAvg
+    polar_gauss_quadrature, EqGridRotorAvg, GQGridRotorAvg, CGIRotorAvg, GridRotorAvg, WSPowerRotorAvg, EllipSysPolygonRotorAvg
 from py_wake.rotor_avg_models.gaussian_overlap_model import GaussianOverlapAvgModel
-from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, RotorCenter, PolarRotorAvg, NodeRotorAvgModel
+from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, PolarRotorAvg, NodeRotorAvgModel
 from py_wake.site._site import UniformSite
 from py_wake.superposition_models import SquaredSum, LinearSum, WeightedSum
 from py_wake.tests import npt
@@ -24,6 +24,8 @@ from py_wake.turbulence_models.turbulence_model import TurbulenceModel
 from py_wake.deficit_models.fuga import FugaMultiLUTDeficit
 from py_wake.deficit_models.noj import NOJ
 from py_wake.deficit_models.utils import ct2a_mom1d
+import warnings
+from py_wake.deficit_models.rans_lut import RANSLUTDemoDeficit
 
 
 EngineeringWindFarmModel.verbose = False
@@ -88,7 +90,6 @@ def test_RotorGridAvg_deficit():
 
 
 def test_RotorGridAvg_deficit_with_offset():
-    site = UniformSite()
     windTurbines = IEA37_WindTurbines()
     wfm = get_wfm()
     y_lst = np.linspace(-100, 100)
@@ -401,8 +402,9 @@ def test_with_all_blockage_models(blockage_deficitModel):
             plt.axhline(windTurbines.hub_height())
             plt.title(blockage_deficitModel.__name__)
             plt.show()
-
-        assert wfm_w(**kwargs).WS_eff.sel(wt=0).item() > wfm_wo(**kwargs).WS_eff.sel(wt=0).item()
+        if blockage_deficitModel is not RANSLUTDemoDeficit:
+            # For RANSLUTDemoDeficit, the rotor average is lower due to impact of shear in LUT
+            assert wfm_w(**kwargs).WS_eff.sel(wt=0).item() > wfm_wo(**kwargs).WS_eff.sel(wt=0).item()
 
 
 @pytest.mark.parametrize('turbulenceModel', get_models(TurbulenceModel))
@@ -422,17 +424,25 @@ def test_with_all_ti_models(turbulenceModel):
 @pytest.mark.parametrize('model', get_models(RotorAvgModel, exclude_None=True))
 def test_with_weighted_sum(model):
     if issubclass(model, NodeRotorAvgModel):
-        wfm = All2AllIterative(UniformSite(), V80(), BastankhahGaussianDeficit(rotorAvgModel=model()),
-                               superpositionModel=WeightedSum())
-        wfm([0, 500], [0, 0])
+        if model is WSPowerRotorAvg:
+            with pytest.raises(AssertionError, match='WeightedSum and CumulativeWakeSum does not work WSPowerRotorAvg'):
+                wfm = All2AllIterative(UniformSite(), V80(), BastankhahGaussianDeficit(rotorAvgModel=model()),
+                                       superpositionModel=WeightedSum())
+        else:
+            wfm = All2AllIterative(UniformSite(), V80(), BastankhahGaussianDeficit(rotorAvgModel=model()),
+                                   superpositionModel=WeightedSum())
+            aep = wfm([0, 500], [0, 0]).aep()
+            # print(aep.values.sum())
     else:
-        with pytest.raises(AssertionError, match='WeightedSum and CumulativeWakeSum only works with NodeRotorAvgModel-based rotor average models'):
+        with pytest.raises(AssertionError, match='WeightedSum and CumulativeWakeSum only work with NodeRotorAvgModel-based rotor average models'):
             wfm = All2AllIterative(UniformSite(), V80(), BastankhahGaussianDeficit(),
                                    superpositionModel=WeightedSum(), rotorAvgModel=model())
 
 
 def test_WSPowerRotorAvgModel():
-    wfm = BastankhahGaussian(UniformSite(), V80())
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.* model is not representative of the setup')
+        wfm = BastankhahGaussian(UniformSite(), V80())
     x, y = [0, 200], [0, 0]
     y_g = [-40, 0, 40]
     if 0:
@@ -443,7 +453,31 @@ def test_WSPowerRotorAvgModel():
     ws_eff_ref = np.mean(ws_eff_p**2)**(1 / 2)
 
     rotorAvgModel = WSPowerRotorAvg(GridRotorAvg(nodes_x=[-1, 0, 1], nodes_y=[0, 0, 0]), alpha=2)
-    wfm = BastankhahGaussian(UniformSite(), V80(), rotorAvgModel=rotorAvgModel)
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.* model is not representative of the setup')
+        wfm = BastankhahGaussian(UniformSite(), V80(), rotorAvgModel=rotorAvgModel)
+    npt.assert_almost_equal(wfm(x, y, wd=270).WS_eff.sel(wt=1).squeeze(), ws_eff_ref)
+
+
+def test_EllipSysPolygonRotorAvgModel():
+    m = EllipSysPolygonRotorAvg(n_r=1, n_theta=4)
+    npt.assert_array_almost_equal(m.nodes_x, [-0.33333333, 0.33333333, 0.33333333, -0.33333333])
+    npt.assert_array_almost_equal(m.nodes_y, [-0.33333333, -0.33333333, 0.33333333, 0.33333333])
+    npt.assert_array_almost_equal(m.nodes_weight, [0.25, 0.25, 0.25, 0.25])
+    if 0:
+        for v in [m.nodes_x, m.nodes_y, m.nodes_weight]:
+            print(np.round(v, 2).tolist())
+        c = plt.scatter(m.nodes_x, m.nodes_y, c=m.nodes_weight)
+        plt.colorbar(c)
+        plt.axis('equal')
+        plt.gca().add_artist(plt.Circle((0, 0), 1, fill=False))
+        plt.ylim([-1, 1])
+        plt.show()
+
+    x, y = [0, 200], [0, 0]
+    wfm = BastankhahGaussian(UniformSite(), V80(), rotorAvgModel=EllipSysPolygonRotorAvg(n_r=4, n_theta=16))
+    # print(wfm(x, y, wd=270).WS_eff.sel(wt=1).squeeze())
+    ws_eff_ref = 7.56579234
     npt.assert_almost_equal(wfm(x, y, wd=270).WS_eff.sel(wt=1).squeeze(), ws_eff_ref)
 
 

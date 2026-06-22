@@ -511,13 +511,15 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
     def _calc_deficit(self, ct_ilk, dw_ijlk, D_src_il, **kwargs):
         # compute max velocity deficit at center of wake
         n = self.supG_n(dw_ijlk, D_src_il, ct_ilk, **kwargs)
+        rotor_pos = -1e-10
+        n = np.where(dw_ijlk >= rotor_pos, n, 8)
         sigma_ijlk = self.sigma_ijlk(dw_ijlk, ct_ilk, D_src_il, **kwargs)
         ctx_ijlk = self.ct_func(ct_ilk=ct_ilk, dw_ijlk=dw_ijlk, D_src_il=D_src_il)
         a1 = 2 ** (2 / n - 1)
         a2 = 2 ** (4 / n - 2)
-
-        deficit_center_ijlk = a1 - np.sqrt(a2 - ((n * ctx_ijlk) /
-                                                 (16.0 * gamma(2 / n) * gradients.sign(sigma_ijlk) * (cabs(sigma_ijlk) ** (4 / n)))))
+        sigma_ijlk = np.where(dw_ijlk >= rotor_pos, sigma_ijlk, 1)
+        deficit_center_ijlk = a1 - np.sqrt(a2 - ((n * ctx_ijlk) / (16.0 * gamma(2 / n) * (sigma_ijlk ** (4 / n)))))
+        deficit_center_ijlk *= (dw_ijlk >= rotor_pos)
 
         return deficit_center_ijlk
 
@@ -530,7 +532,8 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
         n = self.supG_n(dw_ijlk=dw_ijlk, D_src_il=D_src_il, ct_ilk=ct_ilk, **kwargs)
         sigma_sqrt_ijlk = (self.sigma_ijlk(dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, D_src_il=D_src_il, **kwargs))**2
         deficit_center_ijlk = self._calc_deficit(ct_ilk, dw_ijlk, D_src_il, **kwargs)
-
+        rotor_pos = -1e-10
+        n = np.where(dw_ijlk >= rotor_pos, n, 8)
         exponent_factor_ijlk = -1 / (2 * sigma_sqrt_ijlk) * (cw_ijlk / D_src_il[:, na, :, na]) ** n
         shape_factor_ijlk = np.exp(exponent_factor_ijlk)
 
@@ -541,7 +544,7 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
     def wake_radius(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
         # according to Niayifar, the wake radius is twice sigma
         sigma_ijlk = self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
-        return 2. * sigma_ijlk
+        return 2. * sigma_ijlk * D_src_il[:, na, :, na]
 
 
 class BlondelSuperGaussianDeficit2023(BlondelSuperGaussianDeficit2020):

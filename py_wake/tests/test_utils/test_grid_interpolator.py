@@ -1,12 +1,15 @@
 
-import pytest
-
 import matplotlib.pyplot as plt
+import pytest
+import xarray as xr
+
 from py_wake import np
 from py_wake.tests import npt
 from py_wake.tests.check_speed import timeit
-from py_wake.utils.grid_interpolator import GridInterpolator, EqDistRegGrid2DInterpolator
-import xarray as xr
+from py_wake.utils.grid_interpolator import (
+    EqDistRegGrid2DInterpolator,
+    GridInterpolator,
+)
 
 
 def test_grid_interpolator_not_match():
@@ -75,11 +78,11 @@ def test_grid_interpolator_2d():
 @pytest.mark.parametrize('method,ref', [
     ('linear', [15.5, 40.5, 42.5, 47.5, 48]),
     (['linear', 'linear', 'linear'], [15.5, 40.5, 42.5, 47.5, 48]),
-    ('nearest', [25, 46, 48, 53, 54]),  # [25, 47, 49, 54, 54]
-    (['nearest', 'nearest', 'nearest'], [25, 46, 48, 53, 54]),  # [25, 47, 49, 54, 54]
+    ('nearest', [26, 47, 49, 54, 54]),
+    (['nearest', 'nearest', 'nearest'], [26, 47, 49, 54, 54]),
     ('linear', [15.5, 40.5, 42.5, 47.5, 48]),
-    (['linear', 'linear', 'nearest'], [15, 40, 42, 47, 48]),  # [15, 41, 43, 48, 48]
-    (['nearest', 'linear', 'nearest'], [23, 48, 50, 55, 56]),  # [23, 49, 51, 56, 56]
+    (['linear', 'linear', 'nearest'], [16., 41., 43., 48., 48.]),
+    (['nearest', 'linear', 'nearest'], [24., 49., 51., 56., 56.]),
 
 ])
 def test_grid_interpolator_3d_methods(method, ref):
@@ -163,7 +166,7 @@ def test_EqDistRegGrid2DInterpolator_bound():
     y = [200, 300, 400, 500]
     v = np.arange(12).reshape(3, 4)
     interp = EqDistRegGrid2DInterpolator(x, y, v)
-    npt.assert_array_equal(interp(np.array([6, 18]), np.array([200, 500])), [0, 11])
+    npt.assert_array_equal(interp(np.array([6., 18]), np.array([200, 500])), [0, 11])
 
 
 def compare_speed():
@@ -173,7 +176,6 @@ def compare_speed():
     wd = np.arange(360)
     ws = np.arange(3, 26)
     V = np.random.rand(len(x), len(y), len(z), len(wd), len(ws))
-    print(V.shape)
     for x in [x, np.r_[x[:-1], 100]]:
         da = xr.DataArray(V, coords=[('x', x), ('y', y), ('z', z), ('wd', wd), ('ws', ws)])
         coords = xr.Dataset(coords={'wd': np.arange(360), 'ws': [9, 10], 'i': np.arange(16),
@@ -191,7 +193,7 @@ def compare_speed():
             return GridInterpolator([x, y, z, wd, ws], da.values)(c)
         x2, t2 = timeit(interp, verbose=True, line_profile=0, profile_funcs=[GridInterpolator.__call__])()
         npt.assert_array_almost_equal(x1, x2.reshape(16, len(coords.wd), len(coords.ws)))
-        print(np.mean(t1) / np.mean(t2))
+        # print(np.mean(t1) / np.mean(t2))
 
 
 if __name__ == '__main__':

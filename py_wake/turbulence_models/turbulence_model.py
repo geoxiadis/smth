@@ -14,7 +14,8 @@ class TurbulenceModel(ABC, RotorAvgAndGroundModelContainer):
             check_model(model, cls, name)
 
         self.addedTurbulenceSuperpositionModel = addedTurbulenceSuperpositionModel
-        RotorAvgAndGroundModelContainer.__init__(self, groundModel, rotorAvgModel)
+        RotorAvgAndGroundModelContainer.__init__(self, superpositionModel=addedTurbulenceSuperpositionModel,
+                                                 groundModel=groundModel, rotorAvgModel=rotorAvgModel)
 
     @property
     def args4model(self):
@@ -43,7 +44,7 @@ class TurbulenceModel(ABC, RotorAvgAndGroundModelContainer):
         """
 
     def calc_effective_TI(self, TI_xxx, add_turb_jxxx):
-        return self.addedTurbulenceSuperpositionModel.calc_effective_TI(TI_xxx, add_turb_jxxx)
+        return self.superpositionModel.calc_effective_TI(TI_xxx, add_turb_jxxx)
 
 
 class XRLUTTurbulenceModel(TurbulenceModel, XRLUTModel, ):

@@ -4,8 +4,10 @@ from py_wake import np
 from numpy import newaxis as na
 import xarray as xr
 from tqdm import tqdm
+from py_wake.utils.gradients import trapz
 from py_wake.utils.grid_interpolator import GridInterpolator
 from scipy.interpolate import RectBivariateSpline
+from py_wake.utils import gradients
 
 
 class GaussianOverlapAvgModel(RotorAvgModel):
@@ -20,7 +22,8 @@ class GaussianOverlapAvgModel(RotorAvgModel):
             CW_sigma = np.arange(0, 10.01, 0.01)
             # behavior changed in xarray=24.11.0 such that
             # dat = table.interp(R_sigma=R_sigma, CW_sigma=CW_sigma, method='cubic')
-            # performs a two-step interpolation which is slower and less accurate than the previous one-step interpolation
+            # performs a two-step interpolation which is slower and less accurate than
+            # the previous one-step interpolation
             dat = RectBivariateSpline(table.R_sigma.values, table.CW_sigma.values, table.values)(R_sigma, CW_sigma)
             self._overlap_interpolator = GridInterpolator([R_sigma, CW_sigma], dat, bounds='limit')
         return self._overlap_interpolator
@@ -34,8 +37,9 @@ class GaussianOverlapAvgModel(RotorAvgModel):
             raise AttributeError(
                 f"'{func.__self__.__class__.__name__}' has no attribute 'sigma_ijlk', which is needed by the GaussianOverlapAvgModel")
         sigma_ijlk = func.__self__.sigma_ijlk(**kwargs)
-        overlap_factor_ijlk = self.overlap_interpolator(
-            np.array([((D_dst_ijl / 2)[..., na] / sigma_ijlk).flatten(), (cw_ijlk / sigma_ijlk).flatten()]).T).reshape(sigma_ijlk.shape)
+        r_sigma = ((D_dst_ijl / 2)[..., na] / sigma_ijlk).flatten()
+        cw_sigma = gradients.cabs(cw_ijlk / sigma_ijlk).flatten()
+        overlap_factor_ijlk = self.overlap_interpolator(np.array([r_sigma, cw_sigma]).T).reshape(sigma_ijlk.shape)
         return res_ijlk * overlap_factor_ijlk
 
 
@@ -53,7 +57,7 @@ def make_lookup_table(n_theta, n_r, dr=.5, dcw=.5):  # pragma: no cover
             dat = np.exp(- 1 / 2 * (r ** 2 + cw_sigma**2 - 2 * r * cw_sigma * np.cos(theta))) * r
             dtheta = np.diff(theta.flatten()[:2])
             dr = np.diff(r.flatten()[:2])
-            return np.trapz(np.trapz(dat, dx=dtheta, axis=1), dx=dr, axis=1)
+            return trapz(trapz(dat, dx=dtheta, axis=1), dx=dr, axis=1)
         else:
             return np.exp(-(cw_sigma[:, 0, 0]**2) / 2)  # use point value
     dat = np.array([cw_table(R) for R in tqdm(R_sigma)])

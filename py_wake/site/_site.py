@@ -1,13 +1,14 @@
+from abc import ABC, abstractmethod
+
 import matplotlib.pyplot as plt
+import xarray as xr
+from numpy import newaxis as na
+
+import py_wake.utils.xarray_utils  # register ilk function @UnusedImport
 from py_wake import np
 from py_wake.site.shear import PowerShear
-import py_wake.utils.xarray_utils  # register ilk function @UnusedImport
-import xarray as xr
-from abc import ABC, abstractmethod
-from py_wake.utils.xarray_utils import ilk2da
-from numpy import newaxis as na
 from py_wake.utils.functions import arg2ilk
-from collections.abc import Iterable
+from py_wake.utils.xarray_utils import ilk2da
 
 """
 suffixs:
@@ -38,12 +39,6 @@ class LocalWind(dict):
         if time is not False:
             if time is True:
                 time = np.arange(len(wd))
-            elif isinstance(time, Iterable) and (
-                len(ws) != len(time) or len(wd) != len(time)
-            ):  # avoid redundant passing wd & ws for time series sites
-                wd = np.zeros(len(time))
-                ws = np.zeros(len(time))
-            assert len(wd) == len(ws)
             coords = {'time': np.atleast_1d(time), 'wd': np.atleast_1d(wd), 'ws': np.atleast_1d(ws)}
         else:
             coords = {'wd': np.atleast_1d(wd), 'ws': np.atleast_1d(ws)}
@@ -135,7 +130,13 @@ class Site(ABC):
         self._distance = distance
         distance.site = self
 
-    def get_defaults(self, wd=None, ws=None):
+    def get_defaults(self, wd=None, ws=None, time=False):
+        if time is not False:
+            if wd is None or ws is None:
+                raise ValueError('wd and ws must be specified for time series')
+            else:
+                wd, ws = np.atleast_1d(wd), np.atleast_1d(ws)
+                assert len(wd) == len(ws)
         if wd is None:
             wd = self.default_wd
         else:
@@ -182,7 +183,7 @@ class Site(ABC):
             P_ilk : array_like
                 Probability/weight
         """
-        wd, ws = self.get_defaults(wd, ws)
+        wd, ws = self.get_defaults(wd, ws, time)
         wd_bin_size = self.wd_bin_size(wd, wd_bin_size)
         lw = LocalWind(x, y, h, wd, ws, time, wd_bin_size)
         return self._local_wind(lw, ws_bins)
@@ -210,9 +211,6 @@ class Site(ABC):
             P : DataArray
                 Probability/weight
         """
-
-    def wt2wt_distances(self, WD_ilk=None, wd_l=None):
-        return self.distance(WD_ilk=WD_ilk, wd_l=wd_l)
 
     @abstractmethod
     def elevation(self, x_i, y_i):
@@ -269,12 +267,12 @@ class Site(ABC):
         upper = np.ceil(wd + d_wd).astype(int)
         for i, (lo, up) in enumerate(zip(lower, upper)):
             if lo < 0:
-                sector[lo % 360 + 1:] = i
+                sector[lo % 360:] = i
                 lo = 0
             if up > 359:
-                sector[:up % 360 + 1] = i
-                up = 359
-            sector[lo + 1:up + 1] = i
+                sector[:up % 360] = i
+                up = 360
+            sector[lo:up] = i
         return sector
 
     def plot_ws_distribution(self, x=0, y=0, h=70, wd=[0], ws=np.arange(0.05, 30.05, .1),
@@ -400,6 +398,7 @@ class Site(ABC):
 
 
 from py_wake.site import xrsite  # @NoMove # nopep8
+
 UniformSite = xrsite.UniformSite
 UniformWeibullSite = xrsite.UniformWeibullSite
 

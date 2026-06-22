@@ -2,6 +2,7 @@ import numpy as np
 from py_wake.site.distance import StraightDistance
 from numpy import newaxis as na
 from py_wake.utils.grid_interpolator import GridInterpolator
+import warnings
 
 
 class ISONoiseModel:
@@ -52,13 +53,15 @@ class ISONoiseModel:
         self.freqs = freqs
         self.sound_power_level = sound_power_level
 
-    def ground_eff(self, ground_distance_ijlk, distance_ijlk, ground_type):
+    def ground_eff(self, ground_distance_ijlk, distance_ijlk, rec_h, ground_type):
         # Ground effects ISO
 
         freqs_init = np.array([63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 8000.0])
 
-        src_h_ijlk = self.distance.src_h_ilk[:, na]
-        rec_h_ijlk = self.distance.dst_h_j[na, :, na, na]
+        src_h_ilk = np.expand_dims(self.src_h, tuple(range(len(np.shape(self.src_h)), 3))) + .0
+        src_h_ijlk = src_h_ilk[:, na]
+
+        rec_h_ijlk = rec_h[na, :, na, na]
 
         hei_check_ijlk = 30.0 * (src_h_ijlk + rec_h_ijlk)
 
@@ -151,7 +154,8 @@ class ISONoiseModel:
         F = self.freqs / p_s  # frequency normalised by atmospheric pressure
         F2 = F**2
         #
-        F_rO = 1.0 / p_s0 * (24.0 + 4.04e4 * h * (0.02 + h) / (0.391 + h))  # relaxation frequency of oxygen normalised by atmospheric pressure
+        # relaxation frequency of oxygen normalised by atmospheric pressure
+        F_rO = 1.0 / p_s0 * (24.0 + 4.04e4 * h * (0.02 + h) / (0.391 + h))
         F_rN = 1.0 / p_s0 * (T_0 / T)**(0.5) * (9.0 + 2.8e2 * h *
                                                 np.exp(-4.17 * ((T_0 / T)**(1.0 / 3.0) - 1.0)))  # relaxation frequency of nitrogen normalised by atmospheric pressure
         #
@@ -169,13 +173,13 @@ class ISONoiseModel:
 
         # transmission loss = ground effects + atmospheric absorption
         rec_h = np.zeros_like(rec_x) + rec_h
-        rec_z = self.elevation_function(rec_x, rec_y)
-        self.distance.setup(self.src_x, self.src_y, self.src_h, self.src_z, [rec_x, rec_y, rec_h, rec_z])
-        ground_distance_ijlk = np.sqrt(self.distance.dx_ijlk**2 + self.distance.dy_ijlk**2)
-        distance_ijlk = np.sqrt(self.distance.dx_ijlk**2 + self.distance.dy_ijlk**2 + self.distance.dh_ijlk**2)
+        dx_ijlk, dy_ijlk, dh_ijlk = self.distance(self.src_x, self.src_y, self.src_h, wd_l=np.array([270]),
+                                                  dst_xyh_jlk=[rec_x, rec_y, rec_h])
+        ground_distance_ijlk = np.sqrt(dx_ijlk**2 + dy_ijlk**2)
+        distance_ijlk = np.sqrt(dx_ijlk**2 + dy_ijlk**2 + dh_ijlk**2)
 
         atm_abs_ijlkf = self.atmab(distance_ijlk, T0=Temp, RH0=RHum, p_s=patm)  # The atmospheric absorption term
-        ground_eff_ijlkf = self.ground_eff(ground_distance_ijlk, distance_ijlk, ground_type)
+        ground_eff_ijlkf = self.ground_eff(ground_distance_ijlk, distance_ijlk, rec_h, ground_type)
 
         return ground_eff_ijlkf - atm_abs_ijlkf  # Delta_SPL
 
@@ -235,7 +239,9 @@ def main():
         from py_wake.utils.plotting import setup_plot
 
         wt = SWT_DD_142_4100()
-        wfm = ZongGaussian(UniformSite(), wt, turbulenceModel=CrespoHernandez())
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', 'The .* model is not representative of the setup used in the literature')
+            wfm = ZongGaussian(UniformSite(), wt, turbulenceModel=CrespoHernandez())
         x, y = rectangle(5, 5, 5 * wt.diameter())
         sim_res = wfm(x, y, wd=270, ws=8, mode=0)
         nm = sim_res.noise_model()
@@ -245,7 +251,8 @@ def main():
         ax1.plot([x[0]], [1000], '.', label='Receiver 1')
         ax1.plot([x[-1]], [1000], '.', label='Receiver 2')
         ax1.legend()
-        total_sp_jlk, spl_jlkf = nm(rec_x=[x[0], x[-1]], rec_y=[1000, 1000], rec_h=2, patm=101325, Temp=20, RHum=80, ground_type=0.0)
+        total_sp_jlk, spl_jlkf = nm(rec_x=[x[0], x[-1]], rec_y=[1000, 1000], rec_h=2,
+                                    patm=101325, Temp=20, RHum=80, ground_type=0.0)
         ax2.plot(nm.freqs, spl_jlkf[0, 0, 0], label='Receiver 1')
         ax2.plot(nm.freqs, spl_jlkf[1, 0, 0], label='Receiver 2')
         setup_plot(xlabel='Frequency [Hz]', ylabel='Sound pressure level [dB]', ax=ax2)

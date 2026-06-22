@@ -27,8 +27,10 @@ from py_wake.ground_models.ground_models import Mirror
 def test_overlapping_area_factor_shapes():
     site = Hornsrev1Site()
     windTurbines = IEA37_WindTurbines()
-    wfm = ZongGaussian(site, windTurbines, rotorAvgModel=EqGridRotorAvg(9),
-                       turbulenceModel=CrespoHernandez())
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', '.* model is not representative of the setup')
+        wfm = ZongGaussian(site, windTurbines, rotorAvgModel=EqGridRotorAvg(9),
+                           turbulenceModel=CrespoHernandez())
     wfm([0, 1000], [0, 0])
 
 
@@ -91,13 +93,14 @@ def test_GaussianOverlapAvgModel_blockage(blockageDeficitModel):
     if blockageDeficitModel is None:
         return
     wfm = All2AllIterative(UniformSite(), V80(), BastankhahGaussianDeficit(),
-                           blockage_deficitModel=blockageDeficitModel(rotorAvgModel=GaussianOverlapAvgModel()))
+                           blockage_deficitModel=blockageDeficitModel(rotorAvgModel=GaussianOverlapAvgModel()),
+                           turbulenceModel=CrespoHernandez())
     with pytest.raises(AttributeError, match=f"'{blockageDeficitModel.__name__}' has no attribute 'sigma_ijlk'"):
         wfm([0, 1000], [0, 0], yaw=0)
 
 
 def test_GaussianOverlapAvgModel_WeightedSum():
-    with pytest.raises(AssertionError, match=r"WeightedSum and CumulativeWakeSum only works with NodeRotorAvgModel-based rotor average models"):
+    with pytest.raises(AssertionError, match=r"WeightedSum and CumulativeWakeSum only work with NodeRotorAvgModel-based rotor average models"):
         wfm = PropagateDownwind(UniformSite(), V80(), BastankhahGaussianDeficit(rotorAvgModel=GaussianOverlapAvgModel()),
                                 WeightedSum())
     wfm = PropagateDownwind(UniformSite(), V80(), BastankhahGaussianDeficit(groundModel=Mirror()),
