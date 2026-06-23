@@ -37,8 +37,6 @@ from py_wake.site import Site, UniformSite
 from osgeo import gdal
 gdal.DontUseExceptions()
 
-
-
 logger = logging.getLogger("__main__")
 logger.setLevel('INFO')
 
