@@ -8,8 +8,6 @@ import numpy as np
 from numpy import newaxis as na
 import xarray as xr
 import matplotlib.pyplot as plt
-from osgeo import gdal
-gdal.DontUseExceptions()
 
 import datetime as dt                   # Used to add today's date to the WTG file
 import xml.etree.ElementTree as ET      # Used to write the wtg file
@@ -35,6 +33,10 @@ import time
 from typing import Any, Dict, Optional, Sequence, Tuple
 from py_wake.wind_turbines import WindTurbines
 from py_wake.site import Site, UniformSite
+
+from osgeo import gdal
+gdal.DontUseExceptions()
+
 
 
 logger = logging.getLogger("__main__")
