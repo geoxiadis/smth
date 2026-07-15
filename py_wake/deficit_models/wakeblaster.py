@@ -8,8 +8,7 @@ import numpy as np
 from numpy import newaxis as na
 import xarray as xr
 import matplotlib.pyplot as plt
-from osgeo import gdal
-gdal.DontUseExceptions()
+
 
 import datetime as dt                   # Used to add today's date to the WTG file
 import xml.etree.ElementTree as ET      # Used to write the wtg file
@@ -102,23 +101,18 @@ def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=Non
     if ax is None:
         ax = plt.gca()
 
-    ds = gdal.Open(grid_file)
-    if ds is None:
-        ax.text(0.5, 0.5, f"Cannot open {grid_file}", transform=ax.transAxes,
+    try:
+        data, gt, nx, ny = _parse_surfer_grid(grid_file)
+    except Exception as exc:
+        ax.text(0.5, 0.5, f"Cannot open {grid_file}: {exc}", transform=ax.transAxes,
                 ha='center', va='center')
         return ax
-    band = ds.GetRasterBand(1)
-    data = band.ReadAsArray()
 
     # Replace the no-data placeholder with 1 and clip values so the maximum is 1.
     placeholder = 1.71041e38
     data = np.where(data == placeholder, 1, data)
     data = np.clip(data, None, 1)
 
-    # Get geotransform and compute coordinates:
-    gt = ds.GetGeoTransform()  # (originX, pixelWidth, 0, originY, 0, pixelHeight)
-    nx = ds.RasterXSize
-    ny = ds.RasterYSize
     x0, dx, _, y0, _, dy = gt
     x = np.linspace(x0, x0 + (nx - 1) * dx, nx)
     y = np.linspace(y0, y0 + (ny - 1) * dy, ny)
@@ -143,12 +137,78 @@ def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=Non
 FlowMap.plot_wake_map = custom_plot_wake_map
 
 
+def _parse_surfer_grid(filename: str):
+    """
+    Parse a Surfer 6 ASCII (DSAA) or binary (DSBB) grid file without external dependencies.
+
+    Returns
+    -------
+    data : np.ndarray, shape (ny, nx)
+        Grid values ordered top-to-bottom (northernmost row first), matching
+        the orientation GDAL returns for raster data.
+    gt : tuple of float
+        Six-element GDAL-style geotransform:
+        ``(xmin, dx, 0.0, ymax, 0.0, -dy)``
+    nx : int
+        Number of columns.
+    ny : int
+        Number of rows.
+    """
+    with open(filename, 'rb') as fh:
+        magic = fh.read(4)
+
+    if magic == b'DSAA':
+        # --- Surfer 6 ASCII ---
+        with open(filename, 'r') as fh:
+            tokens = fh.read().split()
+        if tokens[0] != 'DSAA':
+            raise RuntimeError(f"Expected DSAA header in {filename}, got '{tokens[0]}'")
+        nx, ny = int(tokens[1]), int(tokens[2])
+        xmin, xmax = float(tokens[3]), float(tokens[4])
+        ymin, ymax = float(tokens[5]), float(tokens[6])
+        # tokens[7] and tokens[8] are zmin/zmax (not needed)
+        values = np.array(tokens[9:9 + nx * ny], dtype=float)
+        if len(values) != nx * ny:
+            raise RuntimeError(
+                f"Expected {nx * ny} data values in {filename}, found {len(values)}"
+            )
+        # File stores rows from bottom (ymin) to top (ymax); flip to top-to-bottom.
+        data = values.reshape(ny, nx)[::-1].copy()
+
+    elif magic == b'DSBB':
+        # --- Surfer 6 Binary ---
+        with open(filename, 'rb') as fh:
+            fh.read(4)  # consume the 'DSBB' magic bytes
+            nx, ny = struct.unpack('<hh', fh.read(4))
+            xmin, xmax, ymin, ymax, _zmin, _zmax = struct.unpack('<dddddd', fh.read(48))
+            n_vals = nx * ny
+            raw = fh.read(n_vals * 4)
+        values = np.frombuffer(raw, dtype='<f4').astype(float)
+        if len(values) != n_vals:
+            raise RuntimeError(
+                f"Expected {n_vals} data values in {filename}, found {len(values)}"
+            )
+        # File stores rows from bottom (ymin) to top (ymax); flip to top-to-bottom.
+        data = values.reshape(ny, nx)[::-1].copy()
+
+    else:
+        raise RuntimeError(
+            f"Unrecognised Surfer grid header in {filename}: {magic!r}. "
+            "Only Surfer 6 ASCII (DSAA) and binary (DSBB) formats are supported."
+        )
+
+    dx = (xmax - xmin) / (nx - 1) if nx > 1 else 1.0
+    dy = (ymax - ymin) / (ny - 1) if ny > 1 else 1.0
+    gt = (xmin, dx, 0.0, ymax, 0.0, -dy)
+    return data, gt, nx, ny
+
+
 def load_surfer_grid(filename: str) -> dict:
     """
     Load a Surfer grid file and return a dictionary containing the grid data.
 
-    This example uses GDAL to read an ASCII or binary Surfer grid file.
-    It extracts:
+    Supports Surfer 6 ASCII (DSAA) and binary (DSBB) formats.
+    Extracts:
       - x: a list of x coordinates (1D)
       - y: a list of y coordinates (1D)
       - wake_loss: a 2D numpy array of wake loss values
@@ -163,27 +223,10 @@ def load_surfer_grid(filename: str) -> dict:
     dict
         Dictionary with keys "x", "y", and "wake_loss".
     """
-    try:
-        from osgeo import gdal
-    except ImportError:
-        raise ImportError("GDAL is required to load Surfer grid files. Please install it.")
-
-    ds = gdal.Open(filename)
-    if ds is None:
-        raise RuntimeError(f"Cannot open grid file {filename}.")
-
-    # Read the first band (assuming wake loss values are in band 1)
-    band = ds.GetRasterBand(1)
-    wake_loss = band.ReadAsArray()
-
-    # Extract geotransform to compute x and y coordinates.
-    gt = ds.GetGeoTransform()  # (originX, pixelWidth, 0, originY, 0, pixelHeight)
-    nx = ds.RasterXSize
-    ny = ds.RasterYSize
-    # Create 1D lists for x and y coordinates:
+    data, gt, nx, ny = _parse_surfer_grid(filename)
     x = [gt[0] + i * gt[1] for i in range(nx)]
     y = [gt[3] + j * gt[5] for j in range(ny)]
-    return {"x": x, "y": y, "wake_loss": wake_loss}
+    return {"x": x, "y": y, "wake_loss": data}
 
 
 def _call_with_optional_type(func: Any, turbine_type: Optional[int] = None) -> Any:
