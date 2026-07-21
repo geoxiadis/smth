@@ -1,13 +1,16 @@
+import xarray as xr
 from numpy import newaxis as na
 
 from py_wake import np
-import xarray as xr
+from py_wake.utils import gradients
+
 try:  # pragma: no cover
     from xarray.plot.plot import _PlotMethods as DataArrayPlotAccessor
 except ModuleNotFoundError:  # pragma: no cover
     from xarray.plot.accessor import DataArrayPlotAccessor
 
 import warnings
+
 from py_wake.utils.grid_interpolator import GridInterpolator
 
 
@@ -29,7 +32,7 @@ class ilk():
                 v = v[:, na]
             if 'ws' not in dims:
                 v = v[:, :, na]
-        dtype = (np.float, np.complex)[np.iscomplexobj(v)]
+        dtype = (getattr(np, 'float', np.float64), np.complex)[np.iscomplexobj(v)]
         v = v.astype(dtype)
         if shape is None:
             return v
@@ -75,7 +78,7 @@ class interp_ilk():
                 return data, None
             c, v = coords[name], var[name].data
             indices = None
-            if ip_dims and ip_dims[-1] == name and np.all(np.array([x in np.atleast_1d(v) for x in c])):
+            if ip_dims and ip_dims[-1] == name and np.all(gradients.isin(c, np.atleast_1d(v))):
                 # all coordinates in var, no need to interpolate
                 ip_dims.remove(name)
                 indices = np.searchsorted(v, c)
@@ -168,6 +171,19 @@ class sel_interp_all():
         return da.interp(**interp_coords, method=method, kwargs=kwargs)
 
 
+class interp_log():
+    def __init__(self, dataArray):
+        self.dataArray = dataArray
+
+    def __call__(self, method="linear", **coords):
+        da = self.dataArray.interp(**coords, method='nearest')
+        da_log = self.dataArray.copy()
+        for n in coords:
+            da_log[n] = np.log(self.dataArray[n])
+        da[:] = da_log.interp(**{n: np.log(c) for n, c in coords.items()}, method=method).data
+        return da
+
+
 class plot_xy_map(DataArrayPlotAccessor):
     def __init__(self, darray):
         DataArrayPlotAccessor.__init__(self, darray)
@@ -184,6 +200,8 @@ if not hasattr(xr.DataArray(None), 'ilk'):
     xr.register_dataarray_accessor("ilk")(ilk)
     xr.register_dataarray_accessor("interp_ilk")(interp_ilk)
     xr.register_dataarray_accessor("sel_interp_all")(sel_interp_all)
+    xr.register_dataarray_accessor("interp_log")(interp_log)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         xr.register_dataarray_accessor('plot')(plot_xy_map)

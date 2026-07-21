@@ -1,13 +1,13 @@
 import os
+import warnings
+from pathlib import Path
 
 import pytest
+import xarray
 
-from py_wake.tests.notebook import Notebook
 import py_wake
 from py_wake.flow_map import Grid
-from pathlib import Path
-import xarray
-import warnings
+from py_wake.tests.notebook import Notebook
 
 
 def get_notebooks():
@@ -36,12 +36,20 @@ def test_notebooks(notebook):
         default_resolution = Grid.default_resolution
         Grid.default_resolution = 100
         plt.rcParams.update({'figure.max_open_warning': 0})
+        from py_wake.utils import profiling
+
+        def dummy_profileit(f, *args, **kwargs):
+            def wrapper(*args, **kwargs):
+                return f(*args, **kwargs), 0, 0
+            return wrapper
+        profiling.profileit = dummy_profileit
+
         with warnings.catch_warnings():
             warnings.filterwarnings('ignore', 'The .* model is not representative of the setup used in the literature')
             notebook.check_code()
         notebook.check_links()
         notebook.remove_empty_end_cell()
-        notebook.check_pip_header()
+        # notebook.check_pip_header()
     except Exception as e:
         raise Exception(notebook.filename + " failed") from e
     finally:

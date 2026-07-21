@@ -1,4 +1,10 @@
-image: continuumio/anaconda3
+default:
+  image:
+    name: condaforge/miniforge3:latest
+    pull_policy: if-not-present
+
+variables:
+  PIXI_VERSION: v0.68.1
 
 stages:
   - test
@@ -6,31 +12,59 @@ stages:
   - build
   - deploy
 
+.install_pixi_linux: &install_pixi_linux
+  - apt-get update
+  - apt-get -qq -y install curl
+  - curl -fsSL https://pixi.sh/install.sh | PIXI_VERSION=$PIXI_VERSION bash
+  - export PATH="/root/.pixi/bin:$PATH"
+
+.install_pixi_windows: &install_pixi_windows
+  - $env:PIXI_VERSION=$PIXI_VERSION
+  - powershell -ExecutionPolicy Bypass -c "irm -useb https://pixi.sh/install.ps1 | iex"
+  - $env:Path += ';C:\Users\ContainerAdministrator\.pixi\bin'
+
 # ===== TEST PyWake debian=====
 test_PyWake:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
-    test
+    test 
+  before_script:
+  - *install_pixi_linux
   script:
-  - pip install --upgrade pip
-  - pip install -e .[test] --timeout 100 --resume-retries 3 #, fails anyway if Tensorflow does not install in <10min
-  - python -V
-  - pip list
-  - pytest
+  - pixi install --environment test  # --locked
+  - pixi run --environment test --as-is python -c "from pathlib import Path; p=Path.home()/'.config/windkit/windkit.ini'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('[user_data]\nname=test\nemail=test@dtu.dk\ninstitution=DTU Wind')"
+  - pixi run --environment test --as-is python -V
+  - pixi run --environment test --as-is pytest --durations=10
   tags:  # only runners with this tag can do the job [3]
   - ci-ubuntu
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
-
+# ===== TEST PyWake MPI =====
+test_PyWake_MPI:  # name the job what we like
+  stage:  # build, test, deploy defined by default [2]
+    test
+  before_script:
+  - *install_pixi_linux
+  script:
+  - pixi install --environment parallel  # --locked
+  - pixi run --environment parallel --as-is python -V
+  - pixi run --environment parallel --as-is mpirun --allow-run-as-root -np 2 python py_wake/tests/test_utils/test_mpi.py
+  tags:  # only runners with this tag can do the job [3]
+  - ci-ubuntu
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 # ===== Check code style =====
 check_code_style:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
     test
+  before_script:
+  - *install_pixi_linux
   script:
-  - pip install -e . --user
-  - pycodestyle --ignore=E501,W504,E741 py_wake
+  - pixi install --environment lint  # --locked
+  - pixi run --environment lint --as-is pycodestyle --ignore=E501,W504,E741 py_wake
   tags:  # only runners with this tag can do the job [3]
   - ci-ubuntu
   rules:
@@ -42,11 +76,13 @@ test_PyWake_windows:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
     test
   image: registry.windenergy.dtu.dk/dockerimages/windows-python:ltsc2019_py312
+  before_script:
+  - *install_pixi_windows
   script:  # runs on windows machine due to tag below
-  - pip install -e .[test]
-  - python -V
-  - pip list
-  - pytest --cov-report term-missing:skip-covered --cov-report xml:coverage.xml --cov=py_wake --cov-config .coveragerc
+  - pixi install --environment test  # --locked
+  - pixi run --environment test --as-is python -c "import os; from pathlib import Path; p=Path(os.getenv('APPDATA'))/'DTU Wind Energy/windkit/windkit.ini'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('[user_data]\nname=test\nemail=test@dtu.dk\ninstitution=DTU Wind')"
+  - pixi run --environment test --as-is python -V
+  - pixi run --environment test --as-is pytest --durations=10 --cov-report term-missing:skip-covered --cov-report xml:coverage.xml --cov=py_wake --cov-config .coveragerc
   tags:  # tag for shared runner on windows machine
   - docker-windows
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
@@ -58,6 +94,22 @@ test_PyWake_windows:  # name the job what we like
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+
+# ===== TEST PyWake on Windows GPU =====
+test_PyWake_GPU_Cupy:  # name the job what we like
+  stage: test
+  variables:
+    TRIGGER_BRANCH: $CI_COMMIT_REF_NAME
+  trigger:
+    project: TOPFARM/pywakegputest
+    strategy: depend
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  allow_failure: true
 
 # ===== Trigger PyWakePark pipeline =====
 trigger_pywake_park_test:
@@ -97,13 +149,15 @@ trigger_hub_test:
 build_pages:  # "pages" is a job specifically for GitLab pages [1]
   stage:  # build, test, deploy defined by default [2]
     test
+  before_script:
+  - *install_pixi_linux
   script:  # use sphinx to build docs, move to public page
   - apt-get update
-  - apt-get -y install make pandoc graphviz
-  - pip install --upgrade pip
-  - pip install -e .[test,docs]
+  - apt-get -y install pandoc graphviz
+  - pixi install --environment docs  # --locked
+  - pixi run --environment docs --as-is python -c "from pathlib import Path; p=Path.home()/'.config/windkit/windkit.ini'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('[user_data]\nname=test\nemail=test@dtu.dk\ninstitution=DTU Wind')"
   - cd docs/validation_report
-  - python generate_validation_figures.py
+  - pixi run --environment docs --as-is python generate_validation_figures.py
   - cd report
   - apt-get install -y texlive-latex-extra
   - pdflatex validation_report.tex
@@ -112,7 +166,7 @@ build_pages:  # "pages" is a job specifically for GitLab pages [1]
   - pdflatex validation_report.tex
   - cd ../../
   - pwd
-  - make html
+  - pixi run --environment docs --as-is sphinx-build -M html . build
   #- make latexpdf
   - cd ../
   artifacts:  # required for GitLab pages [1]

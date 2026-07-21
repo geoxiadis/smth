@@ -112,7 +112,7 @@ class BlockageDeficitModel(DeficitModel):
     def remove_wake(self, deficit_ijlk, dw_ijlk, cw_ijlk, D_src_il, wake_radius_ijlk, induc_ijlk=None):
         # indices in downstream where cw < wake_radius
         R_ijlk = (D_src_il / 2)[:, na, :, na]
-        iw = ((dw_ijlk / R_ijlk >= -self.limiter) & (cabs(cw_ijlk) <= wake_radius_ijlk))
+        iw = ((dw_ijlk / R_ijlk >= -self.limiter) & (cabs(cw_ijlk) <= wake_radius_ijlk) & (wake_radius_ijlk > 0))
         deficit_ijlk = np.where(iw, 0., deficit_ijlk)
 
         if induc_ijlk is not None:
@@ -170,7 +170,7 @@ class ConvectionDeficitModel(WakeDeficitModel):
         Returns
         -------
         deficit_centre_ijlk : array_like
-            Wind speed deficit caused by the i'th turbine at j'th downstream location, without accounting for crosswind distance (ie cw = 0)
+            Wind speed centerline deficit caused by the i'th turbine at j'th downstream location, without accounting for crosswind distance (ie cw = 0)
         uc_ijlk : array_like
             Convection velocity of the i'th turbine at locations j
         sigma_sqr_ijlk : array_like
@@ -183,7 +183,7 @@ class XRLUTDeficitModel(WakeDeficitModel, BlockageDeficitModel, XRLUTModel):
 
     def __init__(self, da, get_input=None, get_output=None,
                  method='linear', bounds='limit',
-                 rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False):
+                 superpositionModel=None, rotorAvgModel=None, groundModel=None, use_effective_ws=True, use_effective_ti=False):
         """
         Parameters
         ----------
@@ -210,8 +210,10 @@ class XRLUTDeficitModel(WakeDeficitModel, BlockageDeficitModel, XRLUTModel):
             how to handle out-of-bounds coordinate interpolation, see GridInterpolator
         """
         XRLUTModel.__init__(self, da, get_input, get_output, method=method, bounds=bounds)
-        BlockageDeficitModel.__init__(self, upstream_only=True, rotorAvgModel=rotorAvgModel, groundModel=groundModel)
-        WakeDeficitModel.__init__(self, rotorAvgModel=rotorAvgModel, groundModel=groundModel,
+        BlockageDeficitModel.__init__(self, upstream_only=True, superpositionModel=superpositionModel,
+                                      rotorAvgModel=rotorAvgModel, groundModel=groundModel)
+        WakeDeficitModel.__init__(self, superpositionModel=superpositionModel, rotorAvgModel=rotorAvgModel,
+                                  groundModel=groundModel,
                                   use_effective_ws=use_effective_ws, use_effective_ti=use_effective_ti)
 
     @property

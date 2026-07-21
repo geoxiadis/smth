@@ -1,34 +1,37 @@
-from copy import copy
 import os
 import shutil
 import sys
+from copy import copy
 
 import matplotlib
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 import matplotlib.style
 from matplotlib.ticker import MaxNLocator
 from scipy.interpolate import interp1d
 
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-from py_wake import np
-from py_wake import BastankhahGaussian
-from py_wake import NOJ
-from py_wake.examples.data.hornsrev1 import HornsrevV80, Hornsrev1Site
+from py_wake import NOJ, BastankhahGaussian, np
+from py_wake.examples.data.hornsrev1 import Hornsrev1Site, HornsrevV80
 from py_wake.examples.data.hornsrev1 import wt_x as wt_x_hr
 from py_wake.examples.data.hornsrev1 import wt_y as wt_y_hr
 from py_wake.flow_map import HorizontalGrid
 from py_wake.site import UniformSite
+from py_wake.validation import validation_lib
 from py_wake.validation.ecn_wieringermeer import N80
 from py_wake.validation.ecn_wieringermeer import wt_x as wt_x_w
 from py_wake.validation.ecn_wieringermeer import wt_y as wt_y_w
-from py_wake.validation.lillgrund import SWT2p3_93_65, LillgrundSite
+from py_wake.validation.lillgrund import LillgrundSite, SWT2p3_93_65
 from py_wake.validation.lillgrund import wt_x as wt_x_l
 from py_wake.validation.lillgrund import wt_y as wt_y_l
-from py_wake.validation.validation_lib import integrate_velocity_deficit_arc, sigma_hornsrev, GaussianFilter
+from py_wake.validation.validation_lib import (
+    GaussianFilter,
+    integrate_velocity_deficit_arc,
+    sigma_hornsrev,
+)
 from py_wake.wind_turbines import OneTypeWindTurbines
-from py_wake.validation import validation_lib
 from py_wake.wind_turbines._wind_turbines import WindTurbine
 from py_wake.wind_turbines.power_ct_functions import PowerCtFunctions
+
 matplotlib.use('agg')
 
 data_path = os.path.dirname(validation_lib.__file__) + '/data/'   # path to reference data
@@ -105,7 +108,7 @@ def deficitPlotSingleWakeCases(SingleWakecases, site, linewidth, cLES, cRANS, co
                                        y=[0.0],
                                        wd=[270.0],
                                        ws=case['U0']).flow_map(HorizontalGrid(x=x, y=y)).WS_eff_xylk[0, 0]
-                    wake_ws[k, i, j] = WS_eff
+                    wake_ws[k, i, j] = WS_eff.item()
         lines = []
         fig, ax = plt.subplots(1, len(xDown), sharey=False, figsize=(3 * len(xDown), 3))
 
@@ -215,7 +218,7 @@ def barPlotSingleWakeCases(SingleWakecases, UdefCases, cLES, cRANS, colors):
                 ax.plot([ibar, ibar], [0, 0.35], '--k', dashes=[5, 2])
             ibar = ibar + 1
             subnames.append(str(SingleWakecases[i]['xDown'][j]))
-        #ibar = ibar +1
+        # ibar = ibar +1
         names.append('Case ' + str(i + 1))
     ibar = ibar - 1
     ax.set_xticks(np.linspace(0.5 * ibar / len(UdefCases), ibar - 0.5 * ibar / len(UdefCases), len(UdefCases)))
@@ -333,9 +336,9 @@ def deficitPlotWFCases(WFcases, linewidth, cLES, cRANS, colors):
                 # Create a latex table
                 f = open('report/' + case['name'] + '_' + plot['name'] + '.tex', 'w')
                 f.write('\\begin{tabular}{lcccc}\n')
-                f.write('\hline\n')
+                f.write('\\hline\n')
                 f.write('		     & Measurement data & RANS & NOJ  &   GAU  \\\\ \n')
-                f.write('\hline\n')
+                f.write('\\hline\n')
                 # Estimate uncertainty in measured wind farm efficiency assuming that we
                 # have the same number of samples per wd
                 dataWFunc = np.sqrt(sum(data[:, 2] ** 2) / len(data[:, 1]))
@@ -349,8 +352,8 @@ def deficitPlotWFCases(WFcases, linewidth, cLES, cRANS, colors):
                 for k in range(len(wakemodels)):
                     f.write('%s %4.0f' % (' & ', 100.0 * (WFeffWakeModels[k] - data[:, 1].mean()) / data[:, 1].mean()))
                 f.write('\\\\ \n')
-                f.write('\hline\n')
-                f.write('\end{tabular}\n')
+                f.write('\\hline\n')
+                f.write('\\end{tabular}\n')
                 f.close()
             else:
                 wd = plot['wd']

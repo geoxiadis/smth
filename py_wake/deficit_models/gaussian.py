@@ -544,7 +544,7 @@ class BlondelSuperGaussianDeficit2020(WakeDeficitModel):
     def wake_radius(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
         # according to Niayifar, the wake radius is twice sigma
         sigma_ijlk = self.sigma_ijlk(D_src_il=D_src_il, dw_ijlk=dw_ijlk, ct_ilk=ct_ilk, **kwargs)
-        return 2. * sigma_ijlk
+        return 2. * sigma_ijlk * D_src_il[:, na, :, na]
 
 
 class BlondelSuperGaussianDeficit2023(BlondelSuperGaussianDeficit2020):

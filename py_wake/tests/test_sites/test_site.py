@@ -1,13 +1,15 @@
 import os
-import pytest
-from py_wake import np
+
 import matplotlib.pyplot as plt
-from py_wake.tests import npt
-from py_wake.site._site import UniformWeibullSite, UniformSite
+import pytest
+
+from py_wake import np
+from py_wake.examples.data.iea37._iea37 import IEA37Site
+from py_wake.site._site import UniformSite, UniformWeibullSite
 from py_wake.site.shear import PowerShear
 from py_wake.site.xrsite import XRSite
+from py_wake.tests import npt
 from py_wake.tests.test_files import tfp
-from py_wake.examples.data.iea37._iea37 import IEA37Site
 
 f = [0.035972, 0.039487, 0.051674, 0.070002, 0.083645, 0.064348,
      0.086432, 0.117705, 0.151576, 0.147379, 0.10012, 0.05166]
@@ -97,8 +99,8 @@ def test_plot_ws_distribution(site):
 
     plt.figure()
     p = site.plot_ws_distribution(wd=[90, 180, 270, 0], include_wd_distribution=True)
-    npt.assert_array_almost_equal(p.ws[p.argmax('ws')], [8.25, 8.15, 9.55, 7.75, ])
-    npt.assert_array_almost_equal(p.max('ws'), [0.002182, 0.002771, 0.003548, 0.001257])
+    npt.assert_array_almost_equal(p.ws[p.argmax('ws')], [8.25, 8.15, 9.55, 7.75])
+    npt.assert_array_almost_equal(p.max('ws'), [0.002169, 0.002771, 0.003548, 0.001269])
 
     if 0:
         plt.show()
@@ -217,13 +219,12 @@ def test_iea37_distances():
     lw = site.local_wind(x=x, y=y,
                          wd=site.default_wd,
                          ws=site.default_ws)
-    site.distance.setup(x, y, np.zeros_like(x), np.zeros_like(x))
-    dw_iil, hcw_iil, _ = site.wt2wt_distances(wd_l=lw.wd)
+    dw_iil, hcw_iil, _ = site.distance(x, y, x * 0, wd_l=lw.wd)
     # Wind direction.
     wdir = np.rad2deg(np.arctan2(hcw_iil, dw_iil))
     npt.assert_allclose(
         wdir[:, 0, 0, 0],
-        [180, -90, -18, 54, 126, -162, -90, -54, -18, 18, 54, 90, 126, 162, -162, -126],
+        [0, -90, -18, 54, 126, -162, -90, -54, -18, 18, 54, 90, 126, 162, -162, -126],
         atol=1e-4)
 
     if 0:

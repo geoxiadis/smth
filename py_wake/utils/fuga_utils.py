@@ -1,13 +1,16 @@
 import os
 import struct
-from py_wake import np
-import xarray as xr
-from pathlib import Path
 import warnings
+from pathlib import Path
+
+import xarray as xr
 from numpy import newaxis as na
-from py_wake.utils import gradients
-from scipy.special import lambertw
 from scipy.optimize import fsolve
+from scipy.special import lambertw
+
+from py_wake import np
+from py_wake.utils import gradients
+from py_wake.utils.most import phi, psi
 
 
 class FugaUtils():
@@ -120,9 +123,14 @@ After that pass the new netcdf file to Fuga instead of the old folder""", Deprec
 
     def load_luts(self, UVLT=['UL', 'UT', 'VL', 'VT'], zlevels=None):
         if hasattr(self, 'dataset_path'):
-            dataset = xr.load_dataset(self.dataset_path)
+            dataset = xr.open_dataset(self.dataset_path)
             self.diameter = dataset.diameter.item()
-            return np.array([dataset[k].load().transpose('z', 'y', 'x').values for k in UVLT])
+            if zlevels is None:
+                return np.array([dataset[k].load().transpose('z', 'y', 'x').values for k in UVLT])
+            else:
+                z = np.exp(np.array(zlevels) * self.ds) * self.z0
+                return np.array([dataset[k].load().interp(z=z, method='nearest').transpose('z', 'y', 'x').values
+                                for k in UVLT])
         else:
             luts = np.array([[np.fromfile(str(self.path / (self.prefix + '%04d%s.dat' % (j, uvlt))), np.dtype('<f'), -1)
                               for j in (zlevels or self.zlevels)] for uvlt in UVLT])
@@ -303,32 +311,7 @@ saved as '{filename}'""")
     return ds
 
 
-Cm1 = 5
-Cm2 = -19.3
-
-
-def phi(zeta):
-    zeta = np.atleast_1d(zeta)
-    e = np.where((zeta <= 0), -.25, 1)  # avoid warning when Cm2*zeta<-1
-    return np.where(zeta <= 0, (1 + Cm2 * zeta)**e, 1 + Cm1 * zeta)
-
-
-def psi(zeta, unstable=''):
-    zeta = np.atleast_1d(zeta)
-    ind = zeta < 0
-    psi_n = np.zeros(zeta.shape)
-    aux = phi(zeta)**-1
-    if unstable == 'Wilson':
-        psi_n[ind] = 3 * np.log((1 + (1 + 3.6 * np.abs(zeta[ind])**(2 / 3))**.5))
-    else:
-        aux2 = (1.0 + aux[ind])**2 * (1 + aux[ind]**2)
-        psi_n[ind] = -np.log(8.0 / aux2) - 2.0 * np.arctan(Cm2 * zeta[ind] / aux2)
-    psi_n[~ind] = 1 - aux[~ind]**-1
-    psi_n[zeta == 0] = 0
-    return psi_n
-
-
-def z0(TI, zref, zeta0, z0_limit=1e-5):
+def z0(TI, zref, zeta0, z0_limit=1e-5, Cm1=5):
     zeros = np.atleast_1d((np.asarray(TI) + np.asarray(zref) + np.asarray(zeta0)) * 0)
     TI, zref, zeta0 = zeros + TI, zeros + zref, zeros + zeta0
 
@@ -360,7 +343,7 @@ def z0(TI, zref, zeta0, z0_limit=1e-5):
     return z0
 
 
-def ti(z0, zref, zeta0):
+def ti(z0, zref, zeta0, Cm1=5):
     zeros = np.atleast_1d((np.asarray(z0) + np.asarray(zref) + np.asarray(zeta0)) * 0)
     z0, zref, zeta0 = zeros + z0, zeros + zref, zeros + zeta0
 

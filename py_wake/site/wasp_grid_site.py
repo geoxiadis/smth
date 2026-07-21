@@ -200,7 +200,7 @@ def load_wasp_grd(path, globstr='*.grd', speedup_using_pickle=True):
                 ds_tmp = xr.Dataset({var_name: da})
                 first_at_height = False
             else:
-                ds_tmp = xr.merge([ds_tmp, xr.Dataset({var_name: da})])
+                ds_tmp = xr.merge([ds_tmp, xr.Dataset({var_name: da})], join='outer', compat='no_conflicts')
 
         if first:
             ds = ds_tmp

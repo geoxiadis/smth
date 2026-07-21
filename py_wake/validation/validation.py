@@ -86,7 +86,8 @@ class SingleWakeValidationCase(ValidationCase):
     def run(self, windFarmModel):
         windFarmModel.site = self.site
         windFarmModel.windTurbines = self.windTurbines
-        fm = windFarmModel([0], [0]).flow_map(XYGrid(y=-self.x, x=0))
+        sim_res = windFarmModel([0], [0])
+        fm = sim_res.flow_map(XYGrid(y=-self.x, x=0), wd=sim_res.wd, ws=sim_res.ws)
         wd = (fm.wd.values + 180) % 360 - 180
         ws = (fm.WS_eff / fm.ws).squeeze()
         return wd, ws

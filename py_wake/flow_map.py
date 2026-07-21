@@ -139,7 +139,7 @@ class FlowMap(FlowBox):
         return self.aep_xylk(normalize_probabilities, with_wake_loss, **wt_kwargs).sum(['wd', 'ws'])
 
     def plot(self, data, clabel, levels=100, cmap=None, plot_colorbar=True, plot_windturbines=True,
-             normalize_with=1, ax=None):
+             normalize_with=1, ax=None, cax=None):
         """Plot data as contouf map
 
         Parameters
@@ -189,27 +189,31 @@ class FlowMap(FlowBox):
 
             # xarray gives strange levels
             # c = data.isel(h=0).plot(levels=levels, cmap=cmap, ax=ax, add_colorbar=plot_colorbar)
-            c = ax.contourf(self.X / n, self.Y / n, data.squeeze().values, levels=levels, cmap=cmap)
+            c = ax.contourf(self.X / n, self.Y / n, data.squeeze().values, levels=levels, cmap=cmap,
+                            )
             if plot_colorbar:
-                plt.colorbar(c, label=clabel, ax=ax)
+                plt.colorbar(c, label=clabel, ax=ax, cax=cax)
         else:
             raise NotImplementedError(
                 f"Plot not supported for FlowMaps based on Points. Use XYGrid, YZGrid or XZGrid instead")
 
         if plot_windturbines:
             self.plot_windturbines(normalize_with=normalize_with, ax=ax)
+            for ewf in self.windFarmModel.externalWindFarms:
+                ewf.plot(ax=ax)
         ax.axis('equal')
         return c
 
     def plot_windturbines(self, normalize_with=1, ax=None):
         fm = self.windFarmModel
-
+        n_ewf = len(fm.externalWindFarms)
         # mean over wd and ws if present
-        x_i = self.simulationResult.x.mean(set(self.simulationResult.x.dims) - {'wt'}).values
-        y_i = self.simulationResult.y.mean(set(self.simulationResult.x.dims) - {'wt'}).values
-        type_i = self.simulationResult.type.data
+        n = len(self.simulationResult.wt) - n_ewf
+        x_i = self.simulationResult.x.mean(set(self.simulationResult.x.dims) - {'wt'}).values[:n]
+        y_i = self.simulationResult.y.mean(set(self.simulationResult.x.dims) - {'wt'}).values[:n]
+        type_i = self.simulationResult.type.values[:n]
         if self.plane[0] in ['XZ', "YZ"]:
-            h_i = self.simulationResult.h.values
+            h_ilk = self.simulationResult.h.ilk()
             x_ilk, y_ilk = self.simulationResult.x.ilk(), self.simulationResult.y.ilk()
 
             z_ilk = self.simulationResult.windFarmModel.site.elevation(x_ilk, y_ilk)
@@ -228,10 +232,10 @@ class FlowMap(FlowBox):
                         return v[:, l, k]
                     yaw, tilt = get('yaw'), get('tilt')
                     if self.plane[0] == 'XZ':
-                        fm.windTurbines.plot_yz(x_ilk[:, l, k], z_ilk[:, l, k], h_i, types=type_i, wd=wd, yaw=yaw, tilt=tilt,
+                        fm.windTurbines.plot_yz(x_ilk[:, l, k], z_ilk[:, l, k], h_ilk[:, l, k], types=type_i, wd=wd, yaw=yaw, tilt=tilt,
                                                 normalize_with=normalize_with, ax=ax)
                     else:
-                        fm.windTurbines.plot_yz(y_i, z_ilk[:, l, k], h_i, types=type_i, wd=self.wd, yaw=yaw, tilt=tilt,
+                        fm.windTurbines.plot_yz(y_i, z_ilk[:, l, k], h_ilk[:, l, k], types=type_i, wd=self.wd, yaw=yaw, tilt=tilt,
                                                 normalize_with=normalize_with, ax=ax)
         else:  # self.plane[0] == "XY":
             def get(k):
@@ -249,7 +253,7 @@ class FlowMap(FlowBox):
                                     wd=self.wd.values, yaw=yaw, tilt=tilt, normalize_with=normalize_with, ax=ax)
 
     def plot_wake_map(self, levels=100, cmap=None, plot_colorbar=True, plot_windturbines=True,
-                      normalize_with=1, ax=None):
+                      normalize_with=1, ax=None, cax=None):
         """Plot effective wind speed contourf map
 
         Parameters
@@ -272,7 +276,7 @@ class FlowMap(FlowBox):
 
         return self.plot(WS_eff, clabel='wind speed [m/s]',
                          levels=levels, cmap=cmap, plot_colorbar=plot_colorbar,
-                         plot_windturbines=plot_windturbines, normalize_with=normalize_with, ax=ax)
+                         plot_windturbines=plot_windturbines, normalize_with=normalize_with, ax=ax, cax=cax)
 
     def plot_ti_map(self, levels=100, cmap=None, plot_colorbar=True, plot_windturbines=True, ax=None):
         """Plot effective turbulence intensity contourf map
@@ -503,6 +507,7 @@ class XZGrid(YZGrid):
 
 class Points(Grid):
     def __init__(self, x, y, h):
+        x, y, h = [np.atleast_1d(v) for v in [x, y, h]]
         assert len(x) == len(y) == len(h)
         self.x = x
         self.y = y

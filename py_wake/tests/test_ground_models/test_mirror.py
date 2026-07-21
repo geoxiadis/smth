@@ -215,15 +215,17 @@ def test_Mirror_flow_map_multiple_wd():
     wt = V80()
     wfm = NOJ(site, wt, k=.5, superpositionModel=LinearSum())
 
-    fm_ref = wfm([0, 0 + 1e-20], [0, 0 + 1e-20], wd=[0, 5], h=[50, -50]
-                 ).flow_map(YZGrid(x=0, y=np.arange(-100, 100, 1) + .1, z=np.arange(1, 100)))
+    sim_res_ref = wfm([0, 0 + 1e-20], [0, 0 + 1e-20], wd=[0, 5], h=[50, -50]
+                      )
+    fm_ref = sim_res_ref.flow_map(YZGrid(x=0, y=np.arange(-100, 100, 1) + .1, z=np.arange(1, 100)), wd=sim_res_ref.wd)
     fm_ref.plot_wake_map()
     plt.title("Underground WT added manually")
 
     plt.figure()
     wfm = All2AllIterative(site, wt, NOJDeficit(k=.5, groundModel=Mirror()),
                            superpositionModel=LinearSum())
-    fm_res = wfm([0], [0], wd=[0, 5], h=[50]).flow_map(YZGrid(x=0, y=np.arange(-100, 100, 1) + .1, z=np.arange(1, 100)))
+    sim_res = wfm([0], [0], wd=[0, 5], h=[50])
+    fm_res = sim_res.flow_map(YZGrid(x=0, y=np.arange(-100, 100, 1) + .1, z=np.arange(1, 100)), wd=sim_res.wd)
     fm_res.plot_wake_map()
     plt.title("With Mirror GroundModel")
 

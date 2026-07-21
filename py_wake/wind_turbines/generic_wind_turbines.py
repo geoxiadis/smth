@@ -1,7 +1,12 @@
-from py_wake.wind_turbines._wind_turbines import WindTurbine
-from py_wake.wind_turbines.power_ct_functions import SimpleYawModel, PowerCtTabular, PowerCtNDTabular, PowerCtFunctions
 from py_wake import np
 from py_wake.utils.generic_power_ct_curves import standard_power_ct_curve
+from py_wake.wind_turbines._wind_turbines import WindTurbine
+from py_wake.wind_turbines.power_ct_functions import (
+    PowerCtFunctions,
+    PowerCtNDTabular,
+    PowerCtTabular,
+    SimpleYawModel,
+)
 
 
 class GenericWindTurbine(WindTurbine):
@@ -192,4 +197,5 @@ class SimpleGenericWindTurbine(WindTurbine):
 
     def _ct(self, ws):
         # eq 6. The paper states 3/2 instead of 3.2 which is either a typo or an initial guess
-        return self.constant_ct * (self.Ur / np.maximum(self.Ur, ws))**(3.2)
+        ws = np.asarray(ws)
+        return (self.ws_cutin <= ws) * self.constant_ct * (self.Ur / np.maximum(self.Ur, ws))**(3.2)

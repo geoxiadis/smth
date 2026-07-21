@@ -1,3 +1,5 @@
+import warnings
+
 import matplotlib.pyplot as plt
 
 
@@ -18,4 +20,6 @@ def setup_plot(ax=None, title=None, ylabel=None, xlabel=None, xlim=None, ylim=No
         ax.grid()
     if ax.get_legend_handles_labels()[1]:
         ax.legend()
-    plt.tight_layout()
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=DeprecationWarning)
+        plt.tight_layout()

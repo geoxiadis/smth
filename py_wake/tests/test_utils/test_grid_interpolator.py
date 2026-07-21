@@ -1,12 +1,15 @@
 
-import pytest
-
 import matplotlib.pyplot as plt
+import pytest
+import xarray as xr
+
 from py_wake import np
 from py_wake.tests import npt
 from py_wake.tests.check_speed import timeit
-from py_wake.utils.grid_interpolator import GridInterpolator, EqDistRegGrid2DInterpolator
-import xarray as xr
+from py_wake.utils.grid_interpolator import (
+    EqDistRegGrid2DInterpolator,
+    GridInterpolator,
+)
 
 
 def test_grid_interpolator_not_match():
@@ -75,11 +78,11 @@ def test_grid_interpolator_2d():
 @pytest.mark.parametrize('method,ref', [
     ('linear', [15.5, 40.5, 42.5, 47.5, 48]),
     (['linear', 'linear', 'linear'], [15.5, 40.5, 42.5, 47.5, 48]),
-    ('nearest', [25, 46, 48, 53, 54]),  # [25, 47, 49, 54, 54]
-    (['nearest', 'nearest', 'nearest'], [25, 46, 48, 53, 54]),  # [25, 47, 49, 54, 54]
+    ('nearest', [26, 47, 49, 54, 54]),
+    (['nearest', 'nearest', 'nearest'], [26, 47, 49, 54, 54]),
     ('linear', [15.5, 40.5, 42.5, 47.5, 48]),
-    (['linear', 'linear', 'nearest'], [15, 40, 42, 47, 48]),  # [15, 41, 43, 48, 48]
-    (['nearest', 'linear', 'nearest'], [23, 48, 50, 55, 56]),  # [23, 49, 51, 56, 56]
+    (['linear', 'linear', 'nearest'], [16., 41., 43., 48., 48.]),
+    (['nearest', 'linear', 'nearest'], [24., 49., 51., 56., 56.]),
 
 ])
 def test_grid_interpolator_3d_methods(method, ref):

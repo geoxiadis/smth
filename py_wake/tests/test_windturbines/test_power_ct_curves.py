@@ -1,17 +1,29 @@
-from numpy import newaxis as na
-import pytest
 import matplotlib.pyplot as plt
-from py_wake import np
+import pytest
 import xarray as xr
-from py_wake.examples.data import hornsrev1, example_data_path
+from numpy import newaxis as na
+
+from py_wake import np
+from py_wake.examples.data import example_data_path, hornsrev1
 from py_wake.tests import npt
-from py_wake.wind_turbines.power_ct_functions import CubePowerSimpleCt, PowerCtNDTabular, DensityScale, \
-    PowerCtTabular, PowerCtFunction, PowerCtFunctionList, PowerCtXr, DensityCompensation, PowerCtWindPro
-from py_wake.wind_turbines.wind_turbine_functions import WindTurbineFunction
+from py_wake.utils.gradients import autograd, cs, fd
 from py_wake.utils.model_utils import fix_shape
-from py_wake.utils.gradients import cs, autograd, fd
 from py_wake.utils.plotting import setup_plot
 from py_wake.wind_turbines._wind_turbines import WindTurbine
+from py_wake.wind_turbines.generic_wind_turbines import SimpleGenericWindTurbine
+from py_wake.wind_turbines.power_ct_functions import (
+    CubePowerSimpleCt,
+    DensityCompensation,
+    DensityScale,
+    PowerCtFunction,
+    PowerCtFunctionList,
+    PowerCtNDTabular,
+    PowerCtTabular,
+    PowerCtWindPro,
+    PowerCtXr,
+    SmoothCutIn,
+)
+from py_wake.wind_turbines.wind_turbine_functions import WindTurbineFunction
 
 
 def ExamplePowerCtTabular(method='linear', unit='w', p_scale=1):
@@ -540,10 +552,48 @@ def test_PowerCtWindPro():
     assert ct == 0.112
 
 
-if __name__ == '__main__':
-    x = np.linspace(0, 2 * np.pi, 100)
-    import matplotlib.pyplot as plt
-    from py_wake import np
-    plt.plot(x, np.sin(x) / x)
-    plt.plot(x, np.sin(x))
-    plt.show()
+@pytest.mark.parametrize('add_model,ref', [([], [0, 0, 0.75, .75, .75]),
+                                           ([SmoothCutIn(2.8, 3.2)], [0., 0.109835, 0.375, 0.640165, 0.75]),
+
+                                           ])
+def test_cutin_models(add_model, ref):
+    wt = SimpleGenericWindTurbine(
+        "name",
+        diameter=80,
+        hub_height=70,
+        power_norm=2000,
+        ws_cutin=3,
+        additional_models=add_model)
+    u = np.arange(0, 6, .01)
+    ct = wt.ct(u)
+    u_cutin = np.linspace(2.8, 3.2, 5)
+    if 0:
+        plt.plot(u, ct)
+        plt.plot(u_cutin, wt.ct(u_cutin), '.')
+        plt.show()
+
+    npt.assert_array_almost_equal(wt.ct(u_cutin), ref)
+    npt.assert_array_almost_equal(wt.power(u_cutin), [0., 0., 0., 4208.51571485, 8697.49861814])
+
+
+def test_SmoothCutin():
+    u = np.arange(0, 7, .01)
+    for u0, u1 in [(3, 4), (4, 6)]:
+        wt = SimpleGenericWindTurbine(
+            "name",
+            diameter=80,
+            hub_height=70,
+            power_norm=2000,
+            ws_cutin=3,
+            additional_models=[SmoothCutIn(u0, u1)])
+        npt.assert_array_equal(wt.ct(np.array([u0, u1])), [0, .75])
+        ct = wt.ct(u)
+        npt.assert_array_less(np.gradient(ct), .1)
+
+        plt.plot(u, ct, label=f'{u0}, {u1}')
+        plt.plot(u, np.gradient(ct))
+
+    if 1:
+        plt.legend()
+        plt.show()
+    plt.close('all')

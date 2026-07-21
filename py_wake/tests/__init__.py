@@ -6,6 +6,7 @@ import pooch
 
 from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
 import xarray as xr
+import shutil
 npt = numpy.testing
 WindFarmModel.verbose = False
 
@@ -23,3 +24,7 @@ def ptf(filename, known_hash=None):
                          path=Path.home() / 'PyWakeTestFiles',
                          known_hash=known_hash)
     return ret
+
+
+def clear_ptf():
+    shutil.rmtree(Path.home() / 'PyWakeTestFiles')

@@ -1,12 +1,14 @@
 import inspect
 import os
 import pkgutil
-from py_wake import np
-from numpy import newaxis as na
-from py_wake.site._site import Site
 import warnings
-from py_wake.utils.grid_interpolator import GridInterpolator
+
+from numpy import newaxis as na
+
 import py_wake
+from py_wake import np
+from py_wake.site._site import Site
+from py_wake.utils.grid_interpolator import GridInterpolator
 
 
 class Model():
@@ -97,12 +99,12 @@ class XRLUTModel(Model):
         elif type_il.shape[0] == 1:
             # PropagateDownwind or All2AllIterative with only one turbine, type depends on l (wind direction)
             output_ijlk = np.concatenate([get_type_output(int(t), [inp[:, :, [l]] for inp in input_IJLK_lst])
-                                          for l, t in enumerate(type_il[0])], 2)
+                                          for l, t in enumerate(type_il.flatten())], 2)
         else:
             # All2AllIterative, type depends on i (wind turbine)
             assert type_il.shape[1] == 1
             output_ijlk = np.concatenate([get_type_output(int(t), [inp[[i]] for inp in input_IJLK_lst])
-                                          for i, t in enumerate(type_il[:, 0])], 0)
+                                          for i, t in enumerate(type_il.flatten())], 0)
 
         return self.get_output(output_ijlk, **kwargs)
 
@@ -160,36 +162,46 @@ class RotorAvgAndGroundModelContainer():
 
 
 def get_exclude_dict():
-    from py_wake.deficit_models.deficit_model import ConvectionDeficitModel, WakeDeficitModel, \
-        BlockageDeficitModel
-    from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
-    from py_wake.deficit_models.rans_lut import RANSLUTDeficit
-    from py_wake.rotor_avg_models.rotor_avg_model import RotorAvgModel, NodeRotorAvgModel
-    from py_wake.wind_farm_models.engineering_models import EngineeringWindFarmModel, PropagateDownwind
-    from py_wake.deflection_models.deflection_model import DeflectionIntegrator
-
-    from py_wake.superposition_models import LinearSum
+    from py_wake.deficit_models.deficit_model import (
+        BlockageDeficitModel,
+        ConvectionDeficitModel,
+        WakeDeficitModel,
+        XRLUTDeficitModel,
+    )
     from py_wake.deficit_models.noj import NOJDeficit
-    from py_wake.turbulence_models.turbulence_model import XRLUTTurbulenceModel
-    from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
+    from py_wake.deficit_models.rans_lut import RANSLUTDeficit
+    from py_wake.deflection_models.deflection_model import DeflectionIntegrator
     from py_wake.ground_models.ground_models import NoGround
-    from py_wake.site.jit_streamline_distance import JITStreamlineDistance
+    from py_wake.rotor_avg_models.rotor_avg_model import (
+        NodeRotorAvgModel,
+        RotorAvgModel,
+    )
+    from py_wake.site.streamline_distance import StreamlineDistance
+    from py_wake.superposition_models import LinearSum
+    from py_wake.deficit_models.deficit_model import XRLUTDeficitModel
+    from py_wake.deficit_models.rans_lut import RANSLUTDeficit, RANSLUTConvDeficit
+    from py_wake.turbulence_models.rans_lut_turb import RANSLUTTurbulence
+    from py_wake.turbulence_models.turbulence_model import XRLUTTurbulenceModel
+    from py_wake.wind_farm_models.engineering_models import (
+        EngineeringWindFarmModel,
+        PropagateDownwind,
+    )
     return {
         "WindFarmModel": ([EngineeringWindFarmModel], [], PropagateDownwind),
         "EngineeringWindFarmModel": ([], [], PropagateDownwind),
         "DeficitModel": ([ConvectionDeficitModel, BlockageDeficitModel, WakeDeficitModel, XRLUTDeficitModel,
                           RANSLUTDeficit],
                          [RotorAvgModel], NOJDeficit),
-        "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel, RANSLUTDeficit], [RotorAvgModel], NOJDeficit),
+        "WakeDeficitModel": ([ConvectionDeficitModel, XRLUTDeficitModel, RANSLUTDeficit, RANSLUTConvDeficit], [RotorAvgModel], NOJDeficit),
         "RotorAvgModel": ([NodeRotorAvgModel], [], None),
         "SuperpositionModel": ([], [], LinearSum),
-        "BlockageDeficitModel": ([XRLUTDeficitModel, RANSLUTDeficit], [], None),
+        "BlockageDeficitModel": ([XRLUTDeficitModel, RANSLUTDeficit], [RANSLUTConvDeficit], None),
         "DeflectionModel": ([DeflectionIntegrator], [], None),
         "TurbulenceModel": ([XRLUTTurbulenceModel, RANSLUTTurbulence], [], None),
         "AddedTurbulenceSuperpositionModel": ([], [], None),
         "GroundModel": ([], [], NoGround),
         "Shear": ([], [], None),
-        "StraightDistance": ([], [JITStreamlineDistance], None),
+        "StraightDistance": ([], [StreamlineDistance], None),
 
     }
 
@@ -200,9 +212,11 @@ def cls_in(A, cls_lst):
 
 def get_models(base_class, exclude_None=False, include_dirs=[]):
     if base_class is Site:
-        from py_wake.examples.data.iea37._iea37 import IEA37Site
         from py_wake.examples.data.hornsrev1 import Hornsrev1Site
-        from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
+        from py_wake.examples.data.iea37._iea37 import IEA37Site
+        from py_wake.examples.data.ParqueFicticio._parque_ficticio import (
+            ParqueFicticioSite,
+        )
         return [IEA37Site, Hornsrev1Site, ParqueFicticioSite]
     exclude_cls_lst, exclude_subcls_lst, default = get_exclude_dict()[base_class.__name__]
 
@@ -219,7 +233,9 @@ def get_models(base_class, exclude_None=False, include_dirs=[]):
         module_name = parent_module + '.' + module_name
         import importlib
         try:
-            _module = importlib.import_module(module_name)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                _module = importlib.import_module(module_name)
             for n in dir(_module):
                 v = _module.__dict__[n]
                 if inspect.isclass(v):
@@ -282,9 +298,9 @@ def get_signature(cls, kwargs={}, indent_level=0):
 def get_model_input(wfm, x, y, ws=10, wd=270, **kwargs):
     ws, wd = [np.atleast_1d(v) for v in [ws, wd]]
     x, y = map(np.asarray, [x, y])
-    wfm.site.distance.setup(src_x_ilk=[[[0]]], src_y_ilk=[[[0]]], src_h_ilk=[[[0]]], src_z_ilk=[[[0]]],
-                            dst_xyhz_j=(x, y, x * 0, x * 0))
-    dw_ijlk, hcw_ijlk, dh_ijlk = wfm.site.distance(wd_l=wd)
+
+    dw_ijlk, hcw_ijlk, dh_ijlk = wfm.site.distance(src_x_ilk=[[[0]]], src_y_ilk=[[[0]]], src_h_ilk=[[[0]]],
+                                                   dst_xyh_jlk=(x, y, x * 0), wd_l=wd)
     sim_res = wfm([0], [0], ws=ws, wd=wd, **kwargs)
 
     args = {'dw_ijlk': dw_ijlk, 'hcw_ijlk': hcw_ijlk, 'dh_ijlk': dh_ijlk,
