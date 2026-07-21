@@ -84,16 +84,15 @@ def _infer_ws_bin_edges(ws_vals: np.ndarray) -> np.ndarray:
     edges[-1] = ws_vals[-1] + 0.5 * d[-1]
     return edges
 
-def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=None, **kwargs):
+
+def _plot_wakeblaster_grid(self, ax=None, cmap='Blues_r', colorbar=True, title=None):
     """
-    Custom plot_wake_map method that loads the Surfer grid file stored in self.attrs['_grid_file']
-    and plots it as an image.
+    Plot a WakeBlaster Surfer grid file stored in self.attrs['_grid_file'].
+    Called only when the FlowMap carries WakeBlaster grid data.
     """
-    # Only use the WakeBlaster image path if we actually have a grid file
     grid_file = self.attrs.get('_grid_file', None)
     if not grid_file:
-        # Fallback: use the original PyWake plotting for NOJ/Bastankhah/etc.
-        return FlowMap._orig_plot_wake_map(self, ax=ax, cmap=cmap, **kwargs)
+        return None
 
     if ax is None:
         ax = plt.gca()
@@ -119,7 +118,7 @@ def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=Non
     if colorbar:
         plt.colorbar(img, ax=ax)
 
-    # Respect caller’s title; only set if `title` is provided or none exists
+    # Respect caller's title; only set if `title` is provided or none exists
     if title is not None:
         ax.set_title(title)
     elif not ax.get_title():
@@ -130,8 +129,16 @@ def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=Non
     return ax
 
 
+def _wrapped_plot_wake_map(self, *args, **kwargs):
+    """Wrapper that intercepts plot_wake_map only for WakeBlaster FlowMaps."""
+    grid_file = getattr(self, 'attrs', {}).get('_grid_file', None)
+    if grid_file:
+        return _plot_wakeblaster_grid(self, **kwargs)
+    return FlowMap._orig_plot_wake_map(self, *args, **kwargs)
+
+
 # Override the default plot_wake_map method in FlowMap
-FlowMap.plot_wake_map = custom_plot_wake_map
+FlowMap.plot_wake_map = _wrapped_plot_wake_map
 
 
 def _parse_surfer_grid(filename: str):
