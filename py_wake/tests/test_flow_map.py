@@ -1,26 +1,30 @@
-from py_wake.flow_map import HorizontalGrid, YZGrid, Points, XYGrid, XZGrid
-from py_wake.tests import npt
-import matplotlib.pyplot as plt
-from py_wake import np
-from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
-from py_wake.site.distance import StraightDistance
-from py_wake.examples.data.iea37 import IEA37Site, IEA37_WindTurbines
-import pytest
-from py_wake.deflection_models.jimenez import JimenezWakeDeflection
-from py_wake.wind_turbines._wind_turbines import WindTurbines, WindTurbine
-from py_wake.examples.data import wtg_path, hornsrev1
-from py_wake.utils.profiling import timeit
-from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
-from py_wake.examples.data.hornsrev1 import V80
-from py_wake.literature.iea37_case_study1 import IEA37CaseStudy1
-from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
-from py_wake.superposition_models import SquaredSum
 import warnings
+
+import matplotlib.pyplot as plt
+import pytest
+
+from py_wake import np
+from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit
 from py_wake.deficit_models.no_wake import NoWakeDeficit
+from py_wake.deflection_models.jimenez import JimenezWakeDeflection
+from py_wake.examples.data import hornsrev1, wtg_path
+from py_wake.examples.data.hornsrev1 import V80
+from py_wake.examples.data.iea37 import IEA37_WindTurbines, IEA37Site
+from py_wake.examples.data.ParqueFicticio._parque_ficticio import ParqueFicticioSite
+from py_wake.flow_map import HorizontalGrid, Points, XYGrid, XZGrid, YZGrid
+from py_wake.literature.iea37_case_study1 import IEA37CaseStudy1
 from py_wake.site._site import UniformSite
-from py_wake.ground_models.ground_models import Mirror
-from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit2020
+from py_wake.site.distance import StraightDistance
+from py_wake.superposition_models import SquaredSum
+from py_wake.tests import npt
+from py_wake.utils.profiling import timeit
+from py_wake.wind_farm_models.engineering_models import (
+    All2AllIterative,
+    PropagateDownwind,
+)
+from py_wake.wind_turbines._wind_turbines import WindTurbine, WindTurbines
+from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
+from py_wake.site.shear import PowerShear
 
 
 @pytest.fixture(autouse=True)
@@ -54,8 +58,8 @@ def test_power_xylk_wt_args():
     wind_farm_model = PropagateDownwind(site, windTurbines,
                                         wake_deficitModel=IEA37SimpleBastankhahGaussianDeficit(),
                                         superpositionModel=SquaredSum())
-    simulation_result = wind_farm_model(x, y, wd=[0, 270], ws=[6, 8, 10], mode=0)
-    fm = simulation_result.flow_map(XYGrid(resolution=3))
+    sim_res = wind_farm_model(x, y, wd=[0, 270], ws=[6, 8, 10], mode=0)
+    fm = sim_res.flow_map(XYGrid(resolution=3), wd=sim_res.wd, ws=sim_res.ws)
     npt.assert_array_almost_equal(fm.power_xylk(mode=1).sum(['wd', 'ws']).isel(h=0),
                                   [[7030000., 6378864., 7029974.],
                                    [7030000., 559767., 4902029.],
@@ -314,6 +318,71 @@ def flow_map_j_wd_chunks():
     # print(np.mean(t_all[1]) / np.mean(t_wd[1]))
 
 
+def test_flow_map_point_chunks():
+    wfm = IEA37CaseStudy1(16)
+    x, y = wfm.site.initial_position.T
+
+    sim_res = wfm(x, y, wd=np.arange(0, 360, 30), ws=10)
+    # wfm.verbose = True
+
+    # j chunks
+    fm1 = sim_res.flow_map(XYGrid(resolution=500), wd=270)
+    fm2 = sim_res.flow_map(XYGrid(resolution=500), wd=270, memory_GB=0.005)
+    fm3 = sim_res.flow_map(XYGrid(resolution=500), wd=270, memory_GB=0.005, n_cpu=4)
+    npt.assert_array_equal(fm1.WS_eff, fm2.WS_eff)
+    npt.assert_array_equal(fm1.WS_eff, fm3.WS_eff)
+
+    # wd chunks
+    fm4 = sim_res.flow_map(XYGrid(resolution=50), wd=270)
+    fm5 = sim_res.flow_map(XYGrid(resolution=50), wd=sim_res.wd)
+    fm6 = sim_res.flow_map(XYGrid(resolution=50), wd=sim_res.wd, memory_GB=0.002)
+    fm7 = sim_res.flow_map(XYGrid(resolution=50), wd=sim_res.wd, memory_GB=0.002, n_cpu=4)
+    npt.assert_array_equal(fm4.WS_eff, fm5.WS_eff.sel(wd=[270]))
+    npt.assert_array_equal(fm5.WS_eff, fm6.WS_eff)
+    npt.assert_array_equal(fm5.WS_eff, fm7.WS_eff)
+
+    # both wd and j chunks
+    fm8 = sim_res.flow_map(XYGrid(resolution=50), wd=sim_res.wd, memory_GB=0.0005)
+    fm9 = sim_res.flow_map(XYGrid(resolution=50), wd=sim_res.wd, memory_GB=0.0005, n_cpu=4)
+    npt.assert_array_equal(fm5.WS_eff, fm8.WS_eff)
+    npt.assert_array_equal(fm5.WS_eff, fm9.WS_eff)
+
+    sim_res.flow_map(XYGrid(resolution=50), wd=sim_res.wd[:1], n_cpu=4)
+    sim_res.flow_map(XYGrid(resolution=50), wd=sim_res.wd[:2], n_cpu=4)
+    sim_res.flow_map(XYGrid(resolution=50), wd=sim_res.wd[:], n_cpu=4)
+
+    if 0:
+        fm1.plot_wake_map()
+        plt.show()
+
+
+def test_flow_map_type():
+    site = IEA37Site(16)
+
+    v80 = V80()
+    v120 = WindTurbine('V120 low induction', 120, 90, powerCtFunction=PowerCtTabular(
+        hornsrev1.power_curve[:, 0], hornsrev1.power_curve[:, 1], 'w', hornsrev1.ct_curve[:, 1] * .8))
+
+    windTurbines = WindTurbines.from_WindTurbine_lst([v80, v120])
+    wfm = PropagateDownwind(site, windTurbines,
+                            wake_deficitModel=IEA37SimpleBastankhahGaussianDeficit(),
+                            superpositionModel=SquaredSum())
+
+    sim_res1, sim_res2 = [wfm([0, -50], [0, 0], h=[70, 150], type=[0, 1], wd=[90, 270], n_cpu=n) for n in [1, 2]]
+    fm_dict = {(i, j): sim_res.flow_map(XZGrid(y=0, z=np.linspace(0, 250), x=100), wd=270, n_cpu=j)
+               for j in [1, 2] for i, sim_res in enumerate([sim_res1, sim_res2], 1)}
+
+    if 0:
+        sim_res1.flow_map(XZGrid(y=0, z=np.linspace(0, 250)), wd=270).plot_wake_map()
+        for (i, j), fm in fm_dict.items():
+            plt.plot(fm.WS_eff.squeeze() * 10, fm.h, label=f'WS_eff x 10, n_cpu=({i}, {j})')
+        plt.legend()
+        plt.show()
+
+    for (i, j), fm in fm_dict.items():
+        npt.assert_array_equal(fm.WS_eff.squeeze(), fm_dict[(1, 1)].WS_eff.squeeze())
+
+
 def test_aep_map():
     wfm = IEA37CaseStudy1(16)
     x, y = [0, 600, 1200], [0, 0, 0]  # site.initial_position[:2].T
@@ -321,7 +390,7 @@ def test_aep_map():
     sim_res = wfm(x, y)
     grid = XYGrid(x=np.linspace(-100, 2000, 50), y=np.linspace(-500, 500, 25))
     aep_map = sim_res.aep_map(grid, normalize_probabilities=True)
-    fm = sim_res.flow_map(grid)
+    fm = sim_res.flow_map(grid, wd=sim_res.wd, ws=sim_res.ws)
     npt.assert_array_almost_equal(fm.aep_xy(normalize_probabilities=True).sel(h=110), aep_map)
 
     grid = Points(x=np.linspace(-100, 2000, 50), y=np.full(50, -500), h=np.full(50, wfm.windTurbines.hub_height()))
@@ -334,7 +403,7 @@ def test_aep_map_type():
 
     x, y = [0, 600, 1200], [0, 0, 0]  # site.initial_position[:2].T
     v80 = V80()
-    v120 = WindTurbine('V80_low_induc', 80, 70, powerCtFunction=PowerCtTabular(
+    v120 = WindTurbine('V120', 120, 150, powerCtFunction=PowerCtTabular(
         hornsrev1.power_curve[:, 0], hornsrev1.power_curve[:, 1] * 1.5, 'w', hornsrev1.ct_curve[:, 1]))
 
     windTurbines = WindTurbines.from_WindTurbine_lst([v80, v120])
@@ -356,7 +425,7 @@ def test_aep_map_parallel():
     grid = XYGrid(x=np.linspace(-100, 2000, 50), y=np.linspace(-500, 500, 25))
     aep_map = sim_res.aep_map(grid, normalize_probabilities=True, n_cpu=2)
 
-    fm = sim_res.flow_map(grid)
+    fm = sim_res.flow_map(grid, ws=sim_res.ws, wd=sim_res.wd)
     npt.assert_array_almost_equal(fm.aep_xy(normalize_probabilities=True).sel(h=110), aep_map)
 
     fm = sim_res.flow_map(grid, wd=[0])
@@ -460,3 +529,62 @@ def test_IJLK():
 
     sim_res = wfm([0, 1000], [0, 0], ws=[5, 10, 15], wd=[270, 270, 270], time=True, WS_eff=0)
     sim_res.flow_map(HorizontalGrid(x=np.linspace(0, 1000, 10), y=np.linspace(0, 1000, 10)), time=[0, 1, 2])
+
+
+def test_wd_dependent_dst():
+    wfm = IEA37CaseStudy1(16, shear=PowerShear())
+    x, y = wfm.site.initial_position.T
+    sim_res = wfm(x, y, wd=np.arange(360), ws=np.arange(3, 25))
+
+    X, Y = np.meshgrid(np.linspace(-1500, 3500, 10), np.linspace(-1500, 1500, 10))
+    dw, hcw = X.flatten(), Y.flatten()
+    dh = dw * 0
+    wf_h = wfm.windTurbines.hub_height()
+    wf_x = 0
+    wf_y = 0
+    from numpy import newaxis as na
+    from tqdm import tqdm
+
+    def run_loop():
+        wd_lst = sim_res.wd.values
+        theta = np.deg2rad(270 - wd_lst)
+        co, si = np.cos(theta), np.sin(theta)
+        x_jl = co[na] * dw[:, na] - hcw[:, na] * si[na] + wf_x
+        y_jl = si[na] * dw[:, na] + hcw[:, na] * co[na] + wf_y
+        h_j = np.linspace(-1, 1, 100) + wf_h
+        WS_eff_jlk_lst = []
+        for wd, x_j, y_j in zip(wd_lst, x_jl.T, y_jl.T):
+            lw_j, WS_eff_jlk, TI_eff_jlk = wfm._flow_map(x_j[:, na], y_j[:, na], h_j[:, na], sim_res.localWind,
+                                                         wd, sim_res.ws, sim_res)
+            WS_eff_jlk_lst.append(WS_eff_jlk[:, 0])
+            if 0:
+                plt.contourf(x_j.reshape(X.shape), y_j.reshape(X.shape),
+                             WS_eff_jlk[:, :, 7].reshape(X.shape), levels=50)
+                wfm.windTurbines.plot(x, y)
+                plt.axis('scaled')
+                plt.show()
+        return np.moveaxis(WS_eff_jlk_lst, 0, 1)
+
+    res_ref, _ = timeit(run_loop, verbose=1, line_profile=0)()
+
+    def run_vec():
+        wd_lst = sim_res.wd.values
+        theta = np.deg2rad(270 - wd_lst)
+        co, si = np.cos(theta), np.sin(theta)
+        x_jl = co[na] * dw[:, na] - hcw[:, na] * si[na] + wf_x
+        y_jl = si[na] * dw[:, na] + hcw[:, na] * co[na] + wf_y
+        h_jl = np.linspace(-1, 1, 100)[:, na] + wf_h
+
+        lw_j, WS_eff_jlk, TI_eff_jlk = wfm._flow_map(x_jl, y_jl, h_jl, sim_res.localWind,
+                                                     wd_lst, sim_res.ws, sim_res)
+        if 0:
+            for l, wd_lst in enumerate(wd_lst):
+                plt.contourf(x_jl[:, l].reshape(X.shape), y_jl[:, l].reshape(X.shape),
+                             WS_eff_jlk[:, l, 7].reshape(X.shape), levels=50)
+                wfm.windTurbines.plot(x, y)
+                plt.axis('scaled')
+                plt.show()
+        return WS_eff_jlk
+
+    res, _ = timeit(run_vec, verbose=1, line_profile=0)()
+    npt.assert_array_equal(res_ref, res)

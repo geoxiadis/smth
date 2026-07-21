@@ -1,25 +1,38 @@
-import pytest
-
 import matplotlib.pyplot as plt
+import pytest
+import xarray as xr
+from scipy.optimize._nonlin import anderson
+
 from py_wake import np
 from py_wake.deficit_models.fuga import FugaDeficit
+from py_wake.deficit_models.gaussian import TurboGaussianDeficit
 from py_wake.deficit_models.no_wake import NoWakeDeficit
 from py_wake.deficit_models.noj import NOJDeficit
 from py_wake.deficit_models.rathmann import Rathmann
-from py_wake.deficit_models.selfsimilarity import SelfSimilarityDeficit
+from py_wake.deficit_models.selfsimilarity import (
+    SelfSimilarityDeficit,
+    SelfSimilarityDeficit2020,
+)
 from py_wake.deflection_models.jimenez import JimenezWakeDeflection
 from py_wake.examples.data import wtg_path
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80, wt16_x, wt16_y
-from py_wake.examples.data.iea37._iea37 import IEA37Site, IEA37_WindTurbines
+from py_wake.examples.data.dtu10mw._dtu10mw import DTU10MW
+from py_wake.examples.data.hornsrev1 import V80, Hornsrev1Site, wt16_x, wt16_y
+from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37Site
 from py_wake.flow_map import XYGrid
 from py_wake.rotor_avg_models.rotor_avg_model import CGIRotorAvg
 from py_wake.site.xrsite import XRSite
 from py_wake.superposition_models import LinearSum
-from py_wake.wind_farm_models.engineering_models import All2AllIterative
+from py_wake.turbulence_models.crespo import CrespoHernandez
+from py_wake.wind_farm_models import All2AllIterative
+from py_wake.wind_farm_models.all2alliterative import (
+    AdaptiveStep,
+    FixedPointSolver,
+    FixedStep,
+    ScipyOptimizeSolver,
+)
 from py_wake.wind_turbines._wind_turbines import WindTurbines
-import xarray as xr
-from py_wake.examples.data.iea34_130rwt._iea34_130rwt import IEA34_130_1WT_Surrogate
-from py_wake.turbulence_models.stf import STF2017TurbulenceModel
+import contextlib
+import warnings
 
 
 class FugaDeficitCount(FugaDeficit):
@@ -82,26 +95,35 @@ def get_convergence_wfm(x, speedup, wake_deficitModel=NoWakeDeficit()):
                             convergence_tolerance=1e-6)
 
 
-def test_convergence_hornsrev():
+@pytest.mark.parametrize('solver,it', [(None, 10),
+                                       (FixedPointSolver(step_func=FixedStep()), 10),
+                                       (FixedPointSolver(step_func=AdaptiveStep()), 10),
+                                       (ScipyOptimizeSolver(optimizer=anderson, M=5, alpha=1), 9)
+                                       ])
+def test_convergence_hornsrev(solver, it):
     site = Hornsrev1Site()
     wfm = All2AllIterative(site, windTurbines=V80(),
                            wake_deficitModel=NOJDeficit(),
-                           blockage_deficitModel=RathmannCounter())
+                           blockage_deficitModel=RathmannCounter(),
+                           solver=solver)
     x, y = site.initial_position.T
     sim_res = wfm(x, y, wd=90)
-    assert wfm.blockage_deficitModel.counter == 13
+    assert wfm.blockage_deficitModel.counter == it
+    wfm.solver.plot()
 
     if 0:
+
+        plt.figure()
         sim_res.flow_map().plot_wake_map()
         plt.show()
 
 
-def test_when_ct_idle_fails():
-    wt = IEA34_130_1WT_Surrogate()
-    sim_res = All2AllIterative(Hornsrev1Site(), wt, NOJDeficit(), turbulenceModel=STF2017TurbulenceModel())([0], [0], )
-
-
-def test_not_converge():
+@pytest.mark.parametrize('solver', [FixedPointSolver(step_func=FixedStep()),
+                                    FixedPointSolver(step_func=FixedStep(), no_convergence='error'),
+                                    FixedPointSolver(step_func=AdaptiveStep()),
+                                    ScipyOptimizeSolver(optimizer=anderson, M=5, alpha=1)
+                                    ])
+def test_not_converge(solver):
     class RandomRathmann(Rathmann):
 
         def calc_deficit(self, WS_ilk, D_src_il, dw_ijlk, cw_ijlk, ct_ilk, **_):
@@ -110,11 +132,50 @@ def test_not_converge():
     site = Hornsrev1Site()
     wfm = All2AllIterative(site, windTurbines=V80(),
                            wake_deficitModel=NOJDeficit(),
-                           blockage_deficitModel=RandomRathmann())
-    with pytest.warns(match='All2AllIterative did not converge, max WS_eff difference from last iteration '):
-        wfm(wt16_x, wt16_y)
+                           blockage_deficitModel=RandomRathmann(),
+                           solver=solver)
+    if solver.no_convergence == 'warning':
+        with pytest.warns(match='All2AllIterative did not converge, max WS_eff difference from last iteration '):
+            wfm(wt16_x, wt16_y)
+    elif solver.no_convergence == 'error':
+        with pytest.raises(Exception, match='All2AllIterative did not converge, max WS_eff difference from last iteration '):
+            wfm(wt16_x, wt16_y)
+    else:
+        with warnings.catch_warnings():
+            warnings.filterwarnings('error')
+            wfm(wt16_x, wt16_y)
 
 
+def test_convergence():
+    site = Hornsrev1Site()
+    solver = FixedPointSolver(step_func=FixedStep(), verbose=0, debug=True)
+
+    wake_deficitModel = TurboGaussianDeficit()
+    turbulenceModel = CrespoHernandez()
+    wfm = All2AllIterative(site,
+                           DTU10MW(),
+                           wake_deficitModel=wake_deficitModel,
+                           blockage_deficitModel=SelfSimilarityDeficit2020(),
+                           turbulenceModel=turbulenceModel,
+                           superpositionModel=LinearSum(),
+                           solver=solver,
+                           )
+
+    x = np.array([209.0, -267.0, 1248.0, 1190.0])
+    y = np.array([921.0, 1676.0, 124.0, 1583.0])
+    with contextlib.redirect_stdout(None):
+        sim_res = wfm(x, y, ws=4, wd=300)
+    if 0:
+        for i, ct in enumerate(np.array(wfm.ct_ilk_lst).squeeze().T):
+            plt.plot(np.arange(len(ct)) + i / 20, ct, '.-', label=i)
+        plt.legend()
+        plt.figure()
+        solver.plot()
+        plt.figure()
+        sim_res.flow_map().plot_wake_map()
+        plt.show()
+    assert wfm.iterations == 9
+#
 # def test_convergence():
 #     """Unstable from beginning
 #     it:0, wt0 off, wt1 on due to site effects
@@ -131,7 +192,7 @@ def test_not_converge():
 #     if 0:
 #         sim_res.flow_map().plot_wake_map()
 #         plt.show()
-#
+
 #
 # def test_convergence2():
 #     # stable case. WT 0 should turn on due to speedup of wt1

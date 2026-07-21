@@ -7,6 +7,7 @@ from tqdm import tqdm
 from py_wake.utils.gradients import trapz
 from py_wake.utils.grid_interpolator import GridInterpolator
 from scipy.interpolate import RectBivariateSpline
+from py_wake.utils import gradients
 
 
 class GaussianOverlapAvgModel(RotorAvgModel):
@@ -21,7 +22,8 @@ class GaussianOverlapAvgModel(RotorAvgModel):
             CW_sigma = np.arange(0, 10.01, 0.01)
             # behavior changed in xarray=24.11.0 such that
             # dat = table.interp(R_sigma=R_sigma, CW_sigma=CW_sigma, method='cubic')
-            # performs a two-step interpolation which is slower and less accurate than the previous one-step interpolation
+            # performs a two-step interpolation which is slower and less accurate than
+            # the previous one-step interpolation
             dat = RectBivariateSpline(table.R_sigma.values, table.CW_sigma.values, table.values)(R_sigma, CW_sigma)
             self._overlap_interpolator = GridInterpolator([R_sigma, CW_sigma], dat, bounds='limit')
         return self._overlap_interpolator
@@ -35,8 +37,9 @@ class GaussianOverlapAvgModel(RotorAvgModel):
             raise AttributeError(
                 f"'{func.__self__.__class__.__name__}' has no attribute 'sigma_ijlk', which is needed by the GaussianOverlapAvgModel")
         sigma_ijlk = func.__self__.sigma_ijlk(**kwargs)
-        overlap_factor_ijlk = self.overlap_interpolator(
-            np.array([((D_dst_ijl / 2)[..., na] / sigma_ijlk).flatten(), (cw_ijlk / sigma_ijlk).flatten()]).T).reshape(sigma_ijlk.shape)
+        r_sigma = ((D_dst_ijl / 2)[..., na] / sigma_ijlk).flatten()
+        cw_sigma = gradients.cabs(cw_ijlk / sigma_ijlk).flatten()
+        overlap_factor_ijlk = self.overlap_interpolator(np.array([r_sigma, cw_sigma]).T).reshape(sigma_ijlk.shape)
         return res_ijlk * overlap_factor_ijlk
 
 

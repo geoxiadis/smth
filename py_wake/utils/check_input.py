@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from py_wake import np
 
 
@@ -14,3 +15,8 @@ def check_input(input_space_lst, input_lst, input_keys=None):
             continue  # pragma: no cover # Is covered but not registered
         mi, ma = np.min(input_space), np.max(input_space)
         raise ValueError(f"Input, {key}, with value, {v} outside range {mi}-{ma}")
+
+
+def is_list_like(var):
+    """Check that a variable is list-like, that is: list, tuple or set."""
+    return isinstance(var, Iterable) and not isinstance(var, (str, bytes, dict))

@@ -1,8 +1,10 @@
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
-from py_wake.superposition_models import LinearSum
 from py_wake.deficit_models.fuga import FugaDeficit
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
+from py_wake.superposition_models import LinearSum
 from py_wake.tests.test_files import tfp
+from py_wake.wind_farm_models.engineering_models import (
+    All2AllIterative,
+    PropagateDownwind,
+)
 
 
 class Ott_Nielsen_2014(PropagateDownwind):
@@ -85,12 +87,12 @@ class Ott_Nielsen_2014_Blockage(All2AllIterative):
 
 def main():
     if __name__ == '__main__':
-
+        from py_wake.examples.data.hornsrev1 import V80, Hornsrev1Site, wt16_x, wt16_y
         path = tfp + 'fuga/2MW/Z0=0.03000000Zi=00401Zeta0=0.00E+00.nc'
 
         site = Hornsrev1Site()
         windTurbines = V80()
-        x, y = site.initial_position.T
+        x, y = wt16_x, wt16_y
 
         for wf_model in [Ott_Nielsen_2014(path, site, windTurbines),
                          Ott_Nielsen_2014_Blockage(path, site, windTurbines)]:

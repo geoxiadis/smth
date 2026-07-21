@@ -17,10 +17,10 @@ def test_profile_it():
 
     for i in range(10):
         try:
-            # check 3 successive runs (all should take .1 s and 10MB
+            # check 3 successive runs (all should take 1 s and 10MB
             for _ in range(3):
-                r, t, m = profileit(f)(.1, 100)
-                npt.assert_allclose(t, 0.1, rtol=.2)
+                r, t, m = profileit(f)(1, 100)
+                npt.assert_allclose(t, 1, rtol=.2)
                 npt.assert_allclose(m, 100, rtol=.2)
             return
         except AssertionError:

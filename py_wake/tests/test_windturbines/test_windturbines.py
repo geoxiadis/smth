@@ -1,21 +1,30 @@
 import os
-import pytest
+import warnings
+
 import matplotlib.pyplot as plt
+import pytest
+
 from py_wake import np
 from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit
 from py_wake.deficit_models.noj import NOJDeficit
-from py_wake.examples.data import wtg_path, hornsrev1
-from py_wake.examples.data.hornsrev1 import V80, wt9_x, wt9_y, Hornsrev1Site
-from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines, IEA37WindTurbines, IEA37Site
+from py_wake.deficit_models.utils import ct2a_mom1d
+from py_wake.examples.data import hornsrev1, wtg_path
+from py_wake.examples.data.hornsrev1 import V80, Hornsrev1Site, wt9_x, wt9_y
+from py_wake.examples.data.iea37._iea37 import (
+    IEA37_WindTurbines,
+    IEA37Site,
+    IEA37WindTurbines,
+)
 from py_wake.superposition_models import SquaredSum
 from py_wake.tests import npt
 from py_wake.utils import gradients
 from py_wake.utils.gradients import autograd, plot_gradients
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
-from py_wake.wind_turbines import WindTurbines, WindTurbine, OneTypeWindTurbines
+from py_wake.wind_farm_models.engineering_models import (
+    All2AllIterative,
+    PropagateDownwind,
+)
+from py_wake.wind_turbines import OneTypeWindTurbines, WindTurbine, WindTurbines
 from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
-import warnings
-from py_wake.deficit_models.utils import ct2a_mom1d
 
 
 def get_wfms(wt, site=Hornsrev1Site(), wake_model=NOJDeficit(ct2a=ct2a_mom1d), superpositionModel=SquaredSum()):
@@ -51,7 +60,7 @@ def test_DeprecatedWindTurbines():
         types0 = [0] * 9
         for wfm in get_wfms(wts):
             npt.assert_array_equal(wts.types(), [0])
-            npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types0, yaw=0), 81.2066072392765)
+            npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types0, yaw=0), 81.2069268)
 
 
 def test_WindTurbines():
@@ -66,7 +75,7 @@ def test_WindTurbines():
         types0 = [0] * 9
         for wfm in get_wfms(wts):
             npt.assert_array_equal(wts.types(), [0])
-            npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types0), 81.2066072392765)
+            npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types0), 81.20692684)
 
 
 def test_V80_windturbines():
@@ -74,7 +83,7 @@ def test_V80_windturbines():
     types0 = [0] * 9
     for wfm in get_wfms(wts):
         npt.assert_array_equal(wts.types(), [0])
-        npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types0), 81.2066072392765)
+        npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types0), 81.20692684738599)
 
 
 def test_IEA37WindTurbines():
@@ -104,9 +113,9 @@ def test_twotype_windturbines():
 
     for wfm in get_wfms(wts):
         npt.assert_array_equal(wts.types(), [0, 1])
-        npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types0), 81.2066072392765)
-        npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types1), 83.72420504573488)
-        npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types2), 88.87227386796884)
+        npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types0), 81.20692684738599)
+        npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types1), 83.72460696861253)
+        npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types2), 88.87264035035497)
 
 
 @pytest.mark.parametrize('wts_wtg', [

@@ -8,8 +8,6 @@ import numpy as np
 from numpy import newaxis as na
 import xarray as xr
 import matplotlib.pyplot as plt
-from osgeo import gdal
-gdal.DontUseExceptions()
 
 import datetime as dt                   # Used to add today's date to the WTG file
 import xml.etree.ElementTree as ET      # Used to write the wtg file
@@ -100,23 +98,18 @@ def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=Non
     if ax is None:
         ax = plt.gca()
 
-    ds = gdal.Open(grid_file)
-    if ds is None:
-        ax.text(0.5, 0.5, f"Cannot open {grid_file}", transform=ax.transAxes,
+    try:
+        data, gt, nx, ny = _parse_surfer_grid(grid_file)
+    except Exception as exc:
+        ax.text(0.5, 0.5, f"Cannot open {grid_file}: {exc}", transform=ax.transAxes,
                 ha='center', va='center')
         return ax
-    band = ds.GetRasterBand(1)
-    data = band.ReadAsArray()
 
     # Replace the no-data placeholder with 1 and clip values so the maximum is 1.
     placeholder = 1.71041e38
     data = np.where(data == placeholder, 1, data)
     data = np.clip(data, None, 1)
 
-    # Get geotransform and compute coordinates:
-    gt = ds.GetGeoTransform()  # (originX, pixelWidth, 0, originY, 0, pixelHeight)
-    nx = ds.RasterXSize
-    ny = ds.RasterYSize
     x0, dx, _, y0, _, dy = gt
     x = np.linspace(x0, x0 + (nx - 1) * dx, nx)
     y = np.linspace(y0, y0 + (ny - 1) * dy, ny)
@@ -141,12 +134,78 @@ def custom_plot_wake_map(self, ax=None, cmap='Blues_r', colorbar=True, title=Non
 FlowMap.plot_wake_map = custom_plot_wake_map
 
 
+def _parse_surfer_grid(filename: str):
+    """
+    Parse a Surfer 6 ASCII (DSAA) or binary (DSBB) grid file without external dependencies.
+
+    Returns
+    -------
+    data : np.ndarray, shape (ny, nx)
+        Grid values ordered top-to-bottom (northernmost row first), matching
+        the orientation GDAL returns for raster data.
+    gt : tuple of float
+        Six-element GDAL-style geotransform:
+        ``(xmin, dx, 0.0, ymax, 0.0, -dy)``
+    nx : int
+        Number of columns.
+    ny : int
+        Number of rows.
+    """
+    with open(filename, 'rb') as fh:
+        magic = fh.read(4)
+
+    if magic == b'DSAA':
+        # --- Surfer 6 ASCII ---
+        with open(filename, 'r') as fh:
+            tokens = fh.read().split()
+        if tokens[0] != 'DSAA':
+            raise RuntimeError(f"Expected DSAA header in {filename}, got '{tokens[0]}'")
+        nx, ny = int(tokens[1]), int(tokens[2])
+        xmin, xmax = float(tokens[3]), float(tokens[4])
+        ymin, ymax = float(tokens[5]), float(tokens[6])
+        # tokens[7] and tokens[8] are zmin/zmax (not needed)
+        values = np.array(tokens[9:9 + nx * ny], dtype=float)
+        if len(values) != nx * ny:
+            raise RuntimeError(
+                f"Expected {nx * ny} data values in {filename}, found {len(values)}"
+            )
+        # File stores rows from bottom (ymin) to top (ymax); flip to top-to-bottom.
+        data = values.reshape(ny, nx)[::-1].copy()
+
+    elif magic == b'DSBB':
+        # --- Surfer 6 Binary ---
+        with open(filename, 'rb') as fh:
+            fh.read(4)  # consume the 'DSBB' magic bytes
+            nx, ny = struct.unpack('<hh', fh.read(4))
+            xmin, xmax, ymin, ymax, _zmin, _zmax = struct.unpack('<dddddd', fh.read(48))
+            n_vals = nx * ny
+            raw = fh.read(n_vals * 4)
+        values = np.frombuffer(raw, dtype='<f4').astype(float)
+        if len(values) != n_vals:
+            raise RuntimeError(
+                f"Expected {n_vals} data values in {filename}, found {len(values)}"
+            )
+        # File stores rows from bottom (ymin) to top (ymax); flip to top-to-bottom.
+        data = values.reshape(ny, nx)[::-1].copy()
+
+    else:
+        raise RuntimeError(
+            f"Unrecognised Surfer grid header in {filename}: {magic!r}. "
+            "Only Surfer 6 ASCII (DSAA) and binary (DSBB) formats are supported."
+        )
+
+    dx = (xmax - xmin) / (nx - 1) if nx > 1 else 1.0
+    dy = (ymax - ymin) / (ny - 1) if ny > 1 else 1.0
+    gt = (xmin, dx, 0.0, ymax, 0.0, -dy)
+    return data, gt, nx, ny
+
+
 def load_surfer_grid(filename: str) -> dict:
     """
     Load a Surfer grid file and return a dictionary containing the grid data.
 
-    This example uses GDAL to read an ASCII or binary Surfer grid file.
-    It extracts:
+    Supports Surfer 6 ASCII (DSAA) and binary (DSBB) formats.
+    Extracts:
       - x: a list of x coordinates (1D)
       - y: a list of y coordinates (1D)
       - wake_loss: a 2D numpy array of wake loss values
@@ -161,28 +220,11 @@ def load_surfer_grid(filename: str) -> dict:
     dict
         Dictionary with keys "x", "y", and "wake_loss".
     """
-    try:
-        from osgeo import gdal
-    except ImportError:
-        raise ImportError("GDAL is required to load Surfer grid files. Please install it.")
 
-    ds = gdal.Open(filename)
-    if ds is None:
-        raise RuntimeError(f"Cannot open grid file {filename}.")
-
-    # Read the first band (assuming wake loss values are in band 1)
-    band = ds.GetRasterBand(1)
-    wake_loss = band.ReadAsArray()
-
-    # Extract geotransform to compute x and y coordinates.
-    gt = ds.GetGeoTransform()  # (originX, pixelWidth, 0, originY, 0, pixelHeight)
-    nx = ds.RasterXSize
-    ny = ds.RasterYSize
-    # Create 1D lists for x and y coordinates:
+    data, gt, nx, ny = _parse_surfer_grid(filename)
     x = [gt[0] + i * gt[1] for i in range(nx)]
     y = [gt[3] + j * gt[5] for j in range(ny)]
-    return {"x": x, "y": y, "wake_loss": wake_loss}
-
+    return {"x": x, "y": y, "wake_loss": data}
 
 
 def _call_with_optional_type(func: Any, turbine_type: Optional[int] = None) -> Any:
@@ -505,7 +547,7 @@ class WakeBlasterResult(SimulationResult):
         )
         self.windFarmModel = windFarmModel
         self.localWind = localWind
-    
+
     def aep_ilk(self, normalize_probabilities=False, with_wake_loss=True):
         """
         Compute AEP for each turbine, wind direction and wind speed.
@@ -517,7 +559,11 @@ class WakeBlasterResult(SimulationResult):
             This gives the AEP as if only the simulated flow cases existed for the
             full year.
         with_wake_loss : bool, default True
+<<<<<<< HEAD
             If True, use the wake-affected power. 
+=======
+            If True, use the wake-affected power.
+>>>>>>> origin/wakeblaster-initial-release
             If False, use the unwaked power based on free-flow wind speed, as calculated by Wakeblaster.
 
         Returns
@@ -528,7 +574,7 @@ class WakeBlasterResult(SimulationResult):
         return self.aep(normalize_probabilities=normalize_probabilities, with_wake_loss=with_wake_loss).ilk()
 
     def aep(self, normalize_probabilities=False, with_wake_loss=True,
-            hours_pr_year=365*24, linear_power_segments=False):
+            hours_pr_year=365 * 24, linear_power_segments=False):
         """
         Compute Annual Energy Production (AEP) in GWh.
 
@@ -538,7 +584,7 @@ class WakeBlasterResult(SimulationResult):
             If True, normalize the flow-case probabilities before computing AEP.
             This gives the AEP as if the simulated flow cases represented a full year.
         with_wake_loss : bool, default True
-            If True, use the wake-affected power. 
+            If True, use the wake-affected power.
             If False, use the unwaked power based on free-flow wind speed, as calculated by Wakeblaster.
 
         Returns
@@ -632,7 +678,7 @@ class WakeBlasterResult(SimulationResult):
         # 4) Compute effective wind speed and turbulence
         WS_eff_jlk = (ws * wake_loss)[..., np.newaxis]
         TI_da = self.windFarmModel.site.ds["TI"] if "TI" in self.windFarmModel.site.ds else None
-        
+
         if TI_da is None:
             ambient_TI = 0.1
         else:
@@ -641,11 +687,11 @@ class WakeBlasterResult(SimulationResult):
                 wd_vals = np.asarray(TI_da["wd"].values, dtype=float)
                 wd_idx = int(np.argmin(np.abs(wd_vals - wd)))
                 TI_da = TI_da.isel(wd=wd_idx)
-        
+
             # if point-based site: take the first point
             if "i" in TI_da.dims:
                 TI_da = TI_da.isel(i=0)
-        
+
             ambient_TI = float(np.asarray(TI_da).squeeze())
             TI_eff_jlk = np.full_like(WS_eff_jlk, ambient_TI)
 
@@ -654,9 +700,9 @@ class WakeBlasterResult(SimulationResult):
         Xf = X.ravel()
         Yf = Y.ravel()
         hf = np.full(num_pts, height, dtype=float)
-        
+
         helper_site = UniformSite(p_wd=[1.0], ti=ambient_TI)
-        
+
         localWind = helper_site.local_wind(
             x=Xf,
             y=Yf,
@@ -664,7 +710,7 @@ class WakeBlasterResult(SimulationResult):
             wd=np.array([wd], dtype=float),
             ws=np.array([ws], dtype=float)
         )
-        
+
         # 6) Preserve turbine coordinates in result
         self["x"] = ("wt", np.array(self.localWind.x.data))
         self["y"] = ("wt", np.array(self.localWind.y.data))
@@ -683,7 +729,6 @@ class WakeBlasterResult(SimulationResult):
         logger.info("Flow map generated for ws=%.1f, wd=%.1f", ws, wd)
 
         return fm
-
 
 
 class WakeBlaster(PropagateDownwind):
@@ -1010,7 +1055,7 @@ class WakeBlaster(PropagateDownwind):
                         associated_WS = val
                     elif key == 'regional_roughness':
                         regional_roughness = val
-                        
+
         self.depends.set_farm(
             site_name,
             et.WindFarm(
@@ -1105,7 +1150,7 @@ class WakeBlaster(PropagateDownwind):
 
             wd_vals = np.asarray(np.atleast_1d(wd), dtype=float)
             ws_vals = np.asarray(np.atleast_1d(ws), dtype=float)
-            l_records = [] # store L values separately if provided, to be added as a column later
+            l_records = []  # store L values separately if provided, to be added as a column later
 
             if _is_time_series:
                 # time=True or time=array_like: wd[i] paired with ws[i]
@@ -1117,11 +1162,11 @@ class WakeBlaster(PropagateDownwind):
                     # time=True: implicit timestamps, just validate wd/ws lengths match
                     if len(wd_vals) != len(ws_vals):
                         raise ValueError("For time-series mode (time=True), wd and ws must have the same length.")
-                
+
                 ti_vals = None if TI is None else np.asarray(np.atleast_1d(TI), dtype=float)
                 if ti_vals is not None and ti_vals.size not in (1, len(wd_vals)):
                     raise ValueError("TI must be scalar or have the same length as wd/ws in time-series mode.")
-                
+
                 l_vals = None if L is None else np.asarray(np.atleast_1d(L), dtype=float)
                 if l_vals is not None and l_vals.size not in (1, len(wd_vals)):
                     raise ValueError("L must be scalar or have the same length as wd/ws in time-series mode.")
@@ -1229,8 +1274,7 @@ class WakeBlaster(PropagateDownwind):
             sf = ds["Sector_frequency"].isel(wd=wd_idx)
             A = ds["Weibull_A"].isel(wd=wd_idx)
             k = ds["Weibull_k"].isel(wd=wd_idx)
-            
-            
+
             # point-based RSF: choose one representative point
             if "i" in sf.dims:
                 sf = sf.isel(i=0)
@@ -1445,7 +1489,7 @@ class WakeBlaster(PropagateDownwind):
 
             weighting = np.asarray(flow_cases['weighting'], dtype=float)
             P_ilk = np.tile(weighting[np.newaxis, :, np.newaxis], (num_wt, 1, 1))
-            ct_ilk = np.zeros((num_wt, n_case, 1)) # The WakeBlaster API currently does not return Ct 
+            ct_ilk = np.zeros((num_wt, n_case, 1))  # The WakeBlaster API currently does not return Ct
 
             wd_array = np.asarray(flow_cases['WindDirection'], dtype=float)
             ws_array = np.asarray(flow_cases['WindSpeed_avg'], dtype=float)
@@ -1596,7 +1640,7 @@ class WakeBlaster(PropagateDownwind):
         flow_case = pd.DataFrame({
             "WindSpeed_avg": [wind_speed],
             "WindDirection": [wind_direction],
-            "weighting": [365*24],
+            "weighting": [365 * 24],
         })
 
         config: Any = self.wakeblasterconfig.simulation_config.copy()

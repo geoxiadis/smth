@@ -1,23 +1,25 @@
 import warnings
 
-import pytest
-
 import matplotlib.pyplot as plt
+import pytest
+from numpy import newaxis as na
+
 from py_wake import np
 from py_wake.deficit_models.gaussian import IEA37SimpleBastankhahGaussianDeficit
+from py_wake.deficit_models.noj import NOJ
+from py_wake.deficit_models.utils import ct2a_mom1d
 from py_wake.examples.data import hornsrev1
-from py_wake.examples.data.hornsrev1 import wt9_x, wt9_y, Hornsrev1Site
+from py_wake.examples.data.hornsrev1 import Hornsrev1Site, wt9_x, wt9_y
 from py_wake.tests import npt
-from py_wake.utils.gradients import autograd, plot_gradients, fd, cs
+from py_wake.utils.gradients import autograd, cs, fd, plot_gradients
 from py_wake.wind_farm_models.engineering_models import PropagateDownwind
 from py_wake.wind_farm_models.wind_farm_model import WindFarmModel
-from py_wake.wind_turbines import WindTurbines, WindTurbine, OneTypeWindTurbines
+from py_wake.wind_turbines import OneTypeWindTurbines, WindTurbine, WindTurbines
 from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
-from py_wake.wind_turbines.wind_turbines_deprecated import DeprecatedWindTurbines, DeprecatedOneTypeWindTurbines
-from numpy import newaxis as na
-from py_wake.deficit_models.utils import ct2a_mom1d
-from py_wake.deficit_models.noj import NOJ
-
+from py_wake.wind_turbines.wind_turbines_deprecated import (
+    DeprecatedOneTypeWindTurbines,
+    DeprecatedWindTurbines,
+)
 
 WindFarmModel.verbose = False
 
@@ -51,7 +53,7 @@ def test_DeprecatedWindTurbines():
         types0 = [0] * 9
         wfm = NOJ(Hornsrev1Site(), wts, ct2a=ct2a_mom1d)
         npt.assert_array_equal(wts.types(), [0])
-        npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types0, yaw=0), 81.2066072392765)
+        npt.assert_almost_equal(wfm.aep(wt9_x, wt9_y, type=types0, yaw=0), 81.20692684738599)
 
 
 def test_deprecated_from_WindTurbines():

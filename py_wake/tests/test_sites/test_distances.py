@@ -1,23 +1,31 @@
-from py_wake import np
-from numpy import newaxis as na
-from py_wake.tests import npt
-from py_wake.site.distance import StraightDistance, TerrainFollowingDistance
-from py_wake.site._site import UniformSite
-import pytest
-from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines
-from py_wake import NOJ
-from py_wake.examples.data.ParqueFicticio import ParqueFicticioSite
-from py_wake.flow_map import HorizontalGrid, XYGrid, XZGrid, Points
-import matplotlib.pyplot as plt
-from py_wake.utils.streamline import VectorField3D
-from py_wake.site.jit_streamline_distance import JITStreamlineDistance
-from py_wake.examples.data.hornsrev1 import V80
-
-from py_wake.tests.test_wind_farm_models.test_enginering_wind_farm_model import OperatableV80
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
-from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, BastankhahGaussian
-from py_wake.deficit_models.utils import ct2a_mom1d
 import warnings
+
+import matplotlib.pyplot as plt
+import pytest
+from numpy import newaxis as na
+
+from py_wake import NOJ, np
+from py_wake.deficit_models.gaussian import (
+    BastankhahGaussian,
+    BastankhahGaussianDeficit,
+)
+from py_wake.deficit_models.utils import ct2a_mom1d
+from py_wake.examples.data.hornsrev1 import V80
+from py_wake.examples.data.iea37._iea37 import IEA37_WindTurbines
+from py_wake.examples.data.ParqueFicticio import ParqueFicticioSite
+from py_wake.flow_map import HorizontalGrid, Points, XYGrid, XZGrid
+from py_wake.site._site import UniformSite
+from py_wake.site.distance import StraightDistance, TerrainFollowingDistance
+from py_wake.site.streamline_distance import StreamlineDistance
+from py_wake.tests import npt
+from py_wake.tests.test_wind_farm_models.test_enginering_wind_farm_model import (
+    OperatableV80,
+)
+from py_wake.utils.streamline import VectorField3D
+from py_wake.wind_farm_models.engineering_models import (
+    All2AllIterative,
+    PropagateDownwind,
+)
 
 
 class FlatSite(UniformSite):
@@ -51,16 +59,19 @@ class Rectangle(UniformSite):
                                       TerrainFollowingDistance()
                                       ])
 def test_flat_distances(distance):
-    x = [0, 50, 100, 100, 0]
-    y = [100, 100, 100, 0, 0]
-    h = [0, 10, 20, 30, 0]
-    z = [0, 0, 0, 0]
+    x = np.array([0, 50, 100, 100, 0])
+    y = np.array([100, 100, 100, 0, 0])
+    h = np.array([0, 10, 20, 30, 0])
     wdirs = [-1e-10, 30, 90 + 1e-10]
 
     site = FlatSite(distance=distance)
-    site.distance.setup(src_x_ilk=x, src_y_ilk=y, src_h_ilk=h, src_z_ilk=z)
-    dw_ijlk, hcw_ijlk, dh_ijlk = site.distance(wd_l=np.array(wdirs), WD_ilk=None, src_idx=[0, 1, 2, 3], dst_idx=[4])
-    dw_indices_lkd = site.distance.dw_order_indices(np.array(wdirs))
+    src_idx = [0, 1, 2, 3]
+    dw_ijlk, hcw_ijlk, dh_ijlk = site.distance(src_x_ilk=x[src_idx], src_y_ilk=y[src_idx],
+                                               src_h_ilk=h[src_idx],
+                                               wd_l=np.array(wdirs),
+                                               dst_xyh_jlk=(x[[4]], y[[4]], h[[4]]))
+
+    dw_indices_lkd = site.distance.dw_order_indices(x, y, np.array(wdirs))
 
     if 0:
         distance.plot(wd_ilk=np.array(wdirs)[na, :, na], src_i=[0, 1, 2, 3], dst_i=[4])
@@ -74,10 +85,10 @@ def test_flat_distances(distance):
                                                      [[-50, 6.69872981, 100]],
                                                      [[-100, -36.6025404, 100]],
                                                      [[-100, -86.6025404, 0]]])
-    npt.assert_array_almost_equal(dh_ijlk[..., 0], [[[0, 0, 0]],
-                                                    [[-10, -10, -10]],
-                                                    [[-20, -20, -20]],
-                                                    [[-30, -30, -30]]])
+    npt.assert_array_almost_equal(dh_ijlk[..., :1, 0], [[[0]],
+                                                        [[-10]],
+                                                        [[-20]],
+                                                        [[-30]]])
     npt.assert_array_equal(dw_indices_lkd[:, 0, :], [[0, 1, 2, 4, 3],
                                                      [2, 1, 0, 3, 4],
                                                      [3, 2, 1, 4, 0]])
@@ -93,9 +104,10 @@ def test_flat_distances_src_neq_dst(distance):
     wdirs = [0, 30]
 
     site = FlatSite(distance=distance)
-    site.distance.setup(src_x_ilk=x, src_y_ilk=y, src_h_ilk=h, src_z_ilk=z, dst_xyhz_j=(x, y, [1, 2, 3], z))
-    dw_ijlk, hcw_ijlk, dh_ijlk = site.distance(wd_l=np.array(wdirs), WD_ilk=None)
-    dw_indices_lkd = distance.dw_order_indices(wdirs)
+
+    dw_ijlk, hcw_ijlk, dh_ijlk = site.distance(src_x_ilk=x, src_y_ilk=y, src_h_ilk=h,
+                                               dst_xyh_jlk=(x, y, [1, 2, 3]), wd_l=np.array(wdirs))
+    dw_indices_lkd = distance.dw_order_indices(x, y, wdirs)
     if 0:
         distance.plot(wd_ilk=np.array(wdirs)[na, :, na])
         plt.show()
@@ -120,7 +132,7 @@ def test_flat_distances_src_neq_dst(distance):
                                                         [-9, -8, -7],
                                                         [-19, -18, -17]])
     # check dw indices
-    npt.assert_array_equal(dw_indices_lkd[:, 0], [[1, 0, 2],
+    npt.assert_array_equal(dw_indices_lkd[:, 0], [[0, 1, 2],
                                                   [1, 0, 2]])
 
 
@@ -133,8 +145,7 @@ def test_iea37_distances():
     lw = site.local_wind(x=x, y=y,
                          wd=site.default_wd,
                          ws=site.default_ws)
-    site.distance.setup(x, y, np.zeros_like(x), np.zeros_like(x))
-    dw_iilk, hcw_iilk, _ = site.wt2wt_distances(WD_ilk=lw.WD_ilk, wd_l=None)
+    dw_iilk, hcw_iilk, _ = site.distance(x, y, np.zeros_like(x), WD_ilk=lw.WD_ilk)
     # Wind direction.
     wdir = np.rad2deg(np.arctan2(hcw_iilk, dw_iilk))
     npt.assert_allclose(
@@ -168,7 +179,10 @@ def test_straightDistance_turning(wfm_cls, turning, method, angle_func):
     ghost_x = np.full(ghost_y.shape, 450)
     operation = [1, 1] + ([0] * len(ghost_x))
     WD = np.array(np.r_[turning, [0] * len(ghost_y)]) + 270
-    sim_res = wfm(np.r_[[0, 500], ghost_x], np.r_[[0, 0], ghost_y], operating=operation, wd=[0, 270], WD=WD)
+    sim_res = wfm(np.r_[[0, 500], ghost_x], np.r_[[0, 0], ghost_y], operating=operation, wd=[270], WD=WD)
+    if 0:
+        sim_res.flow_map(wd=270).plot_wake_map()
+        plt.show()
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', UserWarning)
         fm_wide = sim_res.flow_map(XYGrid(x=450, y=np.linspace(-200, 200, 1001)), wd=270)
@@ -206,9 +220,9 @@ def test_terrain_following_half_cylinder():
     dst_x, dst_y = np.array([100, 200, 300, 400]), [0, 0, 0, 0]
     x = np.arange(-150, 150)
 
-    hc.distance.setup(src_x_ilk=src_x, src_y_ilk=src_y, src_h_ilk=src_x * 0, src_z_ilk=src_x * 0,
-                      dst_xyhz_j=(dst_x, dst_y, dst_x * 0, dst_x * 0))
-    dw_ijlk, hcw_ijlk, _ = hc.distance(wd_l=np.array([0, 90]), WD_ilk=None)
+    dw_ijlk, hcw_ijlk, _ = hc.distance(src_x_ilk=src_x, src_y_ilk=src_y, src_h_ilk=src_x * 0,
+                                       wd_l=np.array([0, 90]), WD_ilk=None,
+                                       dst_xyh_jlk=(dst_x, dst_y, dst_x * 0))
 
     if 0:
         plt.plot(x, hc.elevation(x_i=x, y_i=x * 0))
@@ -263,8 +277,7 @@ def test_distance_over_rectangle2():
 
     x_j = np.arange(-200, 500, 10)
     y_j = x_j * 0
-    site.distance.setup([-200], [0], [130], [0], (x_j, y_j, y_j + 130, y_j * 0))
-    d = site.distance(wd_l=[270])[0][0, :, 0, 0]
+    d = site.distance([-200], [0], [130], [0], wd_l=[270], dst_xyh_jlk=(x_j, y_j, y_j + 130))[0][0, :, 0, 0]
 
     ref = x_j - x_j[0]
     ref[x_j > -50] += 200
@@ -283,30 +296,33 @@ def test_distance_over_rectangle2():
 
 def test_distance_plot():
 
-    x = [0, 50, 100, 100, 0]
-    y = [100, 100, 100, 0, 0]
-    h = [0, 10, 20, 30, 0]
-    z = [0, 0, 0, 0, 0]
+    x = np.array([0, 50, 100, 100, 0])
+    y = np.array([100, 100, 100, 0, 0])
+    h = np.array([0, 10, 20, 30, 0])
     wdirs = [0, 30, 90]
     distance = StraightDistance()
-    distance.setup(src_x_ilk=x, src_y_ilk=y, src_h_ilk=h, src_z_ilk=z)
-    distance.plot(wd_l=np.array(wdirs), src_idx=[0], dst_idx=[3])
+
+    src_idx = [0]
+    dst_idx = [3]
+    distance.plot(src_x_ilk=x[src_idx], src_y_ilk=y[src_idx], src_h_ilk=h[src_idx], wd_l=np.array(wdirs),
+                  dst_xyh_jlk=[x[dst_idx], y[dst_idx], h[dst_idx]])
     if 0:
         plt.show()
     plt.close('all')
 
 
-def test_JITStreamlinesparquefictio():
+def test_Streamlinesparquefictio():
     site = ParqueFicticioSite()
     wt = IEA37_WindTurbines()
     vf3d = VectorField3D.from_WaspGridSite(site)
-    site.distance = JITStreamlineDistance(vf3d)
+    site.distance = StreamlineDistance(vf3d)
 
     x, y = site.initial_position[:].T
     wfm = NOJ(site, wt)
     wd = np.array([330])
     sim_res = wfm(x, y, wd=wd, ws=10)
-    dw = site.distance(wd_l=wd, WD_ilk=np.repeat(wd[na, na], len(x), 0))[0][:, :, 0, 0]
+    dw = site.distance(x, y, x * 0 + wt.hub_height(),
+                       wd_l=wd, WD_ilk=np.repeat(wd[na, na], len(x), 0), time=False)[0][:, :, 0, 0]
     # streamline downwind distance (positive numbers, upper triangle) cannot be shorter than
     # straight line distances in opposite direction (negative numbers, lower triangle)
     assert (dw + dw.T).min() >= 0
@@ -315,8 +331,9 @@ def test_JITStreamlinesparquefictio():
 
     fm = sim_res.flow_map(XYGrid(x=np.linspace(site.ds.x[0].item(), site.ds.x[-1].item(), 500),
                                  y=np.linspace(site.ds.y[0].item(), site.ds.y[-1].item(), 500)))
+    x, y = x[6:], y[6:]
     stream_lines = vf3d.stream_lines(wd=np.full(x.shape, wd), start_points=np.array([x, y, np.full(x.shape, 70)]).T,
-                                     dw_stop=y - 6504700)
+                                     dw_stop=np.full(x.shape, 2000))
     if 0:
         fm.plot_wake_map()
         for sl in stream_lines:
@@ -324,13 +341,13 @@ def test_JITStreamlinesparquefictio():
         plt.show()
 
 
-def test_JITStreamlinesparquefictio_yz():
+def test_Streamlinesparquefictio_yz():
     site = ParqueFicticioSite()
     site.ds.Turning[:] *= 0
     # site.ds.flow_inc[:] *= 5
     wt = IEA37_WindTurbines()
     vf3d = VectorField3D.from_WaspGridSite(site)
-    site.distance = JITStreamlineDistance(vf3d)
+    site.distance = StreamlineDistance(vf3d)
 
     x, y = site.initial_position[3].T
     wt_x = np.r_[x - 500, x, x + 500]
@@ -340,7 +357,8 @@ def test_JITStreamlinesparquefictio_yz():
         wfm = BastankhahGaussian(site, wt, k=0.03)
     wd = np.array([270])
     sim_res = wfm(wt_x, wt_y, wd=wd, ws=10)
-    dw = site.distance(wd_l=wd, WD_ilk=np.repeat(wd[na, na], len(wt_x), 0))[0][:, :, 0, 0]
+    dw = site.distance(wt_x, wt_y, wt_x * 0 + wt.hub_height(), wd_l=wd,
+                       WD_ilk=np.repeat(wd[na, na], len(wt_x), 0), time=False)[0][:, :, 0, 0]
     # streamline downwind distance (positive numbers, upper triangle) cannot be shorter than
     # straight line distances in opposite direction (negative numbers, lower triangle)
     assert (dw + dw.T).min() >= 0

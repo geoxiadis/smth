@@ -8,7 +8,8 @@ from py_wake.site._site import Site
 from py_wake.site.distance import StraightDistance
 from py_wake.utils import weibull, gradients
 from py_wake.utils.ieawind37_utils import iea37_names
-from py_wake.utils.grid_interpolator import GridInterpolator, EqDistRegGrid2DInterpolator
+from py_wake.utils.grid_interpolator import EqDistRegGrid2DInterpolator
+from py_wake.utils.check_input import is_list_like
 import urllib.request
 import warnings
 from autograd.numpy.numpy_boxes import ArrayBox
@@ -32,8 +33,10 @@ class XRSite(Site):
             interpolation method. Default is linear.
             Methods can be mixed by specifying the variable and corresponding method in a dict, e.g.
             {'wd': 'nearest', 'x': 'linear'}
-        shear : Shear-object or function (lw, WS_ref, lw.h) -> WS_z
-            Function to compute the wind speed at different heights
+        shear : Shear-object or function (lw, WS_ref, lw.h) -> WS_z. Can be list-like.
+            Function to compute the wind speed at different heights.
+            When a list of shears is provided, each contribution is added.
+            This is useful to combine different types of shears (power, log) with low level jets.
         distance : Distance-object or None
             If None, default, the distance method is set to StraightDistance
         default_ws : array_like
@@ -56,6 +59,20 @@ class XRSite(Site):
 
         self.interp_method = interp_method
         self.shear = shear
+        if shear:
+            if is_list_like(shear):
+                self.is_single_shear = False
+                # Separate into the list of relative (Log and Power) and absolute (LLJ) shears.
+                # We could have used 2 list comprehension, but instead we only loop once.
+                self.shear_relative = []
+                self.shear_absolute = []
+                for sh in shear:
+                    if sh._is_relative:
+                        self.shear_relative.append(sh)
+                    else:
+                        self.shear_absolute.append(sh)
+            else:
+                self.is_single_shear = True
         self.bounds = bounds
 
         Site.__init__(self, distance)
@@ -164,14 +181,30 @@ class XRSite(Site):
         if self.shear:
             assert 'h' in lw and np.all(lw.h != None), "Height must be specified and not None"  # nopep8
             if isinstance(lw.h, ArrayBox):
-                WS = self.shear(lw, WS, lw.h)
+                h = lw.h
             else:
                 h = np.unique(lw.h)
                 if len(h) > 1:
                     h = lw.h
                 else:
                     h = h[:1]
+            if self.is_single_shear:  # There is typically only 1 shear.
                 WS = self.shear(lw, WS, h)
+            else:
+                # Keep the case with multiple shears separate because it is rare.
+                # Each shear is considered standalone. That is, their order must not matter.
+                if len(self.shear_relative) > 0:
+                    # Power and log shears are relative to the "raw" wind speed.
+                    ws_gain = np.prod(np.stack([shear(lw, WS, h, return_gain=True) for shear in self.shear_relative]), axis=0)
+                if len(self.shear_absolute) > 0:
+                    # LLJ provides an offset to the "raw" wind speed.
+                    ws_offset = np.sum(np.stack([shear(lw, WS, h) for shear in self.shear_absolute]), axis=0)
+                # Add them.
+                # This choice avoids copying the "raw" wind speed, but prevents fused add and multiply.
+                if len(self.shear_relative) > 0:
+                    WS = ws_gain * WS
+                if len(self.shear_absolute) > 0:
+                    WS = WS + ws_offset
 
         if 'Turning' in self.ds:
             if 'i' in lw.coords and 'i' in self.ds.Turning.dims and len(lw.i) != len(self.ds.i):
@@ -302,7 +335,7 @@ class XRSite(Site):
             xyz_dims = ("west_east", "south_north", "height")
             xy_dims = ("west_east", "south_north")
         else:  # pragma: no cover
-            raise ValueError(f"No spatial dimensions found on dataset!")
+            raise ValueError("No spatial dimensions found on dataset!")
 
         # Make the dimensin order as needed
         pwc = pwc.transpose(*xyz_dims, "sector", ...)

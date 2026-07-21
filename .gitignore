@@ -126,3 +126,8 @@ archieve
 /.pydevproject
 /.pydevproject_old
 /.settings/org.eclipse.core.resources.prefs
+/py_wake/version.py
+/py_wake/tests/test_files/tmp
+# pixi environments
+.pixi/*
+!.pixi/config.toml

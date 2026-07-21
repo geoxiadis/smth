@@ -6,6 +6,14 @@
     "input": {
     	"regional_roughness":"regional_roughness.json"
         },
-    "simulation_config": {}	
- }
+    "simulation_config": {	
+ 		"wake_model": {
+    		"type": "3D",
+    		"eddy_viscosity": {
+    			"type": "CombinedProfile",
+    			"stability_model":"BusingerDyer"
+    		}	
+    	}
+	}
+}
 

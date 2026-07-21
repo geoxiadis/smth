@@ -1,20 +1,22 @@
+import matplotlib.pyplot as plt
+import xarray as xr
+
 from py_wake import np
-from py_wake.wind_turbines import WindTurbine
+from py_wake.deficit_models.rans_lut import RANSLUT, RANSLUTDemoDeficit
+from py_wake.examples.data import hornsrev1
 from py_wake.examples.data.hornsrev1 import HornsrevV80
+from py_wake.flow_map import HorizontalGrid
 from py_wake.site._site import UniformSite
 from py_wake.tests import npt, ptf
-import matplotlib.pyplot as plt
-from py_wake.deficit_models.rans_lut import RANSLUT, RANSLUTDemoDeficit
-from py_wake.flow_map import HorizontalGrid
-from py_wake.utils.grid_interpolator import GridInterpolator
-from py_wake.wind_farm_models.engineering_models import All2AllIterative
-from py_wake.utils.profiling import timeit
-import xarray as xr
-from py_wake.utils.rans_lut_utils import ADControl, get_Ellipsys_equivalent_output
 from py_wake.turbulence_models.rans_lut_turb import RANSLUTDemoTurbulence
-from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
-from py_wake.examples.data import hornsrev1
+from py_wake.utils.grid_interpolator import GridInterpolator
+from py_wake.utils.profiling import timeit
+from py_wake.utils.rans_lut_utils import ADControl, get_Ellipsys_equivalent_output, fit_gauss
+from py_wake.wind_farm_models.engineering_models import All2AllIterative
+from py_wake.wind_turbines import WindTurbine
 from py_wake.wind_turbines._wind_turbines import WindTurbines
+from py_wake.wind_turbines.power_ct_functions import PowerCtTabular
+from py_wake.rotor_avg_models.rotor_avg_model import GQGridRotorAvg
 
 
 def test_rans_lut_deficit():
@@ -34,24 +36,44 @@ def test_rans_lut_deficit():
                                                             0.80567201, 0.80495685])
     x_j = np.linspace(-1500, 1500, 500)
     y_j = np.linspace(-1500, 1500, 300)
-    flow_map70 = simres.flow_map(HorizontalGrid(x_j, y_j, h=70))
-    flow_map73 = simres.flow_map(HorizontalGrid(x_j, y_j, h=73))
-
-    X, Y = flow_map70.XY
-    Z70 = flow_map70.WS_eff_xylk[:, :, 0, 0]
-    Z73 = flow_map73.WS_eff_xylk[:, :, 0, 0]
 
     if 0:
+        flow_map70 = simres.flow_map(HorizontalGrid(x_j, y_j, h=70))
+        flow_map73 = simres.flow_map(HorizontalGrid(x_j, y_j, h=73))
+
+        X, Y = flow_map70.XY
+        Z70 = flow_map70.WS_eff_xylk[:, :, 0, 0]
+        Z73 = flow_map73.WS_eff_xylk[:, :, 0, 0]
+
         flow_map70.plot_wake_map(levels=np.arange(6, 10.5, .1))
         plt.plot(X[0], Y[140])
         plt.figure()
         plt.plot(X[0], Z70[140, :], label="Z=70m")
         plt.plot(X[0], Z73[140, :], label="Z=73m")
         plt.plot(X[0, 100:400:10], Z70[140, 100:400:10], '.')
-        print(list(np.round(Z70.data[140, 100:400:10], 4)))
-        print(list(np.round(Z73.data[140, 100:400:10], 4)))
+        print(np.round(Z70.data[140, 100:400:10], 4).tolist())
+        print(np.round(Z73.data[140, 100:400:10], 4).tolist())
         plt.legend()
         plt.show()
+
+    flow_map70 = simres.flow_map(HorizontalGrid(x_j[100:400:10], y_j[[140]], h=70))
+    flow_map73 = simres.flow_map(HorizontalGrid(x_j[100:400:10], y_j[[140]], h=73))
+
+    X, Y = flow_map70.XY
+    Z70 = flow_map70.WS_eff_xylk[0, :, 0, 0]
+    Z73 = flow_map73.WS_eff_xylk[0, :, 0, 0]
+
+    npt.assert_array_almost_equal(
+        Z70,
+        [10.0199, 10.0235, 10.0293, 10.0358, 9.8078, 5.5094, 4.718, 9.4776, 10.034, 10.0113, 10.0116, 10.027, 10.0617,
+         9.4429, 5.6, 8.8807, 10.0984, 10.0073, 9.9856, 9.96, 9.0589, 7.4311, 3.7803, 6.5824, 10.1399, 10.0271,
+         9.9978, 9.9919, 9.9907, 9.9906], 4)
+
+    npt.assert_array_almost_equal(
+        Z73,
+        [10.0198, 10.0234, 10.0291, 10.0351, 9.8118, 5.6347, 4.7181, 9.4902, 10.0332, 10.0113, 10.0116, 10.0267,
+         10.0607, 9.4732, 5.5569, 8.9562, 10.0969, 10.0073, 9.9858, 9.9601, 9.0821, 7.4662, 3.8426, 6.6404, 10.1375,
+         10.0268, 9.9979, 9.992, 9.9908, 9.9906], 4)
 
 
 def test_rans_lut():
@@ -71,26 +93,6 @@ def test_rans_lut():
                                                                 7.67200834, 6.95684497])
     npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.79338104, 0.79388147, 0.8056662, 0.79307906, 0.80002604,
                                                             0.80567201, 0.80495685])
-    x_j = np.linspace(-1500, 1500, 500)
-    y_j = np.linspace(-1500, 1500, 300)
-    flow_map70 = simres.flow_map(HorizontalGrid(x_j, y_j, h=70))
-    flow_map73 = simres.flow_map(HorizontalGrid(x_j, y_j, h=73))
-
-    X, Y = flow_map70.XY
-    Z70 = flow_map70.WS_eff_xylk[:, :, 0, 0]
-    Z73 = flow_map73.WS_eff_xylk[:, :, 0, 0]
-
-    if 0:
-        flow_map70.plot_wake_map(levels=np.arange(6, 10.5, .1))
-        plt.plot(X[0], Y[140])
-        plt.figure()
-        plt.plot(X[0], Z70[140, :], label="Z=70m")
-        plt.plot(X[0], Z73[140, :], label="Z=73m")
-        plt.plot(X[0, 100:400:10], Z70[140, 100:400:10], '.')
-        print(list(np.round(Z70.data[140, 100:400:10], 4)))
-        print(list(np.round(Z73.data[140, 100:400:10], 4)))
-        plt.legend()
-        plt.show()
 
     # Test Power as RANS post step
     dataset = xr.open_dataset(demo_lut)
@@ -102,7 +104,7 @@ def test_rans_lut():
 
     aDControl_saved = ADControl.from_files([ADcontrolfile])
 
-    npt.assert_array_almost_equal(aDControl.U_CT_CP_AD, aDControl_saved.U_CT_CP_AD, 10)
+    npt.assert_array_almost_equal(aDControl.U_CT_CP_AD_ws, aDControl_saved.U_CT_CP_AD_ws, 10)
 
     wfm = RANSLUT(dataset, site, wts)
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
@@ -150,6 +152,34 @@ def test_rans_lut():
     npt.assert_array_almost_equal(ct_star.flatten(), CTstar_expected, 6)
     npt.assert_array_almost_equal(simres.TI_eff.values.flatten(), TI_eff_expected, 6)
 
+    # Test MOST shear, stable.
+    # WS_eff_star does not change since we not change the actual simulation
+    # using Site with MOSTShear and LUTs with stability
+    aDControl2 = ADControl.from_lut([dataset, lut2], wts, ws_cutin=4, ws_cutout=25, dws=1.0, cal_TI=0.06, cal_zeta=0.5)
+    ellipsys_power, WS_eff_star, ct_star = get_Ellipsys_equivalent_output(simres, aDControl2)
+
+    # print(ct_star.flatten())
+    # print(ellipsys_power.flatten() * 1e-6)
+    CTstar_expected = [1.32895893, 1.33159161, 1.36637959, 1.32630388, 1.36116655, 1.36639816, 1.36463016]
+    power_expected = [1.34531419, 1.33329859, 0.72796236, 1.35150555, 1.060569, 0.72981311, 0.56473626]
+
+    npt.assert_array_almost_equal(ellipsys_power.flatten() * 1e-6, power_expected, 6)
+    npt.assert_array_almost_equal(WS_eff_star.flatten(), UAD_expected, 6)
+    npt.assert_array_almost_equal(ct_star.flatten(), CTstar_expected, 6)
+
+    # Test MOST shear, unstable
+    aDControl2 = ADControl.from_lut([dataset, lut2], wts, ws_cutin=4, ws_cutout=25, dws=1.0, cal_TI=0.06, cal_zeta=-0.5)
+    ellipsys_power, WS_eff_star, ct_star = get_Ellipsys_equivalent_output(simres, aDControl2)
+
+    # print(ct_star.flatten())
+    # print(ellipsys_power.flatten() * 1e-6)
+    CTstar_expected = [1.3254684, 1.32682915, 1.36065434, 1.32318215, 1.35620019, 1.36067278, 1.35891729]
+    power_expected = [1.33938202, 1.32595377, 0.72335257, 1.34597418, 1.05462423, 0.72519153, 0.56109148]
+
+    npt.assert_array_almost_equal(ellipsys_power.flatten() * 1e-6, power_expected, 6)
+    npt.assert_array_almost_equal(WS_eff_star.flatten(), UAD_expected, 6)
+    npt.assert_array_almost_equal(ct_star.flatten(), CTstar_expected, 6)
+
 
 def test_rans_lut_multi_wd_ws():
     # move turbine 1 600 300
@@ -181,27 +211,6 @@ def test_rans_lut_multi_wd_ws():
     npt.assert_array_almost_equal(simres.WS_eff_ilk, np.moveaxis(power_ref, -1, 0))
     npt.assert_array_almost_equal(simres.ct_ilk, np.moveaxis(ct_ref, -1, 0))
 
-    x_j = np.linspace(-1500, 1500, 500)
-    y_j = np.linspace(-1500, 1500, 300)
-    flow_map70 = simres.flow_map(HorizontalGrid(x_j, y_j, h=70), wd=30, ws=10)
-    flow_map73 = simres.flow_map(HorizontalGrid(x_j, y_j, h=73), wd=30, ws=10)
-
-    X, Y = flow_map70.XY
-    Z70 = flow_map70.WS_eff_xylk[:, :, 0, 0]
-    Z73 = flow_map73.WS_eff_xylk[:, :, 0, 0]
-
-    if 0:
-        flow_map70.plot_wake_map(levels=np.arange(6, 10.5, .1))
-        plt.plot(X[0], Y[140])
-        plt.figure()
-        plt.plot(X[0], Z70[140, :], label="Z=70m")
-        plt.plot(X[0], Z73[140, :], label="Z=73m")
-        plt.plot(X[0, 100:400:10], Z70[140, 100:400:10], '.')
-        print(list(np.round(Z70.data[140, 100:400:10], 4)))
-        print(list(np.round(Z73.data[140, 100:400:10], 4)))
-        plt.legend()
-        plt.show()
-
     # Test Power as RANS post step
     dataset = xr.open_dataset(demo_lut)
     lutname = 'rans_lut.nc'
@@ -211,7 +220,7 @@ def test_rans_lut_multi_wd_ws():
     ADcontrolfile = 'lutcal_WT80_Ti0.06_0.dat'
     aDControl_saved = ADControl.from_files([ADcontrolfile])
 
-    npt.assert_array_almost_equal(aDControl.U_CT_CP_AD, aDControl_saved.U_CT_CP_AD, 10)
+    npt.assert_array_almost_equal(aDControl.U_CT_CP_AD_ws, aDControl_saved.U_CT_CP_AD_ws, 10)
 
     wfm = RANSLUT(dataset, site, wts)
     simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
@@ -270,7 +279,7 @@ def test_RANSLUT_multiturbine():
     v80 = HornsrevV80()
     v120 = WindTurbine('V120', 120, 70, powerCtFunction=PowerCtTabular(
         hornsrev1.power_curve[:, 0], hornsrev1.power_curve[:, 1], 'w', hornsrev1.ct_curve[:, 1]))
-    wts = WindTurbine.from_WindTurbines([v80, v120])
+    wts = WindTurbines.from_WindTurbine_lst([v80, v120])
 
     wfm = RANSLUT([ds, lut_V120], UniformSite(ti=0.075 * 0.8), wts)
     type_i = np.array([0, 0, 1, 1])
@@ -295,3 +304,77 @@ def test_RANSLUT_multiturbine():
     for type_i in [(0, 0, 0, 0), (1, 1, 1, 1)]:
         sim_res = wfm([0, 500, 1000, 1500], [0, 0, 0, 0], type=type_i, wd=[90, 270], ws=10.0)
         ellipsys_power, WS_eff_star, ct_star = get_Ellipsys_equivalent_output(sim_res, aDControl)
+
+
+def test_rans_conv_lut():
+    # move turbine 1 600 300
+    wt_x = [-250, 600, -500, 0, 500, -250, 250]
+    wt_y = [433, 300, 0, 0, 0, -433, -433]
+    wts = HornsrevV80()
+    site = UniformSite([1, 0, 0, 0], ti=0.075 * 0.8)
+    Dref = wts.diameter()
+    demo_lut = ptf('ranslut/V80_ranslut_demo.nc',
+                   '846213eb655255f6e2201a47c2406f9e77f243f369398cb389bf7320b457dea8')
+    # Fit Gaussian deficits to hub height profiles for WeightedSum superposition
+    demo_convlut = 'V80_gaussian.nc'
+    fit_gauss(demo_lut, 'V80_gaussian.nc', ymin=-10, ymax=10)
+    wfm = RANSLUT(demo_lut, site, wts, convlut=demo_convlut, rotorAvgModel=GQGridRotorAvg(4, 3))
+
+    simres, _ = timeit(wfm.__call__, verbose=0, line_profile=0,
+                       profile_funcs=[GridInterpolator.__call__])(x=wt_x, y=wt_y, wd=[30], ws=[10])
+    npt.assert_array_almost_equal(simres.WS_eff_ilk.flatten(), [9.97150681, 9.93711854, 7.97991956, 9.99272109, 9.20975831,
+                                                                7.98196409, 7.46986422])
+    npt.assert_array_almost_equal(simres.ct_ilk.flatten(), [0.7933989, 0.79388034, 0.80597992, 0.7931019, 0.80406338,
+                                                            0.80598196, 0.80546986])
+    ds = xr.load_dataset(demo_lut)
+    aDControl = ADControl.from_lut(ds.deficits, wts, ws_cutin=4, ws_cutout=25, dws=1.0, cal_TI=0.06)
+    _, WS_eff_star, ct_star = get_Ellipsys_equivalent_output(simres, aDControl, rotorAvgModel=None)
+    npt.assert_array_almost_equal(WS_eff_star.flatten(), [7.69759095, 7.66977332, 6.1306985, 7.71475178, 7.08139117, 6.13226504, 5.7398877])
+    npt.assert_array_almost_equal(ct_star.flatten(), [1.33143388, 1.33273949, 1.36552774, 1.33062844, 1.36035502, 1.36553333, 1.36413403])
+
+
+def test_rans_conv_lut_multiturbine():
+    # Test with provided control file
+    demo_lut = ptf('ranslut/V80_ranslut_demo.nc',
+                   '846213eb655255f6e2201a47c2406f9e77f243f369398cb389bf7320b457dea8')
+    ds = xr.load_dataset(demo_lut)
+
+    # Test multi lut (using the same file for now with 50% wake deficit)
+    lut_V120 = ds.copy(deep=True)
+    lut_V120.deficits[:] *= .5
+
+    # Fit Gaussian deficits to hub height profiles for WeightedSum superposition
+    demo_convlut = 'V80_gaussian.nc'
+    fit_gauss(demo_lut, 'V80_gaussian.nc', ymin=-10, ymax=10, xfits=np.linspace(0.0, 100.0, 11))
+    lut_V120.to_netcdf('V120.nc')
+    fit_gauss('V120.nc', 'V120_gaussian.nc', ymin=-10, ymax=10, xfits=np.linspace(0.0, 100.0, 11))
+
+    v80 = HornsrevV80()
+    v120 = WindTurbine('V120', 120, 70, powerCtFunction=PowerCtTabular(
+        hornsrev1.power_curve[:, 0], hornsrev1.power_curve[:, 1], 'w', hornsrev1.ct_curve[:, 1]))
+    wts = WindTurbine.from_WindTurbines([v80, v120])
+
+    wfm = RANSLUT([ds, lut_V120], UniformSite(ti=0.075 * 0.8), wts, convlut=['V80_gaussian.nc', 'V120_gaussian.nc'], rotorAvgModel=GQGridRotorAvg(4, 3))
+    type_i = np.array([0, 0, 1, 1])
+    sim_res = wfm([0, 500, 1000, 1500], [0, 0, 0, 0], type=type_i, wd=[90, 270], ws=10.0)
+    if 0:
+        axes = plt.subplots(2, 1)[1]
+        sim_res.flow_map(wd=90).plot_wake_map(ax=axes[0], levels=np.linspace(3, 10.5))
+        sim_res.flow_map(wd=270).plot_wake_map(ax=axes[1], levels=np.linspace(3, 10.5))
+        plt.show()
+
+    WS_eff_ref = [[7.3973466, 7.90998823, 8.56042535, 9.97638533], [9.97756182, 7.94966889, 7.78868653, 7.50030898]]
+    ct_ref = [[0.80539735, 0.80590999, 0.80656043, 0.79333061], [0.79331413, 0.80594967, 0.80578869, 0.80550031]]
+    power_ref = [[0.5537738, 0.67475722, 0.8641276, 1.33285294], [1.33325883, 0.68412186, 0.64613002, 0.57807292]]
+    TI_eff_ref = [[0.26789829, 0.21534878, 0.14177617, 0.06003113], [0.0600239, 0.13786305, 0.18521198, 0.23600163]]
+    npt.assert_array_almost_equal(sim_res.WS_eff_ilk.squeeze().T, WS_eff_ref, 6)
+    npt.assert_array_almost_equal(sim_res.ct_ilk.squeeze().T, ct_ref, 6)
+    npt.assert_array_almost_equal(sim_res.power_ilk.squeeze().T * 1e-6, power_ref, 6)
+    npt.assert_array_almost_equal(sim_res.TI_eff.values.squeeze().T, TI_eff_ref, 6)
+
+    aDControl = ADControl.from_lut([ds, lut_V120], wts, ws_cutin=[3, 4], ws_cutout=[26, 25], dws=1.0, cal_TI=0.06)
+    _, WS_eff_star, ct_star = get_Ellipsys_equivalent_output(sim_res, aDControl, rotorAvgModel=None)
+    WS_eff_ref = [[5.68432379, 6.07711624, 7.50664894, 8.76770315], [7.70248902, 6.10752006, 6.83079781, 6.57818957]]
+    ct_star_ref = [[1.36393587, 1.36533666, 1.0488932, 1.0271518], [1.33120399, 1.36544508, 1.04761978, 1.04714416]]
+    npt.assert_array_almost_equal(WS_eff_star.squeeze().T, WS_eff_ref, 6)
+    npt.assert_array_almost_equal(ct_star.squeeze().T, ct_star_ref, 6)

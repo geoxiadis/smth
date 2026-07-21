@@ -1,13 +1,17 @@
 import numpy as np
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind
+
+from py_wake.deficit_models.gaussian import (
+    BastankhahGaussianDeficit,
+    BlondelSuperGaussianDeficit2020,
+    CarbajofuertesGaussianDeficit,
+    NiayifarGaussianDeficit,
+    ZongGaussianDeficit,
+)
 from py_wake.deficit_models.utils import ct2a_mom1d
-from py_wake.superposition_models import LinearSum, WeightedSum
-from py_wake.deficit_models.gaussian import BastankhahGaussianDeficit, NiayifarGaussianDeficit, ZongGaussianDeficit, \
-    BlondelSuperGaussianDeficit2020, CarbajofuertesGaussianDeficit
-from py_wake.turbulence_models.crespo import CrespoHernandez
-from py_wake.superposition_models import SqrMaxSum
 from py_wake.rotor_avg_models.gaussian_overlap_model import GaussianOverlapAvgModel
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
+from py_wake.superposition_models import LinearSum, SqrMaxSum, WeightedSum
+from py_wake.turbulence_models.crespo import CrespoHernandez
+from py_wake.wind_farm_models.engineering_models import PropagateDownwind
 
 
 class Bastankhah_PorteAgel_2014(PropagateDownwind):
@@ -82,7 +86,7 @@ class Niayifar_PorteAgel_2016(PropagateDownwind):
                  a=[0.3837, 0.003678], ceps=.2, ct2a=ct2a_mom1d, use_effective_ws=True, use_effective_ti=True,
                  superpositionModel=LinearSum(),
                  deflectionModel=None,
-                 turbulenceModel=CrespoHernandez(ct2a=ct2a_mom1d, c=[0.73, 0.8325, 0.0325, -0.32], addedTurbulenceSuperpositionModel=SqrMaxSum()),
+                 turbulenceModel=CrespoHernandez(ct2a=ct2a_mom1d, c=[0.73, 0.8325, 0.0325, -0.32]),
                  rotorAvgModel=GaussianOverlapAvgModel(),
                  groundModel=None):
         """
@@ -128,7 +132,7 @@ class CarbajoFuertes_etal_2018(PropagateDownwind):
                  a=[0.35, 0], ceps=[-1.91, 0.34], ct2a=ct2a_mom1d, use_effective_ws=True, use_effective_ti=True,
                  superpositionModel=LinearSum(),
                  deflectionModel=None,
-                 turbulenceModel=CrespoHernandez(ct2a=ct2a_mom1d, c=[0.73, 0.8325, 0.0325, -0.32], addedTurbulenceSuperpositionModel=SqrMaxSum()),
+                 turbulenceModel=CrespoHernandez(ct2a=ct2a_mom1d, c=[0.73, 0.8325, 0.0325, -0.32]),
                  rotorAvgModel=GaussianOverlapAvgModel(),
                  groundModel=None):
         """
@@ -195,7 +199,7 @@ class Zong_PorteAgel_2020(PropagateDownwind):
                  rotorAvgModel=None,
                  superpositionModel=WeightedSum(),
                  deflectionModel=None,
-                 turbulenceModel=CrespoHernandez(ct2a=ct2a_mom1d, c=[0.73, 0.83, 0.03, -0.32], addedTurbulenceSuperpositionModel=SqrMaxSum()),
+                 turbulenceModel=CrespoHernandez(ct2a=ct2a_mom1d, c=[0.73, 0.83, 0.03, -0.32]),
                  groundModel=None):
         """
         Parameters
@@ -208,7 +212,7 @@ class Zong_PorteAgel_2020(PropagateDownwind):
             Model defining how deficits sum up
         deflectionModel : DeflectionModel, default None
             Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
-        turbulenceModel : TurbulenceModel, default None
+        turbulenceModel : TurbulenceModel, default CrespoHernandez
             Model describing the amount of added turbulence in the wake
         use_effective_ws : bool
             Option to use either the local (True) or free-stream (False) wind speed experienced by the ith turbine
@@ -248,7 +252,7 @@ class Blondel_Cathelain_2020(PropagateDownwind):
                  use_effective_ws=True, use_effective_ti=True,
                  superpositionModel=LinearSum(),
                  deflectionModel=None,
-                 turbulenceModel=None,
+                 turbulenceModel=CrespoHernandez(),
                  rotorAvgModel=None,
                  groundModel=None):
         """
@@ -262,7 +266,7 @@ class Blondel_Cathelain_2020(PropagateDownwind):
             Model defining how deficits sum up
         deflectionModel : DeflectionModel, default None
             Model describing the deflection of the wake due to yaw misalignment, sheared inflow, etc.
-        turbulenceModel : TurbulenceModel, default None
+        turbulenceModel : TurbulenceModel, default CrespoHernandez
             Model describing the amount of added turbulence in the wake
         use_effective_ws : bool
             Option to use either the local (True) or free-stream (False) wind speed experienced by the ith turbine
@@ -280,16 +284,17 @@ class Blondel_Cathelain_2020(PropagateDownwind):
 
 def main():
     if __name__ == '__main__':
-
+        from py_wake.examples.data.hornsrev1 import V80, Hornsrev1Site, wt16_x, wt16_y
         site = Hornsrev1Site()
         windTurbines = V80()
         x, y = site.initial_position.T
+        x, y = wt16_x, wt16_y
 
         for wf_model in [Bastankhah_PorteAgel_2014(site, windTurbines, k=0.0324555),
                          Niayifar_PorteAgel_2016(site, windTurbines),
                          CarbajoFuertes_etal_2018(site, windTurbines),
                          Zong_PorteAgel_2020(site, windTurbines),
-                         Blondel_Cathelain_2020(site, windTurbines, turbulenceModel=CrespoHernandez())]:
+                         Blondel_Cathelain_2020(site, windTurbines)]:
 
             # run wind farm simulation
             sim_res = wf_model(x, y)

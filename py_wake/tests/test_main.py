@@ -1,13 +1,13 @@
 import importlib
 import os
 import pkgutil
+import sys
 import warnings
+from unittest import mock
 
 import pytest
 
-import sys
 import py_wake
-from unittest import mock
 from py_wake.flow_map import Grid
 
 
@@ -19,8 +19,11 @@ def get_main_modules():
             warnings.simplefilter("ignore")
             try:
                 m = importlib.import_module(modname)
+            except DeprecationWarning:
+                pass
             except Exception:
                 print(f"!!!!!! failed to import {modname}")
+
                 raise
 
         if 'main' in dir(m):

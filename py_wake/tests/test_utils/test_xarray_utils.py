@@ -1,8 +1,10 @@
-from py_wake.examples.data.hornsrev1 import Hornsrev1Site, V80
-from py_wake import np
-import pytest
+import matplotlib.pyplot as plt
 import pandas as pd
+import pytest
 import xarray as xr
+
+from py_wake import np
+from py_wake.examples.data.hornsrev1 import V80, Hornsrev1Site
 from py_wake.site.xrsite import XRSite
 from py_wake.tests import npt
 
@@ -93,3 +95,21 @@ def test_time_dims():
     lw = site.local_wind(x=0, y=0, wd=[0, 0, 0], ws=[0, 0, 0], time=[1.25])
     npt.assert_array_equal(lw['WS_ilk'].flatten(), [8.5])
     npt.assert_array_equal(lw['WD_ilk'].flatten(), [26.25])
+
+
+def test_interp_log():
+    h = np.array([10, 100, 200])
+    z0 = 0.1
+    u = np.log(h / z0) / np.log(100 / z0) * 10
+    da = xr.DataArray(u, coords=[h], dims=['h'])
+    da.plot(y='h')
+    h_p = np.linspace(10, 200, 100)
+    da_nearest = da.interp(h=h_p, method='nearest')
+    da_linear = da.interp(h=h_p, method='linear')
+    da_interp_log = da.interp_log(h=h_p, method='linear')
+    if 0:
+        da_nearest.plot(y='h')
+        da_linear.plot(y='h')
+        da_interp_log.plot(y='h')
+        plt.show()
+    npt.assert_array_almost_equal(da_interp_log, np.log(h_p / z0) / np.log(100 / z0) * 10, 10)

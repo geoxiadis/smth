@@ -1,28 +1,36 @@
-from py_wake import np
-from py_wake.examples.data.hornsrev1 import HornsrevV80, V80
+import contextlib
+import io
+import warnings
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import pytest
+from numpy import newaxis as na
+from scipy.optimize._minpack_py import curve_fit
+
+from py_wake import Fuga, np
+from py_wake.deficit_models.fuga import (
+    FugaBlockage,
+    FugaDeficit,
+    FugaMultiLUTDeficit,
+    FugaYawDeficit,
+)
+from py_wake.examples.data import hornsrev1
+from py_wake.examples.data.hornsrev1 import V80, HornsrevV80
+from py_wake.flow_map import HorizontalGrid, XYGrid, XZGrid
 from py_wake.site._site import UniformSite
 from py_wake.tests import npt
 from py_wake.tests.test_files import tfp
-from py_wake import Fuga
-from py_wake.examples.data import hornsrev1
-import matplotlib.pyplot as plt
-from py_wake.deficit_models.fuga import FugaBlockage, FugaDeficit, FugaYawDeficit, \
-    FugaMultiLUTDeficit
-from py_wake.flow_map import HorizontalGrid, XYGrid, XZGrid
-from py_wake.utils.grid_interpolator import GridInterpolator
-from py_wake.wind_farm_models.engineering_models import PropagateDownwind, All2AllIterative
-import pytest
-from pathlib import Path
-from py_wake.wind_turbines.power_ct_functions import PowerCtTabular, CubePowerSimpleCt
-from py_wake.wind_turbines._wind_turbines import WindTurbine, WindTurbines
-from py_wake.utils.profiling import timeit
-import warnings
 from py_wake.utils import fuga_utils
 from py_wake.utils.fuga_utils import FugaUtils
-from numpy import newaxis as na
-from scipy.optimize._minpack_py import curve_fit
-import contextlib
-import io
+from py_wake.utils.grid_interpolator import GridInterpolator
+from py_wake.utils.profiling import timeit
+from py_wake.wind_farm_models.engineering_models import (
+    All2AllIterative,
+    PropagateDownwind,
+)
+from py_wake.wind_turbines._wind_turbines import WindTurbine, WindTurbines
+from py_wake.wind_turbines.power_ct_functions import CubePowerSimpleCt, PowerCtTabular
 
 
 def test_fuga():
@@ -48,8 +56,8 @@ def test_fuga():
 
     wake_model = Fuga(path, site, wts)
     sim_res = wake_model(wt_x, wt_y, wd=[30], ws=[10])
-    flow_map70 = sim_res.flow_map(HorizontalGrid(x_j, y_j, h=70))
-    flow_map73 = sim_res.flow_map(HorizontalGrid(x_j, y_j, h=73))
+    flow_map70 = sim_res.flow_map(HorizontalGrid(x_j, y_j, h=70), memory_GB=0.5)
+    flow_map73 = sim_res.flow_map(HorizontalGrid(x_j, y_j, h=73), memory_GB=0.5)
 
     X, Y = flow_map70.XY
     Z70 = flow_map70.WS_eff_xylk[:, :, 0, 0]
@@ -127,8 +135,8 @@ def test_fuga_new_casedata_bin_format():
     y_j = np.linspace(-1500, 1500, 300)
 
     sim_res = wake_model(wt_x, wt_y, wd=[30], ws=[10])
-    flow_map70 = sim_res.flow_map(HorizontalGrid(x_j, y_j, h=70))
-    flow_map73 = sim_res.flow_map(HorizontalGrid(x_j, y_j, h=73))
+    flow_map70 = sim_res.flow_map(HorizontalGrid(x_j, y_j, h=70), memory_GB=0.5)
+    flow_map73 = sim_res.flow_map(HorizontalGrid(x_j, y_j, h=73), memory_GB=0.5)
 
     X, Y = flow_map70.XY
     Z70 = flow_map70.WS_eff_xylk[:, :, 0, 0]
@@ -468,17 +476,17 @@ def test_verify_FugaMultiLUT():
             wfm_ref = All2AllIterative(UniformSite(), V80(), wake_deficitModel=deficit, blockage_deficitModel=deficit)
             fm_ref = wfm_ref([0], [0], wd=270, ws=10,).flow_map(XYGrid(x=400, y=np.linspace(-310, 310), h=70))
 
-    fm = sim_res.flow_map(XYGrid(x=400, y=np.linspace(-310, 310), h=70))
-    for t in sim_res.time:
-        da = sim_res.sel(time=t)
-        ti = ['z0=0.00001000_z69.2-93.4', 'z0=0.01703452_z68.5-92.5'][da.TI.item() >= .12]
-        # print(fuga_utils.z0(da.TI.item(), 70, da.zeta0.item()))
-        deficit = FugaDeficit(
-            tfp +
-            f"fuga/2MW/multilut/LUTs_Zeta0={da.zeta0.item():4.2e}_16_32_D80_zhub70_zi{da.zi.item():d}_{ti}_UL_nx128_ny128_dx20.0_dy5.0.nc",
-            smooth2zero_x=None, smooth2zero_y=None)
-        wfm_ref = All2AllIterative(UniformSite(), V80(), wake_deficitModel=deficit, blockage_deficitModel=deficit)
-        fm_ref = wfm_ref([0], [0], wd=270, ws=10,).flow_map(XYGrid(x=400, y=np.linspace(-310, 310), h=70))
+        fm = sim_res.flow_map(XYGrid(x=400, y=np.linspace(-310, 310), h=70))
+        for t in sim_res.time:
+            da = sim_res.sel(time=t)
+            ti = ['z0=0.00001000_z69.2-93.4', 'z0=0.01703452_z68.5-92.5'][da.TI.item() >= .12]
+            # print(fuga_utils.z0(da.TI.item(), 70, da.zeta0.item()))
+            deficit = FugaDeficit(
+                tfp +
+                f"fuga/2MW/multilut/LUTs_Zeta0={da.zeta0.item():4.2e}_16_32_D80_zhub70_zi{da.zi.item():d}_{ti}_UL_nx128_ny128_dx20.0_dy5.0.nc",
+                smooth2zero_x=None, smooth2zero_y=None)
+            wfm_ref = All2AllIterative(UniformSite(), V80(), wake_deficitModel=deficit, blockage_deficitModel=deficit)
+            fm_ref = wfm_ref([0], [0], wd=270, ws=10,).flow_map(XYGrid(x=400, y=np.linspace(-310, 310), h=70))
 
 
 @pytest.mark.parametrize('yaw', [0, 30, 60])

@@ -1,8 +1,9 @@
-from py_wake import np
-from numpy import newaxis as na
-from numpy import atleast_1d
-from py_wake.utils import gradients
 from autograd.numpy.numpy_boxes import ArrayBox
+from numpy import atleast_1d
+from numpy import newaxis as na
+
+from py_wake import np
+from py_wake.utils import gradients
 
 
 class GridInterpolator(object):
@@ -23,8 +24,8 @@ class GridInterpolator(object):
             - 'limit': interpolation points are forced inside the area
             - 'ignore': Faster option with no check. Use this option if data is guaranteed to be inside the area
         """
-        self.x = x.copy()
-        self.V = V
+        self.x = self.grid = x.copy()
+
         self.bounds = bounds
         self.method = method
         self.n = np.array([len(x) for x in x], dtype=int)
@@ -35,7 +36,7 @@ class GridInterpolator(object):
         self.irregular_axes_indexes = np.where(self.irregular_axes)[0]
         for i in self.irregular_axes_indexes:
             self.x[i] = np.r_[self.x[i], self.x[i][-1] + 1]
-        self.V = np.asarray(V)
+        self.V = self.values = np.asarray(V)
         if not np.all(np.asarray(self.V.shape[:len(self.n)]) == self.n):
             raise ValueError("Lengths of x does not match shape of V")
         ui = np.array([[0], [1]])
@@ -59,10 +60,15 @@ class GridInterpolator(object):
         """
         if len(np.atleast_1d(xp)) == 0:
             return np.array([])
-        method = atleast_1d(method or self.method)
+        if method is None:
+            method = self.method
+        method = np.atleast_1d(method)
         assert all([m in ['linear', 'nearest'] for m in method]), 'method must be "linear" or "nearest"'
         assert len(method) in [1, len(self.x)]
         linear = [method[min(len(method) - 1, i)] == 'linear' for i in range(len(self.x))]
+        chunks = np.maximum(2**np.sum(linear) * np.prod(np.shape(xp)) * 8 / 1024**2 // 100, 1)
+        if chunks > 1:
+            return np.concatenate([self.__call__(xp_, method, bounds, deg) for xp_ in np.array_split(xp, chunks)])
         bounds = bounds or self.bounds
         assert bounds in ['check', 'limit', 'ignore'], 'bounds must be "check", "limit" or "ignore"'
         xp = np.atleast_2d(xp)
@@ -90,8 +96,9 @@ class GridInterpolator(object):
             xpi = np.minimum(np.maximum(xpi, 0), self.n - 1)
 
         if 'nearest' in method:
-            # round x.5 down to match old results
-            xpi = np.where(np.asarray(linear), xpi, np.round(xpi - .1 * (gradients.mod(xpi, 2) == 1.5)))
+            # round x.5 up (np.round rounds x.5 towards nearest even number)
+            xpi = np.where(np.asarray(linear), xpi, gradients.floor(xpi + .5))
+
         xpif, xpi0 = gradients.modf(xpi)
 
         int_box_axes = [(np.asarray([0], dtype=int), np.asarray([0, 1], dtype=int))[l] for l in linear]
