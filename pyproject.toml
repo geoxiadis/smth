@@ -31,6 +31,7 @@ dependencies = [
   "pooch",          
   "pyproj",
   "pvlib",
+  "wakeblaster-sdk>=2.7.40",
 ]
 dynamic = ["version"]
 
