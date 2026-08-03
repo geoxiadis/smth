@@ -42,6 +42,7 @@ logger.setLevel('INFO')
 if not hasattr(FlowMap, "_orig_plot_wake_map"):
     FlowMap._orig_plot_wake_map = FlowMap.plot_wake_map
 
+
 def _resolve_ti(TI, i, j):
     if TI is None:
         return float("nan")
@@ -566,11 +567,8 @@ class WakeBlasterResult(SimulationResult):
             This gives the AEP as if only the simulated flow cases existed for the
             full year.
         with_wake_loss : bool, default True
-<<<<<<< HEAD
-            If True, use the wake-affected power. 
-=======
+
             If True, use the wake-affected power.
->>>>>>> origin/wakeblaster-initial-release
             If False, use the unwaked power based on free-flow wind speed, as calculated by Wakeblaster.
 
         Returns
