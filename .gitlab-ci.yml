@@ -19,6 +19,7 @@ stages:
   - export PATH="/root/.pixi/bin:$PATH"
 
 .install_pixi_windows: &install_pixi_windows
+  - '[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12'
   - $env:PIXI_VERSION=$PIXI_VERSION
   - powershell -ExecutionPolicy Bypass -c "irm -useb https://pixi.sh/install.ps1 | iex"
   - $env:Path += ';C:\Users\ContainerAdministrator\.pixi\bin'
