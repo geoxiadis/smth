@@ -20,7 +20,7 @@ stages:
 
 .install_pixi_windows: &install_pixi_windows
   - $env:PIXI_VERSION=$PIXI_VERSION
-  - powershell -ExecutionPolicy Bypass -c "irm -useb https://pixi.sh/install.ps1 | iex"
+  - powershell -ExecutionPolicy Bypass -c "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; irm -useb [https://pixi.sh/install.ps1](https://pixi.sh/install.ps1) | iex"
   - $env:Path += ';C:\Users\ContainerAdministrator\.pixi\bin'
 
 # ===== TEST PyWake debian=====
