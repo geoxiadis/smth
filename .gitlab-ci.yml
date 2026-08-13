@@ -4,7 +4,7 @@ default:
     pull_policy: if-not-present
 
 variables:
-  PIXI_VERSION: v0.68.1
+  PIXI_VERSION: v0.76.2
 
 stages:
   - test
@@ -20,7 +20,11 @@ stages:
 
 .install_pixi_windows: &install_pixi_windows
   - $env:PIXI_VERSION=$PIXI_VERSION
-  - powershell -ExecutionPolicy Bypass -c "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; irm -useb [https://pixi.sh/install.ps1](https://pixi.sh/install.ps1) | iex"
+  # This is the recommended command to install pixi, as explained at https://pixi.prefix.dev/latest/installation/
+  # - powershell -ExecutionPolicy Bypass -c "irm -useb https://pixi.sh/install.ps1 | iex"
+  # It is disabled because it causes "The request was aborted: Could not create SSL/TLS secure channel."
+  # Instead, we take the installer from the GitHub release.
+  - powershell -ExecutionPolicy Bypass -c "irm -useb https://github.com/prefix-dev/pixi/releases/download/$PIXI_VERSION/install.ps1 | iex"
   - $env:Path += ';C:\Users\ContainerAdministrator\.pixi\bin'
 
 # ===== TEST PyWake debian=====
@@ -33,7 +37,7 @@ test_PyWake:  # name the job what we like
   - pixi install --environment test  # --locked
   - pixi run --environment test --as-is python -c "from pathlib import Path; p=Path.home()/'.config/windkit/windkit.ini'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('[user_data]\nname=test\nemail=test@dtu.dk\ninstitution=DTU Wind')"
   - pixi run --environment test --as-is python -V
-  - pixi run --environment test --as-is pytest --durations=10
+  - pixi run --environment test --as-is pytest --durations=10 -n 2
   tags:  # only runners with this tag can do the job [3]
   - ci-ubuntu
   rules:
@@ -64,7 +68,7 @@ check_code_style:  # name the job what we like
   - *install_pixi_linux
   script:
   - pixi install --environment lint  # --locked
-  - pixi run --environment lint --as-is pycodestyle --ignore=E501,W504,E741 py_wake
+  - pixi run --environment lint --as-is lint
   tags:  # only runners with this tag can do the job [3]
   - ci-ubuntu
   rules:
@@ -75,6 +79,8 @@ check_code_style:  # name the job what we like
 test_PyWake_windows:  # name the job what we like
   stage:  # build, test, deploy defined by default [2]
     test
+  # The default Windows Docker image not have the Visual C++ v14 Redistributable.
+  # image: mcr.microsoft.com/windows:ltsc2019
   image: registry.windenergy.dtu.dk/dockerimages/windows-python:ltsc2019_py312
   before_script:
   - *install_pixi_windows
@@ -82,7 +88,7 @@ test_PyWake_windows:  # name the job what we like
   - pixi install --environment test  # --locked
   - pixi run --environment test --as-is python -c "import os; from pathlib import Path; p=Path(os.getenv('APPDATA'))/'DTU Wind Energy/windkit/windkit.ini'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('[user_data]\nname=test\nemail=test@dtu.dk\ninstitution=DTU Wind')"
   - pixi run --environment test --as-is python -V
-  - pixi run --environment test --as-is pytest --durations=10 --cov-report term-missing:skip-covered --cov-report xml:coverage.xml --cov=py_wake --cov-config .coveragerc
+  - pixi run --environment test --as-is pytest --durations=10 -n 2 --no-show --cov-report term-missing:skip-covered --cov-report xml:coverage.xml --cov=py_wake --cov-config .coveragerc
   tags:  # tag for shared runner on windows machine
   - docker-windows
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
@@ -218,7 +224,3 @@ pypi_linux:
     - twine upload dist/* -u $TWINE_USERNAME -p $TWINE_PASSWORD
   tags:
   - ci-ubuntu
-
-
-
-
