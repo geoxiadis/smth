@@ -29,6 +29,7 @@ dependencies = [
   "joblib>=1.3",
   "numba",
   "pooch",          
+  "filelock",
   "pyproj",
   "pvlib",
   "wakeblaster-sdk>=2.7.40",
@@ -44,9 +45,9 @@ dynamic = ["version"]
 [project.optional-dependencies]
 
 test  = [ 'pytest',  # for testing
+          'pytest-xdist',  # parallel testing and xdist_group scheduling
           'pytest-cov',  # for calculating coverage
           'psutil',  # memory profiling
-          'memory_profiler',  # memory profiling
           'line_profiler',  # to check speed
           'scikit-learn',  # MinMaxScaler
           'surrogates-interface',
@@ -74,7 +75,7 @@ docs = [
         ]
 
 lint = [
-  "pycodestyle",
+  "ruff",
 ]
 
 parallel = [
@@ -107,9 +108,15 @@ py_wake = ['examples/data/iea37/*.yaml',
 version_file = "py_wake/version.py"
 
 
+[tool.ruff]
+include = ["*.py"]
+respect-gitignore = true
+force-exclude = true
+target-version = "py312"
+
 [tool.ruff.lint]
 select = ['E', 'W']
-extend-ignore = ["E741"]
+ignore = ["E501", "E741"]
 preview = true
 
 [tool.ruff.lint.pycodestyle]
@@ -117,15 +124,25 @@ max-line-length = 150
 
 [tool.pixi.workspace]
 channels = ["conda-forge"]
-platforms = ["win-64", "linux-64"]  # "osx-arm64"
-requires-pixi = ">=0.67"  # For exclude-newer.
+platforms = ["win-64", "linux-64", "osx-arm64"]
+requires-pixi = ">=0.68"
 exclude-newer = "1month"  # For safety.
 
 [tool.pixi.pypi-dependencies]
 py_wake = { path = ".", editable = true }
 
+[tool.pixi.dependencies]
+netcdf4 = "*"
+h5py = "*"
+pyproj = "*"
+rasterio = "*"
+
 [tool.pixi.feature.test.dependencies]
 python = "3.12.*"  # This is the python version that we use for testing.
+pytest-xdist = "*"
+
+[tool.pixi.feature.test.tasks]
+test = "pytest -n auto --no-show"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
@@ -135,4 +152,11 @@ test = { features = ["test"], solve-group = "default" }
 parallel = { features = ["parallel"], solve-group = "default" }
 dev = { features = ["docs", "test", "lint"], solve-group = "default" }
 
-[tool.pixi.tasks]
+[tool.pixi.feature.lint.tasks]
+lint = "ruff check py_wake"
+lint-fix = "ruff check --fix py_wake"
+
+[tool.pytest.ini_options]
+addopts = "--dist=loadgroup"
+markers = ["slow: tests that take a long time to execute; disable them with '-m \"not slow\"'"]
+testpaths = ["py_wake/tests"]
