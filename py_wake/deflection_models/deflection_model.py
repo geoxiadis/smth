@@ -72,7 +72,7 @@ class DeflectionIntegrator(DeflectionModel):
         deflection_ijlk = gradients.trapz(deflection_rate, dw_ijlkx, axis=4)
         self.hcw_ijlk = hcw_ijlk + gradients.sign(dw_ijlk) * deflection_ijlk * np.cos(theta_total_angle_ilk[:, na])
         self.dh_ijlk = dh_ijlk + gradients.sign(dw_ijlk) * deflection_ijlk * np.sin(theta_total_angle_ilk[:, na])
-        return dw_ijlk, self.hcw_ijlk, self.dh_ijlk
+        return np.broadcast_arrays(dw_ijlk, self.hcw_ijlk, self.dh_ijlk)
 
     @abstractmethod
     def get_deflection_rate(self):
