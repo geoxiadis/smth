@@ -52,6 +52,11 @@ class DeflectionIntegrator(DeflectionModel):
                 set(method_args(self.get_deflection_rate)) - {'theta_ilk', 'dw_ijlkx'})
 
     def calc_deflection(self, dw_ijlk, hcw_ijlk, dh_ijlk, yaw_ilk, tilt_ilk, **kwargs):
+        if np.all(yaw_ilk == 0) and np.all(tilt_ilk == 0):
+            self.hcw_ijlk = hcw_ijlk
+            self.dh_ijlk = dh_ijlk
+            return dw_ijlk, hcw_ijlk, dh_ijlk
+
         dw_lst = (np.logspace(0, 1.1, self.N) - 1) / (10**1.1 - 1)
         dw_ijlkx = dw_ijlk[..., na] * dw_lst[na, na, na, na, :]
 
