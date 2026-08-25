@@ -212,6 +212,7 @@ pages:  # "pages" is a job specifically for GitLab pages [1]
   dependencies: 
     - build_pages
   script:  # use sphinx to build docs, move to public page
+  - mv docs/validation_report/report/validation_report.pdf docs/build/html/_images/ -f
   - mv docs/build/html public/
   artifacts:  # required for GitLab pages [1]
     paths:
