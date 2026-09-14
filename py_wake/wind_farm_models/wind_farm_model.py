@@ -19,6 +19,7 @@ from py_wake.wind_turbines import WindTurbines
 
 class WindFarmModel(ABC):
     """Base class for RANS and engineering flow models"""
+    args4all = ['rotor_speed_ilk']
     verbose = True
 
     def __init__(self, site, windTurbines):

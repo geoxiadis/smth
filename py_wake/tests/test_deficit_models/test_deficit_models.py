@@ -145,6 +145,7 @@ def test_huge_distance(deficitModel):
            "NoWakeDeficit": 9.8,
            "NOJLocalDeficit": 9.797536,
            "TurboNOJDeficit": 9.795322,
+           "EddyViscosityDeficitModel": 9.8,
            "BlondelSuperGaussianDeficit2020": 9.79177032,
            "BlondelSuperGaussianDeficit2023": 9.7990636,
            "RANSLUTDemoDeficit": [9.80008, 9.8, 9.800077, 9.761179]}
