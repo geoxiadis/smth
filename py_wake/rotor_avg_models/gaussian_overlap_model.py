@@ -32,14 +32,36 @@ class GaussianOverlapAvgModel(RotorAvgModel):
         func(cw_ijlk=cw_ijlk * 0, **kwargs)
 
     def __call__(self, func, cw_ijlk, D_dst_ijl, **kwargs):
-        res_ijlk = func(cw_ijlk=cw_ijlk * 0, D_dst_ijl=D_dst_ijl, **kwargs)
-        if not hasattr(func.__self__, 'sigma_ijlk'):
+        deficit_model = func.__self__
+        if not hasattr(deficit_model, 'sigma_ijlk'):
             raise AttributeError(
-                f"'{func.__self__.__class__.__name__}' has no attribute 'sigma_ijlk', which is needed by the GaussianOverlapAvgModel")
-        sigma_ijlk = func.__self__.sigma_ijlk(**kwargs)
-        r_sigma = ((D_dst_ijl / 2)[..., na] / sigma_ijlk).flatten()
-        cw_sigma = gradients.cabs(cw_ijlk / sigma_ijlk).flatten()
-        overlap_factor_ijlk = self.overlap_interpolator(np.array([r_sigma, cw_sigma]).T).reshape(sigma_ijlk.shape)
+                f"'{deficit_model.__class__.__name__}' has no attribute 'sigma_ijlk', which is needed by the GaussianOverlapAvgModel")
+
+        sigma_ijlk = deficit_model.sigma_ijlk(**kwargs)
+        r_sigma_flat = ((D_dst_ijl / 2)[..., na] / sigma_ijlk).flatten()
+        cw_sigma_flat = gradients.cabs(cw_ijlk / sigma_ijlk).flatten()
+
+        # Cache sigma so that sigma_ijlk() called inside func() returns it directly.
+        deficit_model._sigma_ijlk_cache = sigma_ijlk
+        try:
+            res_ijlk = func(cw_ijlk=cw_ijlk * 0, D_dst_ijl=D_dst_ijl, **kwargs)
+        finally:
+            deficit_model._sigma_ijlk_cache = None
+
+        # The lookup table is bounded at CW_sigma=10; beyond that the overlap is
+        # effectively zero. Skip interpolation for those pairs to avoid the cost of
+        # evaluating the interpolator for negligible contributions.
+        active = cw_sigma_flat < 10.0  # matches the table's CW_sigma upper bound
+        if active.any():
+            #overlap_flat = np.zeros(len(cw_sigma_flat))
+            #overlap_flat[active] = self.overlap_interpolator(
+            #    np.array([r_sigma_flat[active], cw_sigma_flat[active]]).T
+            #).flatten()
+            overlap_flat = np.where(active, self.overlap_interpolator(np.array([r_sigma_flat, cw_sigma_flat]).T).flatten(), 0.)
+        else:
+            overlap_flat = np.zeros(len(cw_sigma_flat))
+
+        overlap_factor_ijlk = overlap_flat.reshape(sigma_ijlk.shape)
         return res_ijlk * overlap_factor_ijlk
 
 

@@ -425,6 +425,13 @@ class TurboGaussianDeficit(NiayifarGaussianDeficit):
         self._ctlim = ctlim
 
     def sigma_ijlk(self, D_src_il, dw_ijlk, ct_ilk, **kwargs):
+        # Return a cached value if GaussianOverlapAvgModel set one to avoid the redundant
+        # second computation that would otherwise occur within GaussianOverlapAvgModel.__call__.
+        cached = getattr(self, '_sigma_ijlk_cache', None)
+        if cached is not None:
+            self._sigma_ijlk_cache = None  # consume once; clear to prevent stale use
+            return cached
+
         # dimensional wake expansion
         # expression unchanged from original formulation, however the intial wake width needs to
         # be adjusted to agree with the Gaussian model formulation. It is replaced by the original
