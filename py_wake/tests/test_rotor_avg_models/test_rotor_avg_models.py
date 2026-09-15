@@ -358,6 +358,12 @@ def test_with_all_deficit_models(WFM):
     site = IEA37Site(16)
     windTurbines = IEA37_WindTurbines()
     for deficitModel in get_models(WakeDeficitModel):
+        # The Large Wind Farm Correction (LWFC) model has a very
+        # specific use case and is not compatible with the other models
+        # in this test
+        if deficitModel.__name__ == "LargeWindFarmCorrectionDeficitModel":
+            continue
+
         wfm = WFM(site, windTurbines, wake_deficitModel=deficitModel(),
                   superpositionModel=LinearSum(),
                   deflectionModel=None, turbulenceModel=STF2017TurbulenceModel())
