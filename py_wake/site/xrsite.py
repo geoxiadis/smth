@@ -161,7 +161,7 @@ class XRSite(Site):
 
         def get(n, default=None):
             if n in self.ds:
-                return self.ds[n].interp_ilk(lw.coords, deg=(n == 'WD'))
+                return self.interp(self.ds[n], lw.coords, deg=(n == 'WD'))
             else:
                 return default
 
