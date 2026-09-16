@@ -153,7 +153,7 @@ trigger_hub_test:
 
 
 # ===== build documentation =====
-build_pages:  # "pages" is a job specifically for GitLab pages [1]
+build_validation_report:  
   stage:  # build, test, deploy defined by default [2]
     test
   before_script:
@@ -162,7 +162,6 @@ build_pages:  # "pages" is a job specifically for GitLab pages [1]
   - apt-get update
   - apt-get -y install pandoc graphviz
   - pixi install --environment docs  # --locked
-  - pixi run --environment docs --as-is python -c "from pathlib import Path; p=Path.home()/'.config/windkit/windkit.ini'; p.parent.mkdir(parents=True, exist_ok=True); p.write_text('[user_data]\nname=test\nemail=test@dtu.dk\ninstitution=DTU Wind')"
   - cd docs/validation_report
   - pixi run --environment docs --as-is python generate_validation_figures.py
   - cd report
@@ -171,11 +170,29 @@ build_pages:  # "pages" is a job specifically for GitLab pages [1]
   - bibtex validation_report.aux
   - pdflatex validation_report.tex
   - pdflatex validation_report.tex
-  - cd ../../
-  - pwd
+  - ls -l
+  artifacts:  # required for GitLab pages [1]
+    paths:
+    - docs/validation_report
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      when: manual
+      allow_failure: true
+  tags:  # only runners with this tag can do the job [3]
+  - ci-ubuntu
+
+build_pages:  
+  stage:  # build, test, deploy defined by default [2]
+    test
+  before_script:
+  - *install_pixi_linux
+  script:  # use sphinx to build docs, move to public page
+  - apt-get update
+  - apt-get -y install pandoc
+  - pixi install --environment docs  # --locked
+  - cd docs
   - pixi run --environment docs --as-is sphinx-build -M html . build
-  #- make latexpdf
-  - cd ../
   artifacts:  # required for GitLab pages [1]
     paths:
     - docs/build/html
@@ -195,6 +212,7 @@ pages:  # "pages" is a job specifically for GitLab pages [1]
   dependencies: 
     - build_pages
   script:  # use sphinx to build docs, move to public page
+  - mv docs/validation_report/report/validation_report.pdf docs/build/html/_images/ -f
   - mv docs/build/html public/
   artifacts:  # required for GitLab pages [1]
     paths:
