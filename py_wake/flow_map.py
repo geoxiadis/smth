@@ -283,7 +283,8 @@ class FlowMap(FlowBox):
                          levels=levels, cmap=cmap, plot_colorbar=plot_colorbar,
                          plot_windturbines=plot_windturbines, normalize_with=normalize_with, ax=ax, cax=cax)
 
-    def plot_ti_map(self, levels=100, cmap=None, plot_colorbar=True, plot_windturbines=True, ax=None):
+    def plot_ti_map(self, levels=100, cmap=None, plot_colorbar=True, plot_windturbines=True,
+                    normalize_with=1, ax=None):
         """Plot effective turbulence intensity contourf map
 
         Parameters
@@ -306,7 +307,7 @@ class FlowMap(FlowBox):
             cmap = 'Blues'
         c = self.plot(self.TI_eff.mean(['wd', 'ws']), clabel="Turbulence intensity [-]",
                       levels=levels, cmap=cmap, plot_colorbar=plot_colorbar,
-                      plot_windturbines=plot_windturbines, ax=ax)
+                      plot_windturbines=plot_windturbines, normalize_with=normalize_with, ax=ax)
 
         return c
 
