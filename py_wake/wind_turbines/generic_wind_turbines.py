@@ -11,13 +11,13 @@ from py_wake.wind_turbines.power_ct_functions import (
 
 class GenericWindTurbine(WindTurbine):
     def __init__(self, name, diameter, hub_height, power_norm, turbulence_intensity=.1,
-                 air_density=1.225, max_cp=.49, constant_ct=.8,
+                 air_density=1.225, max_cp=.49, constant_ct=.8, ct_method='a_cp',
                  gear_loss_const=.01, gear_loss_var=.014, generator_loss=0.03, converter_loss=.03,
                  ws_lst=np.arange(.1, 30, .1), ws_cutin=None,
                  ws_cutout=None, power_idle=0, ct_idle=None, method='linear',
                  additional_models=[SimpleYawModel()]):
         """Wind turbine with generic standard power curve based on max_cp, rated power and losses.
-        Ct is computed from the basic 1d momentum theory
+        Ct is computed from the basic 1d momentum theory or power law with exponent 3.2
 
         Parameters
         ----------
@@ -37,6 +37,8 @@ class GenericWindTurbine(WindTurbine):
             Maximum power coefficient
         constant_ct : float, optional
             Ct value in constant-ct region
+        ct_method: str
+            Method for thrust curve above rated: 'a_cp' 1D momentum  or 'power_law' with exponent 3.2
         gear_loss_const : float, optional
             Constant gear loss as factor of power_norm [-], default is 0.01 (1 %)
         gear_loss_var : float, optional
@@ -63,7 +65,7 @@ class GenericWindTurbine(WindTurbine):
         additional_models : list, optional
             list of additional models.
         """
-        u, p, ct = standard_power_ct_curve(power_norm, diameter, turbulence_intensity, air_density, max_cp, constant_ct,
+        u, p, ct = standard_power_ct_curve(power_norm, diameter, turbulence_intensity, air_density, max_cp, constant_ct, ct_method,
                                            gear_loss_const, gear_loss_var, generator_loss, converter_loss, ws_lst)
         if ws_cutin is not None:
             u, p, ct = [v[u >= ws_cutin] for v in [u, p, ct]]
@@ -123,7 +125,7 @@ class GenericTIRhoWindTurbine(WindTurbine):
             list of additional models.
         """
 
-        data = np.moveaxis([[standard_power_ct_curve(power_norm, diameter, ti, rho, max_cp, constant_ct, gear_loss_const,
+        data = np.moveaxis([[standard_power_ct_curve(power_norm, diameter, ti, rho, max_cp, constant_ct, 'a_cp', gear_loss_const,
                                                      gear_loss_var, generator_loss, converter_loss, wsp_lst)[1:]
                              for rho in Air_density_lst]
                             for ti in TI_eff_lst], -1, 0)

@@ -17,13 +17,13 @@ from py_wake.wind_turbines.generic_wind_turbines import (
 
 
 def test_GenericWindTurbine():
-    for ref, ti, cut_in, cut_out, p_tol, ct_tol in [(V80(), .1, 4, None, 0.03, .14),
-                                                    (WindTurbine.from_WAsP_wtg(wtg_path +
-                                                                               "Vestas V112-3.0 MW.wtg"), .05, 3, 25, 0.035, .07),
-                                                    (DTU10MW(), .05, 4, 25, 0.06, .12)]:
+    for ref, ti, cut_in, cut_out, p_tol, ct_tol, ct_method in [(V80(), .1, 4, None, 0.03, .14, 'a_cp'),
+                                                               (WindTurbine.from_WAsP_wtg(wtg_path +
+                                                                                          "Vestas V112-3.0 MW.wtg"), .05, 3, 25, 0.035, .07, 'a_cp'),
+                                                               (DTU10MW(), .05, 4, 25, 0.06, .12, 'power_law')]:
 
         power_norm = ref.power(np.arange(10, 20)).max()
-        wt = GenericWindTurbine('Generic', ref.diameter(), ref.hub_height(), power_norm / 1e3,
+        wt = GenericWindTurbine('Generic', ref.diameter(), ref.hub_height(), power_norm / 1e3, ct_method=ct_method,
                                 turbulence_intensity=ti, ws_cutin=cut_in, ws_cutout=cut_out)
 
         if 0:

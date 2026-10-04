@@ -5,7 +5,7 @@ from py_wake.utils import gradients
 
 
 def standard_power_ct_curve(power_norm, diameter, turbulence_intensity=.1,
-                            rho=1.225, max_cp=.49, constant_ct=.8,
+                            rho=1.225, max_cp=.49, constant_ct=.8, ct_method='a_cp',
                             gear_loss_const=.01, gear_loss_var=.014, generator_loss=0.03, converter_loss=.03,
                             wsp_lst=np.arange(0.1, 25, .1)):
     """Generate standard power curve, extracted from WETB (original extracted from excel sheet made by Kenneth Thomsen)
@@ -24,6 +24,9 @@ def standard_power_ct_curve(power_norm, diameter, turbulence_intensity=.1,
         Maximum power coefficient
     constant_ct : float, optional
         Ct value in constant-ct region
+    ct_method: str
+        Method for thrust curve above rated: 'a_cp' 1D momentum  or 'power_law' with exponent 3.2
+        The latter is based on https://doi.org/10.1088/1742-6596/2265/2/022030.
     gear_loss_const : float, optional
         Constant gear loss as factor of power_norm [-], default is 0.01 (1 %)
     gear_loss_var : float, optional
@@ -62,17 +65,22 @@ def standard_power_ct_curve(power_norm, diameter, turbulence_intensity=.1,
     p_gen = power_lst / (1 - converter_loss)
     p_gear = p_gen / (1 - generator_loss)
     p_aero = (p_gear + gear_loss_const * power_norm) / (1 - gear_loss_var)
-    cp = p_aero * 1000 / (.5 * rho * area * wsp_lst ** 3)
-    # cp is too high at low ws due to constant loss, so limit to 16/27
-    cp = np.minimum(cp, 16 / 27)
 
     def cp2ct(cp):
         # solve cp = 4 * a * (1 - a)**2 for a
+        # For derivation see Appendix A of https://doi.org/10.1088/1742-6596/2265/2/022030
         y = 27.0 / 16.0 * cp
         a = 2.0 / 3.0 * (1 - np.cos(np.arctan2(2 * np.sqrt(y * (1.0 - y)), 1 - 2 * y) / 3.0))
         return 4 * a * (1 - a)
 
-    ct_lst = cp2ct(cp)
+    if ct_method == 'a_cp':
+        cp = p_aero * 1000 / (.5 * rho * area * wsp_lst ** 3)
+        # cp is too high at low ws due to constant loss, so limit to 16/27
+        cp = np.minimum(cp, 16 / 27)
+        ct_lst = cp2ct(cp)
+    else:
+        Ur = (2 * power_norm * 1e3 / (rho * max_cp * area))**(1 / 3)  # [m/s] Rated wind speed
+        ct_lst = constant_ct * (Ur / np.maximum(Ur, wsp_lst))**(3.2)
 
     # scale ct, such that the constant region (~cut-in to rated) equals <constant_ct>
     # First part (~0-2m/s) is constant at 8/9 due to cp limit and must be disregarded
